@@ -1668,6 +1668,104 @@
       .stats-row { padding: 20px 20px; }
       .testimonial { padding: 24px !important; }
     }
+
+    /* ─── WhatsApp Floating Button ─────────────────────────────── */
+    @keyframes wppPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(37,211,102,0.5); }
+      70%  { box-shadow: 0 0 0 14px rgba(37,211,102,0); }
+      100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); }
+    }
+    .whatsapp-float {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      width: 56px;
+      height: 56px;
+      background: #25D366;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      animation: wppPulse 2s infinite;
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      border: none;
+      outline: none;
+    }
+    .whatsapp-float:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 20px rgba(37,211,102,0.6);
+      animation: none;
+    }
+    .whatsapp-float svg {
+      width: 28px;
+      height: 28px;
+      fill: #fff;
+    }
+    /* Desktop: hidden until 30% scroll */
+    @media (min-width: 769px) {
+      .whatsapp-float { opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.2s; }
+      .whatsapp-float.visible { opacity: 1; pointer-events: auto; }
+    }
+
+    /* ─── Pricing CTA Buttons ──────────────────────────────────── */
+    .pricing-cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 24px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 0;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      text-align: center;
+      margin-top: auto;
+    }
+    .pricing-cta-green {
+      background: var(--green);
+      color: #fff;
+    }
+    .pricing-cta-green:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(37,211,102,0.45);
+    }
+    .pricing-cta-outline {
+      background: transparent;
+      color: var(--cyan-bright);
+      border: 1px solid rgba(6,182,212,0.4);
+    }
+    .pricing-cta-outline:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(6,182,212,0.3);
+      border-color: var(--cyan-bright);
+    }
+
+    /* Pricing card flex layout for CTA at bottom */
+    .pricing-card {
+      display: flex;
+      flex-direction: column;
+    }
+    .pricing-features {
+      flex-grow: 1;
+    }
+
+    /* ─── Pricing Anchor Value ─────────────────────────────────── */
+    .pricing-anchor {
+      text-align: center;
+      font-size: 0.95rem;
+      color: #94a3b8;
+      max-width: 640px;
+      margin-bottom: 40px;
+      line-height: 1.7;
+    }
   </style>
 </head>
 <body>
@@ -1694,7 +1792,6 @@
 
         <!-- LEFT: Text content -->
         <div class="hero-content">
-          <div class="sys-readout">SYS.ACTIVE · ZENYA_CORE v2.0 · STATUS: ONLINE</div>
           <div class="hero-badge">Powered by Sparkle AI</div>
           <h1>
             SUA<br>
@@ -1773,7 +1870,7 @@
   <section class="problema">
     <div class="section-scanline"></div>
     <div class="container">
-      <span class="section-label">SYS_01 &nbsp;·&nbsp; O problema</span>
+      <span class="section-label">O problema</span>
       <h2 class="section-title">Quantas vendas você perdeu<br>porque não respondeu a tempo?</h2>
       <p class="section-sub">
         Clientes mandam mensagem enquanto você está em atendimento, em serviço, dormindo.
@@ -1781,22 +1878,16 @@
       </p>
       <div class="pain-grid">
         <div class="pain-card hud-card">
-          <div class="pain-num">INC_01</div>
-          <div class="pain-readout">INCIDENT_RATE: HIGH</div>
           <div class="pain-icon">😴</div>
           <h3>Clientes sem resposta fora do horário</h3>
           <p>Cada mensagem não respondida é uma venda que foi embora. Seu concorrente respondeu mais rápido.</p>
         </div>
         <div class="pain-card hud-card">
-          <div class="pain-num">INC_02</div>
-          <div class="pain-readout">LOSS_INDEX: CRITICAL</div>
           <div class="pain-icon">📅</div>
           <h3>Agendamentos perdidos por falta de follow-up</h3>
           <p>O cliente confirmou mas não apareceu. Ou pediu para marcar e você esqueceu de responder.</p>
         </div>
         <div class="pain-card hud-card">
-          <div class="pain-num">INC_03</div>
-          <div class="pain-readout">TIME_DRAIN: ACTIVE</div>
           <div class="pain-icon">💸</div>
           <h3>Cobrança manual que você precisa lembrar</h3>
           <p>Enviar boleto, checar pagamento, cobrar quem atrasou — horas do seu dia gastas nisso.</p>
@@ -1810,8 +1901,7 @@
     <div class="container">
       <div class="solucao-inner">
         <div class="solucao-text-panel hud-card">
-          <div class="zenya-core-badge"><span class="dot"></span>ZENYA_CORE v2.0 // SOLUTION</div>
-          <span class="section-label">SYS_02 &nbsp;·&nbsp; A solução</span>
+          <span class="section-label">A solução</span>
           <h2 class="section-title">Conheça a Zenya</h2>
           <p style="color:var(--muted); margin-bottom:24px; font-size:1.05rem;">
             A Zenya é uma secretária virtual treinada especificamente para o seu negócio.
@@ -1824,10 +1914,6 @@
         </div>
         <div class="solucao-visual">
           <div class="chat-mock hud-card">
-            <div class="chat-terminal-bar">
-              <span>ZENYA_AGENT // LIVE SESSION</span>
-              <span>STATUS: ONLINE ●</span>
-            </div>
             <div class="chat-header">
               <div class="chat-avatar">🤖</div>
               <div class="chat-info">
@@ -1865,7 +1951,7 @@
   <section class="features">
     <div class="section-scanline"></div>
     <div class="container">
-      <span class="section-label">SYS_03 &nbsp;·&nbsp; Funcionalidades</span>
+      <span class="section-label">Funcionalidades</span>
       <h2 class="section-title">O que a Zenya faz por você</h2>
       <p class="section-sub">Tudo automático. Você só entra quando precisa de verdade.</p>
       <div class="features-grid">
@@ -1924,15 +2010,15 @@
   <!-- PARA QUEM É -->
   <section class="para-quem">
     <div class="container">
-      <span class="section-label">SYS_04 &nbsp;·&nbsp; Para quem é</span>
+      <span class="section-label">Para quem é</span>
       <h2 class="section-title">A Zenya foi feita<br>para o seu tipo de negócio</h2>
       <p class="section-sub">Cada Zenya é configurada especificamente para o negócio do cliente.</p>
       <div class="nichos-grid">
-        <div class="nicho-pill"><span>🏥</span> Clínicas e consultórios<span class="nicho-badge">SCAN ●</span></div>
-        <div class="nicho-pill"><span>🏫</span> Escolas e cursos<span class="nicho-badge">SCAN ●</span></div>
-        <div class="nicho-pill"><span>🛒</span> Lojas online<span class="nicho-badge">SCAN ●</span></div>
-        <div class="nicho-pill"><span>🔧</span> Prestadores de serviço<span class="nicho-badge">SCAN ●</span></div>
-        <div class="nicho-pill"><span>✂️</span> Salões e barbearias<span class="nicho-badge">SCAN ●</span></div>
+        <div class="nicho-pill"><span>🏥</span> Clínicas e consultórios</div>
+        <div class="nicho-pill"><span>🏫</span> Escolas e cursos</div>
+        <div class="nicho-pill"><span>🛒</span> Lojas online</div>
+        <div class="nicho-pill"><span>🔧</span> Prestadores de serviço</div>
+        <div class="nicho-pill"><span>✂️</span> Salões e barbearias</div>
       </div>
       <div class="qualifier-box">
         💡 Funciona melhor para negócios que recebem mais de 20 mensagens de clientes por dia no WhatsApp.
@@ -1944,32 +2030,8 @@
   <section class="social">
     <div class="section-scanline"></div>
     <div class="container">
-      <span class="section-label">SYS_05 &nbsp;·&nbsp; Resultados</span>
-      <h2 class="section-title">O que dizem os clientes</h2>
-
-      <!-- [PLACEHOLDER — T1.3: Mauro escolhe a prova social] -->
-      <div class="testimonial hud-card">
-        <div class="testimonial-terminal-header">
-          <div class="testimonial-terminal-dots">
-            <span></span><span></span><span></span>
-          </div>
-          <span class="testimonial-terminal-label">USER_REPORT // VERIFIED</span>
-        </div>
-        <div class="testimonial-stars">
-          <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-        </div>
-        <p class="testimonial-quote">
-          "A secretária passava o dia inteiro respondendo WhatsApp.
-          Agora a Zenya cuida disso e a equipe foca no que realmente importa."
-        </p>
-        <div class="testimonial-author-hud">
-          <div class="testimonial-avatar-hud">👤</div>
-          <div>
-            <span class="testimonial-author-name">Cliente Sparkle</span>
-            <span class="testimonial-author-role">Escola em São Paulo</span>
-          </div>
-        </div>
-      </div>
+      <span class="section-label">Resultados</span>
+      <h2 class="section-title">Resultados reais</h2>
 
       <div class="stats-row">
         <div class="stat">
@@ -1992,14 +2054,14 @@
   <section class="pricing">
     <div class="section-scanline"></div>
     <div class="container">
-      <span class="section-label">SYS_06 &nbsp;·&nbsp; Investimento</span>
+      <span class="section-label">Investimento</span>
       <h2 class="section-title">Planos</h2>
       <p class="section-sub">
         O valor exato depende do seu negócio. Em 30 minutos a gente entende o que você precisa e passa o número real.
       </p>
+      <p class="pricing-anchor">Uma secretária CLT custa R$2.500+/mês (salário + encargos + férias + 13°). A Zenya faz o trabalho de atendimento 24h por uma fração disso.</p>
       <div class="pricing-grid">
         <div class="pricing-card hud-card">
-          <div class="pricing-tier-label">TIER_01 // ESSENCIAL</div>
           <div class="pricing-name">Essencial</div>
           <div class="pricing-price">
             <sup>R$</sup>297<sub>/mês</sub>
@@ -2011,10 +2073,10 @@
             <li>Transferência para humano</li>
             <li>Relatório de atendimentos</li>
           </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20plano%20Essencial%20da%20Zenya" class="pricing-cta pricing-cta-green" target="_blank" rel="noopener">Quero esse plano</a>
         </div>
         <div class="pricing-card featured hud-card">
           <div class="pricing-badge">Mais escolhido</div>
-          <div class="pricing-tier-label">TIER_02 // PROFESSIONAL</div>
           <div class="pricing-name">Completo</div>
           <div class="pricing-price">
             <sup>R$</sup>497<sub>/mês</sub>
@@ -2028,9 +2090,9 @@
             <li>Lembretes de compromisso</li>
             <li>Transcrição e resposta de áudios</li>
           </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20plano%20Completo%20da%20Zenya" class="pricing-cta pricing-cta-green" target="_blank" rel="noopener">Quero esse plano</a>
         </div>
         <div class="pricing-card hud-card">
-          <div class="pricing-tier-label">TIER_03 // ENTERPRISE</div>
           <div class="pricing-name">Personalizado</div>
           <div class="pricing-price" style="font-size:1.8rem; padding-top:8px;">Sob consulta</div>
           <p class="pricing-desc">Integrações específicas do seu negócio</p>
@@ -2040,6 +2102,7 @@
             <li>Fluxos personalizados</li>
             <li>Suporte dedicado</li>
           </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20um%20plano%20personalizado%20da%20Zenya" class="pricing-cta pricing-cta-outline" target="_blank" rel="noopener">Falar com especialista</a>
         </div>
       </div>
       <p class="pricing-note">
@@ -2053,7 +2116,7 @@
   <section class="cta-final">
     <div class="cta-hud-grid"></div>
     <div class="container" style="position:relative;z-index:1;">
-      <span class="section-label">SYS_07 &nbsp;·&nbsp; Próximo passo</span>
+      <span class="section-label">Próximo passo</span>
       <h2 class="section-title">Pronto para parar de perder clientes no WhatsApp?</h2>
       <p class="section-sub">
         Manda uma mensagem agora. A própria Zenya vai te atender —
@@ -2068,6 +2131,11 @@
       </div>
     </div>
   </section>
+
+  <!-- WHATSAPP FLOATING BUTTON -->
+  <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20conhecer%20a%20Zenya" class="whatsapp-float" target="_blank" rel="noopener" aria-label="Falar com a Zenya pelo WhatsApp">
+    <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.549 4.1 1.508 5.832L0 24l6.335-1.482A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.214-3.727.977.994-3.638-.234-.373A9.78 9.78 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+  </a>
 
   <!-- FOOTER -->
   <footer>
@@ -2157,6 +2225,22 @@
   if (document.readyState === 'loading') {
     window.addEventListener('load', init);
   } else { init(); }
+})();
+
+/* ─── WhatsApp Float: show after 30% scroll on desktop ─── */
+(function(){
+  var btn = document.querySelector('.whatsapp-float');
+  if (!btn) return;
+  function checkScroll() {
+    var scrollPct = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight);
+    if (scrollPct >= 0.3) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  }
+  window.addEventListener('scroll', checkScroll, { passive: true });
+  checkScroll();
 })();
 </script>
 
