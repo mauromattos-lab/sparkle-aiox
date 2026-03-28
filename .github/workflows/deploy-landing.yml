@@ -1,0 +1,30 @@
+name: Deploy Landing Page — Hostinger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'landing/**'
+
+jobs:
+  deploy:
+    name: Deploy via FTP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy landing/ to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./landing/
+          server-dir: /public_html/zenya.sparkleai.tech/
+          exclude: |
+            **/*.md
+            **/.git*
+            **/*.sh
