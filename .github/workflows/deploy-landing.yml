@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'landing/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
