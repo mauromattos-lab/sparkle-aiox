@@ -23,7 +23,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./landing/
-          server-dir: /public_html/zenya.sparkleai.tech/
+          server-dir: /public_html/zenya/
           exclude: |
             **/*.md
             **/.git*
