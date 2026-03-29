@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d1a2e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cyan-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00f5ff;stop-opacity:0" />
+      <stop offset="50%" style="stop-color:#00f5ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00f5ff;stop-opacity:0" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-strong">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="500" fill="url(#bg)"/>
+
+  <!-- Grid lines -->
+  <g opacity="0.08" stroke="#00f5ff" stroke-width="0.5">
+    <line x1="0" y1="100" x2="800" y2="100"/>
+    <line x1="0" y1="200" x2="800" y2="200"/>
+    <line x1="0" y1="300" x2="800" y2="300"/>
+    <line x1="0" y1="400" x2="800" y2="400"/>
+    <line x1="100" y1="0" x2="100" y2="500"/>
+    <line x1="200" y1="0" x2="200" y2="500"/>
+    <line x1="300" y1="0" x2="300" y2="500"/>
+    <line x1="400" y1="0" x2="400" y2="500"/>
+    <line x1="500" y1="0" x2="500" y2="500"/>
+    <line x1="600" y1="0" x2="600" y2="500"/>
+    <line x1="700" y1="0" x2="700" y2="500"/>
+  </g>
+
+  <!-- HUD frame corners -->
+  <g stroke="#00f5ff" stroke-width="2" fill="none" filter="url(#glow)">
+    <!-- Top left -->
+    <path d="M 40 40 L 40 80 M 40 40 L 80 40"/>
+    <!-- Top right -->
+    <path d="M 760 40 L 760 80 M 760 40 L 720 40"/>
+    <!-- Bottom left -->
+    <path d="M 40 460 L 40 420 M 40 460 L 80 460"/>
+    <!-- Bottom right -->
+    <path d="M 760 460 L 760 420 M 760 460 L 720 460"/>
+  </g>
+
+  <!-- Central glow line -->
+  <line x1="0" y1="250" x2="800" y2="250" stroke="url(#cyan-glow)" stroke-width="1" opacity="0.4"/>
+
+  <!-- Central hexagon -->
+  <g transform="translate(400, 250)" filter="url(#glow-strong)">
+    <polygon points="0,-80 69,-40 69,40 0,80 -69,40 -69,-40"
+             fill="none" stroke="#00f5ff" stroke-width="1.5" opacity="0.8"/>
+    <polygon points="0,-55 48,-27 48,27 0,55 -48,27 -48,-27"
+             fill="none" stroke="#7b2dff" stroke-width="1" opacity="0.6"/>
+    <!-- Inner dot -->
+    <circle cx="0" cy="0" r="8" fill="#00f5ff" opacity="0.9"/>
+    <circle cx="0" cy="0" r="16" fill="none" stroke="#00f5ff" stroke-width="1" opacity="0.4"/>
+  </g>
+
+  <!-- Orbiting dots -->
+  <g filter="url(#glow)">
+    <circle cx="400" cy="150" r="4" fill="#00f5ff" opacity="0.7"/>
+    <circle cx="469" cy="290" r="3" fill="#7b2dff" opacity="0.7"/>
+    <circle cx="331" cy="290" r="3" fill="#7b2dff" opacity="0.7"/>
+  </g>
+
+  <!-- Data blocks left -->
+  <g fill="none" stroke="#00f5ff" stroke-width="1" opacity="0.5">
+    <rect x="60" y="160" width="120" height="8" rx="1"/>
+    <rect x="60" y="178" width="90" height="8" rx="1"/>
+    <rect x="60" y="196" width="105" height="8" rx="1"/>
+  </g>
+  <rect x="60" y="160" width="120" height="8" rx="1" fill="#00f5ff" opacity="0.1"/>
+  <rect x="60" y="178" width="60" height="8" rx="1" fill="#00f5ff" opacity="0.2"/>
+  <rect x="60" y="196" width="95" height="8" rx="1" fill="#7b2dff" opacity="0.15"/>
+
+  <!-- Data blocks right -->
+  <g fill="none" stroke="#00f5ff" stroke-width="1" opacity="0.5">
+    <rect x="620" y="280" width="120" height="8" rx="1"/>
+    <rect x="620" y="298" width="85" height="8" rx="1"/>
+    <rect x="620" y="316" width="100" height="8" rx="1"/>
+  </g>
+  <rect x="620" y="280" width="80" height="8" rx="1" fill="#00f5ff" opacity="0.15"/>
+  <rect x="620" y="298" width="85" height="8" rx="1" fill="#00f5ff" opacity="0.1"/>
+  <rect x="620" y="316" width="55" height="8" rx="1" fill="#7b2dff" opacity="0.2"/>
+
+  <!-- Scan line animation -->
+  <rect x="0" y="0" width="800" height="2" fill="#00f5ff" opacity="0.06">
+    <animate attributeName="y" from="0" to="500" dur="4s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Status indicators top -->
+  <g filter="url(#glow)">
+    <circle cx="120" cy="60" r="4" fill="#00f5ff" opacity="0.9"/>
+    <circle cx="140" cy="60" r="4" fill="#7b2dff" opacity="0.7"/>
+    <circle cx="160" cy="60" r="4" fill="#00f5ff" opacity="0.5"/>
+  </g>
+
+  <!-- Status indicators bottom right -->
+  <g filter="url(#glow)">
+    <circle cx="640" cy="440" r="4" fill="#7b2dff" opacity="0.9"/>
+    <circle cx="660" cy="440" r="4" fill="#00f5ff" opacity="0.7"/>
+    <circle cx="680" cy="440" r="4" fill="#7b2dff" opacity="0.5"/>
+  </g>
+
+  <!-- Connecting lines -->
+  <g stroke="#00f5ff" stroke-width="0.5" opacity="0.2">
+    <line x1="180" y1="196" x2="331" y2="250"/>
+    <line x1="620" y1="290" x2="469" y2="250"/>
+  </g>
+
+  <!-- Sparkle logo text -->
+  <text x="400" y="390" font-family="monospace" font-size="11" fill="#00f5ff" text-anchor="middle" opacity="0.4" letter-spacing="4">SPARKLE AI</text>
+</svg>

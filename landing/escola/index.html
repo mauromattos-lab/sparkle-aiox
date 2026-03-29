@@ -1,0 +1,2302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Capture mais alunos. Zenya responde matrículas, agenda visitas e qualifica leads automaticamente." />
+  <title>Zenya para Escolas — Matrículas e Dúvidas no WhatsApp | Sparkle AI</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #020208;
+      --bg-2:         #080812;
+      --bg-card:      rgba(255,255,255,0.04);
+      --border:       rgba(255,255,255,0.10);
+      --border-hud:   rgba(6,182,212,0.25);
+      --purple:       #7c3aed;
+      --purple-light: #a78bfa;
+      --cyan:         #06b6d4;
+      --cyan-bright:  #00e5ff;
+      --green:        #25d366;
+      --green-dark:   #128c7e;
+      --white:        #f0f4ff;
+      --muted:        #7a8ba8;
+      --orange:       #f97316;
+      --orange-glow:  0 0 30px rgba(249,115,22,0.5);
+      --grad:         linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+      --grad-h:       linear-gradient(90deg, #7c3aed 0%, #06b6d4 100%);
+      --glow:         0 0 60px rgba(124,58,237,0.5), 0 0 120px rgba(124,58,237,0.2);
+      --glow-cyan:    0 0 40px rgba(6,182,212,0.4);
+      --glow-sm:      0 0 30px rgba(124,58,237,0.35);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: 'Space Grotesk', sans-serif;
+      line-height: 1.2;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    img { max-width: 100%; display: block; }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ─── Noise overlay ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── Nav ───────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(5,5,15,0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.2rem;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--cyan-bright);
+      color: #000;
+      font-weight: 800;
+      font-size: 0.75rem;
+      padding: 11px 28px;
+      border-radius: 0;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+      transition: transform 0.2s, box-shadow 0.2s;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(0,229,255,0.4);
+    }
+
+    /* ─── Hero ──────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      padding: 100px 0 60px;
+      overflow: hidden;
+      background: linear-gradient(160deg, #0a0c14 0%, #040408 60%);
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      top: -100px; right: 0;
+      width: 50%;
+      height: 120%;
+      background: radial-gradient(ellipse at right center, rgba(124,58,237,0.18) 0%, rgba(6,182,212,0.06) 40%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-orb-2 {
+      position: absolute;
+      bottom: -100px; left: -100px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Two-column hero layout */
+    .hero-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 40px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) {
+      .hero-inner { grid-template-columns: 1fr; }
+      .hero-character-wrap { display: none; }
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Hero badge */
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(6,182,212,0.08);
+      border: 1px solid rgba(6,182,212,0.35);
+      color: var(--cyan-bright);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 7px 16px;
+      border-radius: 0;
+      margin-bottom: 24px;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 5px; height: 5px;
+      background: var(--cyan-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--cyan-bright);
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    /* Hero headline — OW2 scale */
+    .hero h1 {
+      font-size: clamp(3rem, 6.5vw, 5.5rem);
+      font-weight: 900;
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      line-height: 0.92;
+    }
+
+    .hero h1 span {
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Orange accent word */
+    .hero h1 .accent-orange {
+      color: var(--orange);
+      -webkit-text-fill-color: var(--orange);
+      background: none;
+      text-shadow: 0 0 40px rgba(249,115,22,0.4);
+    }
+
+    .hero p {
+      font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+      color: var(--muted);
+      max-width: 460px;
+      margin-bottom: 36px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+
+    /* CTA button — parallelogram OW2 style */
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--green);
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.9rem;
+      padding: 16px 36px;
+      border-radius: 0;
+      clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+      transition: transform 0.2s, box-shadow 0.2s;
+      white-space: nowrap;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(37,211,102,0.45);
+    }
+
+    .hero-note {
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+
+    /* Hero orange hex accent */
+    .hero-hex {
+      position: absolute;
+      top: 20px; right: 20px;
+      width: 18px; height: 18px;
+      background: var(--orange);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      box-shadow: var(--orange-glow);
+      z-index: 3;
+    }
+
+    /* Character image wrap */
+    .hero-character-wrap {
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      height: 520px;
+      z-index: 2;
+    }
+
+    .hero-character {
+      position: absolute;
+      bottom: -40px;
+      height: 108%;
+      object-fit: contain;
+      object-position: center bottom;
+      filter:
+        drop-shadow(-20px 0 50px rgba(124,58,237,0.6))
+        drop-shadow(0 0 80px rgba(6,182,212,0.25))
+        brightness(0.92)
+        saturate(1.1);
+      -webkit-mask-image:
+        radial-gradient(ellipse 85% 80% at 52% 42%, black 38%, rgba(0,0,0,0.95) 52%, rgba(0,0,0,0.6) 68%, transparent 85%);
+      mask-image:
+        radial-gradient(ellipse 85% 80% at 52% 42%, black 38%, rgba(0,0,0,0.95) 52%, rgba(0,0,0,0.6) 68%, transparent 85%);
+      z-index: 2;
+      transition: filter 0.4s ease;
+    }
+
+    .hero-character:hover {
+      filter:
+        drop-shadow(-20px 0 70px rgba(124,58,237,0.8))
+        drop-shadow(0 0 100px rgba(6,182,212,0.4))
+        brightness(1.0)
+        saturate(1.2);
+    }
+
+    /* ─── Section base ───────────────────────────────────────────── */
+    section {
+      position: relative;
+      padding: 96px 0;
+    }
+
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--cyan-bright);
+      margin-bottom: 16px;
+      opacity: 0.85;
+    }
+
+    .section-label::before {
+      content: '//';
+      opacity: 0.5;
+      font-weight: 400;
+      letter-spacing: 0;
+    }
+
+    .section-label::after {
+      content: '';
+      display: inline-block;
+      width: 32px;
+      height: 1px;
+      background: var(--cyan);
+      opacity: 0.4;
+    }
+
+    .section-title {
+      font-size: clamp(1.7rem, 3.5vw, 2.6rem);
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-sub {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 540px;
+      margin-bottom: 56px;
+    }
+
+    /* ─── Problema ──────────────────────────────────────────────── */
+    .problema {
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pain-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .pain-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 28px;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.3s, box-shadow 0.3s;
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+      position: relative;
+    }
+
+    .pain-card::before,
+    .pain-card::after {
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      border-color: rgba(6,182,212,0.35);
+      border-style: solid;
+      transition: border-color 0.3s;
+    }
+    .pain-card::before { top: 4px; left: 4px; border-width: 1px 0 0 1px; }
+    .pain-card::after  { bottom: 4px; right: 4px; border-width: 0 1px 1px 0; }
+
+    .pain-card:hover {
+      border-color: rgba(6,182,212,0.4);
+      box-shadow: var(--glow-cyan);
+    }
+    .pain-card:hover::before,
+    .pain-card:hover::after { border-color: var(--cyan); }
+
+    .pain-icon {
+      font-size: 2rem;
+      margin-bottom: 16px;
+    }
+
+    .pain-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .pain-card p {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    /* ─── Solução ───────────────────────────────────────────────── */
+    .solucao-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .solucao-inner { grid-template-columns: 1fr; gap: 40px; }
+    }
+
+    .solucao-visual {
+      position: relative;
+    }
+
+    /* Chat mockup */
+    .chat-mock {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), var(--glow);
+    }
+
+    .chat-header {
+      background: #1f2937;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .chat-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--grad);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .chat-info strong {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .chat-info span {
+      font-size: 0.75rem;
+      color: var(--green);
+    }
+
+    .chat-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    .msg-in {
+      background: #1f2937;
+      color: #e5e7eb;
+      align-self: flex-start;
+      border-radius: 4px 12px 12px 12px;
+    }
+
+    .msg-out {
+      background: #005c4b;
+      color: #fff;
+      align-self: flex-end;
+      border-radius: 12px 4px 12px 12px;
+    }
+
+    .msg-time {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.4);
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    /* ─── Funcionalidades ────────────────────────────────────────── */
+    .features {
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 32px 28px;
+      position: relative;
+      overflow: visible;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: var(--grad-h);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card::after {
+      content: '';
+      position: absolute;
+      top: 3px; right: 3px;
+      width: 10px; height: 10px;
+      border-top: 1px solid rgba(124,58,237,0.4);
+      border-right: 1px solid rgba(124,58,237,0.4);
+      transition: border-color 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(124,58,237,0.4);
+      transform: translateY(-4px);
+      box-shadow: var(--glow-sm);
+    }
+
+    .feature-card:hover::before { opacity: 1; }
+    .feature-card:hover::after { border-color: var(--purple-light); }
+
+    .feature-icon {
+      width: 48px; height: 48px;
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.25);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .feature-card p {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    /* ─── Para quem é ────────────────────────────────────────────── */
+    .nichos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .nicho-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+    }
+
+    .nicho-pill:hover {
+      border-color: rgba(6,182,212,0.5);
+      background: rgba(6,182,212,0.06);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .nicho-pill span:first-child { font-size: 1.4rem; }
+
+    .qualifier-box {
+      background: rgba(6,182,212,0.08);
+      border: 1px solid rgba(6,182,212,0.2);
+      border-radius: 12px;
+      padding: 20px 24px;
+      color: var(--cyan);
+      font-size: 0.95rem;
+      max-width: 600px;
+    }
+
+    /* ─── Prova social ───────────────────────────────────────────── */
+    .social {
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .testimonial {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 640px;
+      position: relative;
+    }
+
+    .testimonial::before {
+      content: '"';
+      position: absolute;
+      top: 20px; left: 32px;
+      font-size: 5rem;
+      font-family: Georgia, serif;
+      color: var(--purple);
+      opacity: 0.3;
+      line-height: 1;
+    }
+
+    .testimonial p {
+      font-size: 1.1rem;
+      color: var(--white);
+      font-style: italic;
+      margin-bottom: 20px;
+      padding-top: 20px;
+    }
+
+    .testimonial-author {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .testimonial-author strong {
+      color: var(--white);
+      display: block;
+    }
+
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 40px;
+      margin-top: 56px;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 700;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    /* ─── Preço ──────────────────────────────────────────────────── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 960px;
+    }
+
+    .pricing-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 36px 32px;
+      position: relative;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .pricing-card.featured {
+      border-color: rgba(124,58,237,0.6);
+      box-shadow: var(--glow);
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+    }
+
+    .pricing-badge {
+      position: absolute;
+      top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--grad);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 16px;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+
+    .pricing-name {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .pricing-price {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .pricing-price sup {
+      font-size: 1.1rem;
+      vertical-align: super;
+    }
+
+    .pricing-price sub {
+      font-size: 0.9rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .pricing-desc {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 28px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pricing-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .pricing-features li::before {
+      content: '✓';
+      color: var(--green);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .pricing-note {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 32px;
+      padding: 20px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    /* ─── CTA Final ──────────────────────────────────────────────── */
+    .cta-final {
+      text-align: center;
+      padding: 120px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-final::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(124,58,237,0.2) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-final .section-title {
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+
+    .cta-final .section-sub {
+      margin: 0 auto 48px;
+    }
+
+    .cta-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-wpp {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--green);
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.1rem;
+      padding: 18px 40px;
+      border-radius: 100px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-wpp:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(37,211,102,0.5);
+    }
+
+    .btn-wpp svg {
+      width: 24px; height: 24px;
+    }
+
+    .cta-disclaimer {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    /* ─── Footer ─────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+    }
+
+    footer .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    footer .footer-logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    footer .footer-copy {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    /* ─── OW2 / HUD Enhancements ─────────────────────────────────── */
+
+    /* Hero grid background */
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px);
+      background-size: 56px 56px;
+      pointer-events: none;
+      z-index: 0;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, black 30%, transparent 100%);
+    }
+
+    /* Scan line animation */
+    @keyframes scan {
+      0%   { top: -4px; opacity: 0.7; }
+      80%  { opacity: 0.3; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    .scan-line {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, var(--cyan-bright) 40%, var(--purple-light) 60%, transparent 100%);
+      animation: scan 8s linear infinite;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.4;
+    }
+
+    /* Nav HUD accent */
+    nav::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0;
+      width: 100%;
+      height: 1px;
+      background: var(--grad-h);
+      opacity: 0.3;
+    }
+
+    /* Sys readout — typing effect */
+    @keyframes typing {
+      from { width: 0; opacity: 0; }
+      1%   { opacity: 1; }
+      to   { width: 100%; opacity: 1; }
+    }
+    .sys-readout {
+      font-size: 0.6rem;
+      font-family: 'Space Grotesk', monospace;
+      letter-spacing: 0.15em;
+      color: rgba(6,182,212,0.45);
+      text-transform: uppercase;
+      user-select: none;
+      margin-bottom: 20px;
+      overflow: hidden;
+      white-space: nowrap;
+      width: 0;
+      animation: typing 1.8s steps(40) 0.4s forwards;
+    }
+
+    /* Glitch on INTELIGENTE */
+    @keyframes glitch {
+      0%, 82%, 100% {
+        text-shadow: 0 0 40px rgba(249,115,22,0.4);
+        transform: none;
+        clip-path: none;
+      }
+      84% {
+        transform: translateX(-3px) skewX(-3deg);
+        text-shadow: 4px 0 #7c3aed, -4px 0 #06b6d4;
+        clip-path: polygon(0 20%, 100% 20%, 100% 40%, 0 40%);
+      }
+      86% {
+        transform: translateX(3px) skewX(3deg);
+        text-shadow: -4px 0 #7c3aed, 4px 0 #06b6d4;
+        clip-path: polygon(0 60%, 100% 60%, 100% 80%, 0 80%);
+      }
+      88% { transform: none; clip-path: none; text-shadow: 0 0 60px rgba(249,115,22,0.8); }
+    }
+    .accent-orange { animation: glitch 7s infinite 3s; }
+
+    /* Waveform */
+    .hero-waveform {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 28px;
+      margin-bottom: 28px;
+    }
+    .wave-bar {
+      width: 2px;
+      border-radius: 2px;
+      background: linear-gradient(to top, var(--purple) 0%, var(--cyan) 100%);
+      opacity: 0.65;
+      animation: wavePulse 1.2s ease-in-out infinite;
+      animation-delay: var(--d, 0s);
+    }
+    @keyframes wavePulse {
+      0%, 100% { height: var(--min, 4px); }
+      50%       { height: var(--max, 16px); }
+    }
+
+    /* Orbit rings */
+    .orbit-anchor {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 0; height: 0;
+      pointer-events: none;
+    }
+    .orbit-ring {
+      position: absolute;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    @keyframes orbitSpin  { to { transform: translate(-50%,-50%) rotate(360deg);  } }
+    @keyframes orbitSpinR { to { transform: translate(-50%,-50%) rotate(-360deg); } }
+    .orbit-ring.r1 {
+      width: 320px; height: 320px;
+      border: 1px solid rgba(124,58,237,0.14);
+      animation: orbitSpin 28s linear infinite;
+    }
+    .orbit-ring.r1::before {
+      content: '';
+      position: absolute;
+      width: 7px; height: 7px;
+      background: var(--purple-light);
+      border-radius: 50%;
+      top: -3.5px; left: calc(50% - 3.5px);
+      box-shadow: 0 0 14px var(--purple-light);
+    }
+    .orbit-ring.r2 {
+      width: 440px; height: 440px;
+      border: 1px solid rgba(6,182,212,0.08);
+      animation: orbitSpinR 40s linear infinite;
+    }
+    .orbit-ring.r2::before {
+      content: '';
+      position: absolute;
+      width: 5px; height: 5px;
+      background: var(--cyan-bright);
+      border-radius: 50%;
+      bottom: -2.5px; left: 30%;
+      box-shadow: 0 0 12px var(--cyan-bright);
+    }
+    .orbit-ring.r3 {
+      width: 200px; height: 200px;
+      border: 1px solid rgba(249,115,22,0.12);
+      animation: orbitSpin 16s linear infinite reverse;
+    }
+    .orbit-ring.r3::before {
+      content: '';
+      position: absolute;
+      width: 5px; height: 5px;
+      background: var(--orange);
+      border-radius: 50%;
+      top: -2.5px; right: 20%;
+      box-shadow: 0 0 12px var(--orange);
+    }
+
+    /* Floating stat cards */
+    @keyframes floatCard {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-10px); }
+    }
+    .hero-float-card {
+      position: absolute;
+      background: rgba(6,8,18,0.88);
+      border: 1px solid rgba(6,182,212,0.2);
+      backdrop-filter: blur(14px);
+      padding: 12px 18px;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+      animation: floatCard var(--dur, 4s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+      z-index: 5;
+      min-width: 150px;
+    }
+    .hfc-label {
+      font-size: 0.55rem;
+      font-family: 'Space Grotesk', sans-serif;
+      letter-spacing: 0.18em;
+      color: var(--cyan);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      opacity: 0.7;
+    }
+    .hfc-val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    .hfc-bar {
+      height: 2px;
+      background: var(--grad-h);
+      margin-top: 8px;
+      border-radius: 1px;
+      transform-origin: left;
+      animation: barPulse 3s ease-in-out infinite alternate;
+      animation-delay: var(--delay, 0s);
+    }
+    @keyframes barPulse {
+      from { opacity: 0.4; transform: scaleX(0.6); }
+      to   { opacity: 1;   transform: scaleX(1);   }
+    }
+
+    /* Hero h1 — more aggressive */
+    .hero h1 {
+      font-size: clamp(2.4rem, 5.5vw, 4.2rem) !important;
+      letter-spacing: -0.03em !important;
+      font-weight: 800 !important;
+    }
+
+    /* Section title — heavier */
+    .section-title {
+      font-weight: 800 !important;
+      letter-spacing: -0.03em !important;
+    }
+
+    /* Nav border override */
+    nav {
+      border-bottom: none;
+    }
+
+    /* Testimonial HUD style */
+    .testimonial {
+      border-radius: 4px !important;
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+    }
+
+    /* Qualifier box HUD */
+    .qualifier-box {
+      border-radius: 3px !important;
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+    }
+
+    /* Feature icon — glow */
+    .feature-icon {
+      box-shadow: 0 0 20px rgba(124,58,237,0.2);
+    }
+
+    /* Stats value pulse */
+    .stat-value {
+      text-shadow: 0 0 30px rgba(124,58,237,0.4);
+    }
+
+    /* Chat mock HUD border */
+    .chat-mock {
+      border-radius: 4px !important;
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px)) !important;
+    }
+
+    /* CTA final glow enhancement */
+    .cta-final::before {
+      width: 800px !important;
+      height: 600px !important;
+      background: radial-gradient(ellipse, rgba(124,58,237,0.25) 0%, rgba(6,182,212,0.08) 50%, transparent 70%) !important;
+    }
+
+    /* Hero orb enhancements */
+    .hero::after {
+      background: radial-gradient(circle, rgba(124,58,237,0.25) 0%, rgba(6,182,212,0.05) 50%, transparent 70%) !important;
+    }
+
+    /* Pricing featured corner accent */
+    .pricing-card.featured::after {
+      content: 'RECOMENDADO';
+      position: absolute;
+      bottom: -1px; right: -1px;
+      font-size: 0.55rem;
+      letter-spacing: 0.12em;
+      color: rgba(124,58,237,0.5);
+      padding: 2px 6px;
+    }
+
+    /* Energy border on btn-wpp */
+    .btn-wpp {
+      border-radius: 4px !important;
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+      padding: 20px 44px !important;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-primary {
+      border-radius: 4px !important;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    }
+
+    .nav-cta {
+      border-radius: 3px !important;
+    }
+
+    /* ─── Mobile ─────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .hero-actions { flex-direction: column; align-items: flex-start; }
+      .btn-primary { width: 100%; justify-content: center; }
+      .stats-row { gap: 28px; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .nav-cta span { display: none; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       REDESIGN SEÇÕES 2–8 — HUD / SCI-FI DNA
+    ═══════════════════════════════════════════════════════════════ */
+
+    /* ─── Seção scan-line decorativa (reutilizável em seções) ─── */
+    .section-scanline {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, var(--cyan-bright) 30%, var(--purple-light) 70%, transparent 100%);
+      opacity: 0.25;
+    }
+
+    /* ─── HUD corner decorators para cards ─── */
+    .hud-card {
+      position: relative;
+    }
+    .hud-card::before,
+    .hud-card::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-color: rgba(6,182,212,0.4);
+      border-style: solid;
+      transition: border-color 0.3s;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .hud-card::before { top: 5px; left: 5px; border-width: 1px 0 0 1px; }
+    .hud-card::after  { bottom: 5px; right: 5px; border-width: 0 1px 1px 0; }
+    .hud-card:hover::before,
+    .hud-card:hover::after { border-color: var(--cyan-bright); }
+
+    /* ─── Readout badge acima dos pain cards ─── */
+    .pain-readout {
+      font-size: 0.55rem;
+      font-family: 'Space Grotesk', monospace;
+      letter-spacing: 0.2em;
+      color: rgba(249,115,22,0.7);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pain-readout::before {
+      content: '';
+      display: inline-block;
+      width: 5px; height: 5px;
+      background: var(--orange);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--orange);
+      animation: pulse 1.8s infinite;
+      flex-shrink: 0;
+    }
+
+    /* ─── Pain card número HUD ─── */
+    .pain-num {
+      position: absolute;
+      top: 12px; right: 16px;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.15em;
+      color: rgba(6,182,212,0.3);
+      text-transform: uppercase;
+    }
+
+    /* Pain card: override com glow laranja no ícone */
+    .pain-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px; height: 52px;
+      background: rgba(249,115,22,0.08);
+      border: 1px solid rgba(249,115,22,0.2);
+      border-radius: 0;
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+      font-size: 1.6rem;
+      margin-bottom: 18px;
+      box-shadow: 0 0 20px rgba(249,115,22,0.15);
+      transition: box-shadow 0.3s;
+    }
+    .pain-card:hover .pain-icon {
+      box-shadow: 0 0 30px rgba(249,115,22,0.4);
+    }
+
+    /* ─── SOLUÇÃO — painel esquerdo borda iridescente ─── */
+    .solucao-text-panel {
+      position: relative;
+      padding: 36px;
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(14px);
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+    }
+    .solucao-text-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(124,58,237,0.3) 0%, rgba(6,182,212,0.3) 50%, rgba(236,72,153,0.2) 100%);
+      -webkit-mask: linear-gradient(#000,#000) content-box, linear-gradient(#000,#000);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      padding: 1px;
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+      pointer-events: none;
+    }
+    /* Fallback simples quando mask-composite não é suportado */
+    @supports not (mask-composite: exclude) {
+      .solucao-text-panel::before {
+        display: none;
+      }
+      .solucao-text-panel {
+        border: 1px solid;
+        border-image: linear-gradient(135deg, rgba(124,58,237,0.6), rgba(6,182,212,0.6), rgba(236,72,153,0.4)) 1;
+        clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+      }
+    }
+
+    /* Badge ZENYA_CORE na solução */
+    .zenya-core-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(124,58,237,0.12);
+      border: 1px solid rgba(124,58,237,0.35);
+      color: var(--purple-light);
+      font-size: 0.6rem;
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+      margin-bottom: 20px;
+    }
+    .zenya-core-badge .dot {
+      width: 5px; height: 5px;
+      background: var(--cyan-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--cyan-bright);
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+
+    /* Chat mock — terminal accent */
+    .chat-terminal-bar {
+      background: rgba(6,182,212,0.06);
+      border-bottom: 1px solid rgba(6,182,212,0.15);
+      padding: 6px 20px;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.15em;
+      color: rgba(6,182,212,0.5);
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ─── FEATURE CARDS — HUD redesign ─── */
+    .feature-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .feature-metric {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.15em;
+      color: var(--cyan);
+      text-transform: uppercase;
+      opacity: 0.7;
+      text-align: right;
+    }
+    .feature-metric strong {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--cyan-bright);
+      opacity: 1;
+      font-weight: 700;
+    }
+    .feature-icon {
+      border-radius: 0 !important;
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)) !important;
+    }
+    .feature-card h3 { font-size: 0.95rem; }
+
+    /* ─── NICHO PILLS — redesign ─── */
+    .nicho-pill {
+      position: relative;
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%) !important;
+      overflow: hidden;
+    }
+    .nicho-badge {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.5rem;
+      letter-spacing: 0.18em;
+      color: rgba(6,182,212,0.5);
+      text-transform: uppercase;
+      margin-left: auto;
+    }
+    /* Scan border animation on hover */
+    @keyframes borderScan {
+      0%   { background-position: 0% 0%; }
+      100% { background-position: 200% 0%; }
+    }
+    .nicho-pill::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(6,182,212,0.15) 40%,
+        rgba(124,58,237,0.1) 60%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      opacity: 0;
+      transition: opacity 0.3s;
+      animation: borderScan 2s linear infinite;
+    }
+    .nicho-pill:hover::before { opacity: 1; }
+
+    /* Qualifier box — angular HUD */
+    .qualifier-box {
+      border-radius: 0 !important;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%) !important;
+      font-family: 'Inter', sans-serif;
+      position: relative;
+      padding-left: 28px !important;
+    }
+    .qualifier-box::before {
+      content: '>';
+      position: absolute;
+      left: 12px; top: 50%; transform: translateY(-50%);
+      font-family: 'Space Grotesk', monospace;
+      color: var(--cyan-bright);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    /* ─── TESTIMONIALS — terminal card ─── */
+    .testimonial {
+      border-radius: 4px !important;
+      border-color: rgba(6,182,212,0.2) !important;
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px)) !important;
+      position: relative;
+    }
+    .testimonial::before {
+      content: '' !important;
+    }
+    .testimonial-terminal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid rgba(6,182,212,0.12);
+    }
+    .testimonial-terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .testimonial-terminal-dots span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+    }
+    .testimonial-terminal-dots span:nth-child(1) { background: rgba(249,115,22,0.6); }
+    .testimonial-terminal-dots span:nth-child(2) { background: rgba(124,58,237,0.5); }
+    .testimonial-terminal-dots span:nth-child(3) { background: rgba(6,182,212,0.6); }
+    .testimonial-terminal-label {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.2em;
+      color: rgba(6,182,212,0.4);
+      text-transform: uppercase;
+    }
+    .testimonial-quote {
+      font-size: 1rem !important;
+      font-style: normal !important;
+      padding-top: 0 !important;
+      margin-bottom: 24px !important;
+      color: rgba(240,244,255,0.88) !important;
+      line-height: 1.7;
+      position: relative;
+      padding-left: 20px;
+    }
+    .testimonial-quote::before {
+      content: '>';
+      position: absolute;
+      left: 0; top: 3px;
+      font-family: 'Space Grotesk', monospace;
+      color: var(--cyan-bright);
+      font-weight: 700;
+      font-size: 0.9rem;
+      font-style: normal;
+    }
+    .testimonial-author-hud {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .testimonial-avatar-hud {
+      width: 40px; height: 40px;
+      flex-shrink: 0;
+      background: rgba(124,58,237,0.12);
+      border: 1px solid rgba(6,182,212,0.3);
+      clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+    .testimonial-author-name {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.8rem;
+      color: var(--cyan);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .testimonial-author-role {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .testimonial-stars {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 12px;
+    }
+    .testimonial-stars span {
+      color: var(--orange);
+      font-size: 0.7rem;
+      text-shadow: 0 0 8px rgba(249,115,22,0.6);
+    }
+
+    /* Stats redesign */
+    .stats-row {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(6,182,212,0.12);
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+      padding: 28px 36px;
+    }
+    .stat {
+      position: relative;
+      padding-right: 40px;
+    }
+    .stat + .stat {
+      padding-left: 40px;
+      border-left: 1px solid rgba(6,182,212,0.15);
+    }
+    @media (max-width: 640px) {
+      .stat { padding-right: 0; border-left: none !important; padding-left: 0 !important; }
+    }
+
+    /* ─── PRICING — redesign completo ─── */
+    .pricing-card {
+      border-radius: 0 !important;
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px)) !important;
+      position: relative;
+    }
+    .pricing-tier-label {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.2em;
+      color: rgba(6,182,212,0.45);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .pricing-name {
+      color: var(--white) !important;
+      font-size: 1rem !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.05em !important;
+    }
+    .pricing-features li {
+      color: rgba(240,244,255,0.75) !important;
+    }
+    /* Plano Essencial: > CLI style */
+    .pricing-card:not(.featured) .pricing-features li::before {
+      content: '>' !important;
+      color: var(--cyan) !important;
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+    }
+    /* Plano featured: specs + iridescent badge  */
+    .pricing-card.featured {
+      border-color: rgba(124,58,237,0.5) !important;
+      background: rgba(124,58,237,0.06) !important;
+    }
+    .pricing-card.featured::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #7c3aed 0%, #06b6d4 50%, #ec4899 100%);
+      opacity: 0.8;
+    }
+    .pricing-badge {
+      background: linear-gradient(90deg, rgba(124,58,237,0.9) 0%, rgba(6,182,212,0.9) 100%) !important;
+      border-radius: 0 !important;
+      clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+      font-family: 'Space Grotesk', monospace;
+      letter-spacing: 0.12em;
+    }
+    .pricing-note {
+      border-radius: 0 !important;
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+      border-color: rgba(6,182,212,0.15) !important;
+    }
+
+    /* ─── CTA FINAL — HUD intenso ─── */
+    .cta-final {
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-hud-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(6,182,212,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6,182,212,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%);
+    }
+    @keyframes glitchHeadline {
+      0%, 88%, 100% { text-shadow: none; transform: none; }
+      90% { transform: translateX(-2px) skewX(-1deg); text-shadow: 3px 0 #7c3aed, -3px 0 #06b6d4; }
+      92% { transform: translateX(2px) skewX(1deg); text-shadow: -3px 0 #7c3aed, 3px 0 #06b6d4; }
+      94% { transform: none; text-shadow: none; }
+    }
+    .cta-final .section-title {
+      animation: glitchHeadline 10s infinite 2s;
+    }
+    /* WhatsApp button — glow verde pulsante */
+    @keyframes wppGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(37,211,102,0.4), 0 0 40px rgba(37,211,102,0.15); }
+      50%       { box-shadow: 0 0 35px rgba(37,211,102,0.7), 0 0 70px rgba(37,211,102,0.25); }
+    }
+    .btn-wpp {
+      animation: wppGlow 2.5s ease-in-out infinite;
+    }
+    .btn-wpp:hover {
+      animation: none !important;
+      box-shadow: 0 12px 50px rgba(37,211,102,0.6) !important;
+    }
+    /* ─── Mobile overrides para os novos elementos ─── */
+    @media (max-width: 640px) {
+      .solucao-text-panel { padding: 24px; }
+      .stats-row { padding: 20px 20px; }
+      .testimonial { padding: 24px !important; }
+    }
+
+    /* ─── WhatsApp Floating Button ─────────────────────────────── */
+    @keyframes wppPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(37,211,102,0.5); }
+      70%  { box-shadow: 0 0 0 14px rgba(37,211,102,0); }
+      100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); }
+    }
+    .whatsapp-float {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      width: 56px;
+      height: 56px;
+      background: #25D366;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      animation: wppPulse 2s infinite;
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      border: none;
+      outline: none;
+    }
+    .whatsapp-float:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 20px rgba(37,211,102,0.6);
+      animation: none;
+    }
+    .whatsapp-float svg {
+      width: 28px;
+      height: 28px;
+      fill: #fff;
+    }
+    /* Desktop: hidden until 30% scroll */
+    @media (min-width: 769px) {
+      .whatsapp-float { opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.2s; }
+      .whatsapp-float.visible { opacity: 1; pointer-events: auto; }
+    }
+
+    /* ─── Pricing CTA Buttons ──────────────────────────────────── */
+    .pricing-cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 24px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 0;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      text-align: center;
+      margin-top: auto;
+    }
+    .pricing-cta-green {
+      background: var(--green);
+      color: #fff;
+    }
+    .pricing-cta-green:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(37,211,102,0.45);
+    }
+    .pricing-cta-outline {
+      background: transparent;
+      color: var(--cyan-bright);
+      border: 1px solid rgba(6,182,212,0.4);
+    }
+    .pricing-cta-outline:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(6,182,212,0.3);
+      border-color: var(--cyan-bright);
+    }
+
+    /* Pricing card flex layout for CTA at bottom */
+    .pricing-card {
+      display: flex;
+      flex-direction: column;
+    }
+    .pricing-features {
+      flex-grow: 1;
+    }
+
+    /* ─── Pricing Anchor Value ─────────────────────────────────── */
+    .pricing-anchor {
+      text-align: center;
+      font-size: 0.95rem;
+      color: #94a3b8;
+      max-width: 640px;
+      margin-bottom: 40px;
+      line-height: 1.7;
+    }
+  </style>
+
+  <!-- Nicho tracking -->
+  <meta name="utm-default" content="?utm_source=meta&utm_medium=cpc&utm_campaign=zenya-escola&utm_content=v1">
+  <script>
+    window.addEventListener('load', function() {
+      if (typeof fbq === 'function') {
+        fbq('trackCustom', 'LandingView', { nicho: 'escola' });
+      }
+    });
+  </script>
+</head>
+<body data-nicho="escola">
+
+  <!-- NAV -->
+  <nav>
+    <div class="container">
+      <div class="nav-logo">Sparkle AI</div>
+      <a href="https://wa.me/5512981303249?text=Ol%C3%A1%2C+vi+a+Zenya+para+escola+e+quero+saber+mais" class="nav-cta" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.549 4.1 1.508 5.832L0 24l6.335-1.482A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.214-3.727.977.994-3.638-.234-.373A9.78 9.78 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+        <span>Falar com a Zenya</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <canvas id="heroParticles" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.8;"></canvas>
+    <div class="hero-grid"></div>
+    <div class="scan-line"></div>
+    <div class="hero-orb-2"></div>
+    <div class="container">
+      <div class="hero-inner">
+
+        <!-- LEFT: Text content -->
+        <div class="hero-content">
+          <div class="hero-badge">Powered by Sparkle AI</div>
+          <h1>
+            SUA<br>
+            <span>ESCOLA</span><br>
+            RESPONDE MATRÍCULAS<br>
+            <span class="accent-orange">INSTANTANEAMENTE</span>
+          </h1>
+          <p>
+            Zenya tira dúvidas sobre cursos, agenda visitas e capta alunos enquanto você ensina.
+          </p>
+          <!-- Waveform — IA ouvindo -->
+          <div class="hero-waveform" title="Zenya online">
+            <div class="wave-bar" style="--d:0s;   --min:3px; --max:8px"></div>
+            <div class="wave-bar" style="--d:.08s; --min:3px; --max:20px"></div>
+            <div class="wave-bar" style="--d:.16s; --min:3px; --max:14px"></div>
+            <div class="wave-bar" style="--d:.24s; --min:3px; --max:24px"></div>
+            <div class="wave-bar" style="--d:.32s; --min:3px; --max:10px"></div>
+            <div class="wave-bar" style="--d:.40s; --min:3px; --max:28px"></div>
+            <div class="wave-bar" style="--d:.48s; --min:3px; --max:18px"></div>
+            <div class="wave-bar" style="--d:.56s; --min:3px; --max:22px"></div>
+            <div class="wave-bar" style="--d:.64s; --min:3px; --max:12px"></div>
+            <div class="wave-bar" style="--d:.72s; --min:3px; --max:26px"></div>
+            <div class="wave-bar" style="--d:.80s; --min:3px; --max:16px"></div>
+            <div class="wave-bar" style="--d:.88s; --min:3px; --max:20px"></div>
+            <div class="wave-bar" style="--d:.96s; --min:3px; --max:8px"></div>
+            <div class="wave-bar" style="--d:1.04s;--min:3px; --max:14px"></div>
+            <div class="wave-bar" style="--d:1.12s;--min:3px; --max:6px"></div>
+            <div class="wave-bar" style="--d:1.20s;--min:3px; --max:18px"></div>
+          </div>
+
+          <div class="hero-actions">
+            <a href="https://wa.me/5512981303249?text=Ol%C3%A1%2C+vi+a+Zenya+para+escola+e+quero+saber+mais" class="btn-primary" target="_blank" rel="noopener">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.549 4.1 1.508 5.832L0 24l6.335-1.482A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.214-3.727.977.994-3.638-.234-.373A9.78 9.78 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+              Ver demonstração gratuita →
+            </a>
+            <span class="hero-note">Sem compromisso · Demonstração gratuita em 30 min</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: Character image area -->
+        <div class="hero-character-wrap">
+
+          <!-- Orbit rings -->
+          <div class="orbit-anchor">
+            <div class="orbit-ring r1"></div>
+            <div class="orbit-ring r2"></div>
+            <div class="orbit-ring r3"></div>
+          </div>
+
+          <!-- Orange hex accent -->
+          <div class="hero-hex"></div>
+
+          <!-- Floating stat cards -->
+          <div class="hero-float-card" style="--dur:4.5s;--delay:0s;top:30px;right:0">
+            <div class="hfc-label">Respostas hoje</div>
+            <div class="hfc-val">2.847</div>
+            <div class="hfc-bar" style="--delay:0s"></div>
+          </div>
+
+          <div class="hero-float-card" style="--dur:5.5s;--delay:1.2s;bottom:100px;left:0">
+            <div class="hfc-label">Uptime</div>
+            <div class="hfc-val">99.9%</div>
+            <div class="hfc-bar" style="--delay:1.2s"></div>
+          </div>
+
+          <img src="../assets/hero-escola.svg" alt="Zenya para Escolas — Sparkle AI" class="hero-character" onerror="this.onerror=null;this.src='../assets/hero-default.svg'">
+
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEMA -->
+  <section class="problema">
+    <div class="section-scanline"></div>
+    <div class="container">
+      <span class="section-label">O problema</span>
+      <h2 class="section-title">Quantas vendas você perdeu<br>porque não respondeu a tempo?</h2>
+      <p class="section-sub">
+        Clientes mandam mensagem enquanto você está em atendimento, em serviço, dormindo.
+        Eles esperam. Não recebem resposta. Vão para o concorrente.
+      </p>
+      <div class="pain-grid">
+        <div class="pain-card hud-card">
+          <div class="pain-icon">😴</div>
+          <h3>Clientes sem resposta fora do horário</h3>
+          <p>Cada mensagem não respondida é uma venda que foi embora. Seu concorrente respondeu mais rápido.</p>
+        </div>
+        <div class="pain-card hud-card">
+          <div class="pain-icon">📅</div>
+          <h3>Agendamentos perdidos por falta de follow-up</h3>
+          <p>O cliente confirmou mas não apareceu. Ou pediu para marcar e você esqueceu de responder.</p>
+        </div>
+        <div class="pain-card hud-card">
+          <div class="pain-icon">💸</div>
+          <h3>Cobrança manual que você precisa lembrar</h3>
+          <p>Enviar boleto, checar pagamento, cobrar quem atrasou — horas do seu dia gastas nisso.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUÇÃO -->
+  <section class="solucao">
+    <div class="container">
+      <div class="solucao-inner">
+        <div class="solucao-text-panel hud-card">
+          <span class="section-label">A solução</span>
+          <h2 class="section-title">Conheça a Zenya</h2>
+          <p style="color:var(--muted); margin-bottom:24px; font-size:1.05rem;">
+            A Zenya é uma secretária virtual treinada especificamente para o seu negócio.
+            Ela funciona no WhatsApp 24h por dia, 7 dias por semana.
+          </p>
+          <p style="color:var(--muted); font-size:1.05rem;">
+            Atende clientes, agenda, cobra e sabe quando te chamar.
+            Parece humana. Nunca fica doente. Nunca tira férias.
+          </p>
+        </div>
+        <div class="solucao-visual">
+          <div class="chat-mock hud-card">
+            <div class="chat-header">
+              <div class="chat-avatar">🤖</div>
+              <div class="chat-info">
+                <strong>Zenya · Clínica Exemplo</strong>
+                <span>● online agora</span>
+              </div>
+            </div>
+            <div class="chat-body">
+              <div class="msg msg-in">Oi! Quero marcar uma consulta pra semana que vem</div>
+              <div class="msg msg-out">
+                Olá! Que ótimo 😊 Posso verificar a agenda agora mesmo.<br><br>
+                Qual profissional você prefere e qual período fica melhor — manhã ou tarde?
+                <div class="msg-time">10:23 ✓✓</div>
+              </div>
+              <div class="msg msg-in">Dr. Carlos, tarde de quarta</div>
+              <div class="msg msg-out">
+                Perfeito! Tenho horário disponível na quarta às 15h ou 17h.<br>
+                Qual prefere?
+                <div class="msg-time">10:24 ✓✓</div>
+              </div>
+              <div class="msg msg-in">15h tá ótimo</div>
+              <div class="msg msg-out">
+                Agendado! ✅ Quarta-feira às 15h com o Dr. Carlos.<br>
+                Vou te lembrar na véspera. Precisa de alguma coisa mais?
+                <div class="msg-time">10:24 ✓✓</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FUNCIONALIDADES -->
+  <section class="features">
+    <div class="section-scanline"></div>
+    <div class="container">
+      <span class="section-label">Funcionalidades</span>
+      <h2 class="section-title">O que a Zenya faz por você</h2>
+      <p class="section-sub">Tudo automático. Você só entra quando precisa de verdade.</p>
+      <div class="features-grid">
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">📅</div>
+            <div class="feature-metric">EFICIÊNCIA<strong>+94%</strong></div>
+          </div>
+          <h3>Agenda automaticamente</h3>
+          <p>Recebe pedidos, verifica disponibilidade e confirma horários — sem você intervir.</p>
+        </div>
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">💰</div>
+            <div class="feature-metric">RECEITA<strong>+37%</strong></div>
+          </div>
+          <h3>Gera cobranças</h3>
+          <p>Cria links de pagamento por PIX ou cartão, consulta pendentes e lembra quem atrasou.</p>
+        </div>
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">🤝</div>
+            <div class="feature-metric">ALERTAS<strong>REAL-TIME</strong></div>
+          </div>
+          <h3>Chama você quando precisa</h3>
+          <p>Identifica situações que precisam de atenção humana e te notifica na hora certa.</p>
+        </div>
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">🔁</div>
+            <div class="feature-metric">CONVERSÃO<strong>+28%</strong></div>
+          </div>
+          <h3>Recupera clientes sumidos</h3>
+          <p>Faz follow-up automático com leads que pararam de responder. Sem você lembrar.</p>
+        </div>
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">🎙️</div>
+            <div class="feature-metric">ACURÁCIA<strong>99.2%</strong></div>
+          </div>
+          <h3>Entende áudios</h3>
+          <p>Transcreve e responde mensagens de voz. Seus clientes podem falar como quiserem.</p>
+        </div>
+        <div class="feature-card hud-card">
+          <div class="feature-header">
+            <div class="feature-icon">📎</div>
+            <div class="feature-metric">ENTREGA<strong>INSTANT</strong></div>
+          </div>
+          <h3>Envia arquivos e propostas</h3>
+          <p>Manda catálogos, orçamentos e documentos direto no WhatsApp, quando solicitado.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARA QUEM É -->
+  <section class="para-quem">
+    <div class="container">
+      <span class="section-label">Para quem é</span>
+      <h2 class="section-title">A Zenya foi feita<br>para o seu tipo de negócio</h2>
+      <p class="section-sub">Cada Zenya é configurada especificamente para o negócio do cliente.</p>
+      <div class="nichos-grid">
+        <div class="nicho-pill"><span>🏥</span> Clínicas e consultórios</div>
+        <div class="nicho-pill"><span>🏫</span> Escolas e cursos</div>
+        <div class="nicho-pill"><span>🛒</span> Lojas online</div>
+        <div class="nicho-pill"><span>🔧</span> Prestadores de serviço</div>
+        <div class="nicho-pill"><span>✂️</span> Salões e barbearias</div>
+      </div>
+      <div class="qualifier-box">
+        💡 Funciona melhor para negócios que recebem mais de 20 mensagens de clientes por dia no WhatsApp.
+      </div>
+    </div>
+  </section>
+
+  <!-- PROVA SOCIAL -->
+  <section class="social">
+    <div class="section-scanline"></div>
+    <div class="container">
+      <span class="section-label">Resultados</span>
+      <h2 class="section-title">Resultados reais</h2>
+
+      <div class="stats-row">
+        <div class="stat">
+          <span class="stat-value">24h</span>
+          <span class="stat-label">Disponível por dia, todo dia</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">−40%</span>
+          <span class="stat-label">Menos tempo no WhatsApp na 1ª semana</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">0s</span>
+          <span class="stat-label">Tempo de espera para os seus clientes</span>
+        </div>
+      </div>
+
+      <!-- DEPOIMENTO DO NICHO -->
+      <div class="testimonial" style="
+        margin-top: 48px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(6,182,212,0.2);
+        border-radius: 4px;
+        padding: 32px 36px;
+        position: relative;
+        clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+      ">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;font-size:0.68rem;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:rgba(6,182,212,0.6);">
+          <div style="display:flex;gap:6px;">
+            <span style="width:9px;height:9px;border-radius:50%;background:rgba(249,115,22,0.6);display:block;"></span>
+            <span style="width:9px;height:9px;border-radius:50%;background:rgba(124,58,237,0.5);display:block;"></span>
+            <span style="width:9px;height:9px;border-radius:50%;background:rgba(6,182,212,0.6);display:block;"></span>
+          </div>
+          <span style="opacity:0.7;">// cliente.log</span>
+        </div>
+        <p style="
+          font-size: 1.1rem;
+          color: var(--white);
+          line-height: 1.7;
+          font-style: italic;
+          margin-bottom: 24px;
+          padding-left: 20px;
+          border-left: 2px solid var(--cyan);
+        ">Nossos leads qualificados aumentaram porque a Zenya filtra e já agenda a visita.</p>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; flex-shrink: 0;
+          ">🏫</div>
+          <div>
+            <div style="font-weight:700;font-size:0.95rem;">Douglas</div>
+            <div style="font-size:0.8rem;color:var(--muted);">Ensinajá — Guaratinguetá/SP</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:3px;color:#f97316;">
+            <span>&#9733;</span><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PREÇO -->
+  <section class="pricing">
+    <div class="section-scanline"></div>
+    <div class="container">
+      <span class="section-label">Investimento</span>
+      <h2 class="section-title">Planos</h2>
+      <p class="section-sub">
+        O valor exato depende do seu negócio. Em 30 minutos a gente entende o que você precisa e passa o número real.
+      </p>
+      <p class="pricing-anchor">Uma secretária CLT custa R$2.500+/mês (salário + encargos + férias + 13°). A Zenya faz o trabalho de atendimento 24h por uma fração disso.</p>
+      <div class="pricing-grid">
+        <div class="pricing-card hud-card">
+          <div class="pricing-name">Essencial</div>
+          <div class="pricing-price">
+            <sup>R$</sup>297<sub>/mês</sub>
+          </div>
+          <p class="pricing-desc">Atendimento e FAQ automatizado</p>
+          <ul class="pricing-features">
+            <li>Atendimento 24h no WhatsApp</li>
+            <li>Respostas para dúvidas frequentes</li>
+            <li>Transferência para humano</li>
+            <li>Relatório de atendimentos</li>
+          </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20plano%20Essencial%20da%20Zenya" class="pricing-cta pricing-cta-green" target="_blank" rel="noopener">Quero esse plano</a>
+        </div>
+        <div class="pricing-card featured hud-card">
+          <div class="pricing-badge">Mais escolhido</div>
+          <div class="pricing-name">Completo</div>
+          <div class="pricing-price">
+            <sup>R$</sup>497<sub>/mês</sub>
+          </div>
+          <p class="pricing-desc">Secretária completa para o seu negócio</p>
+          <ul class="pricing-features">
+            <li>Tudo do plano Essencial</li>
+            <li>Agendamento com Google Calendar</li>
+            <li>Cobranças via PIX e cartão</li>
+            <li>Follow-up automático de leads</li>
+            <li>Lembretes de compromisso</li>
+            <li>Transcrição e resposta de áudios</li>
+          </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20plano%20Completo%20da%20Zenya" class="pricing-cta pricing-cta-green" target="_blank" rel="noopener">Quero esse plano</a>
+        </div>
+        <div class="pricing-card hud-card">
+          <div class="pricing-name">Personalizado</div>
+          <div class="pricing-price" style="font-size:1.8rem; padding-top:8px;">Sob consulta</div>
+          <p class="pricing-desc">Integrações específicas do seu negócio</p>
+          <ul class="pricing-features">
+            <li>Tudo do plano Completo</li>
+            <li>Integração com seu sistema atual</li>
+            <li>Fluxos personalizados</li>
+            <li>Suporte dedicado</li>
+          </ul>
+          <a href="https://wa.me/5512982201239?text=Oi!%20Quero%20um%20plano%20personalizado%20da%20Zenya" class="pricing-cta pricing-cta-outline" target="_blank" rel="noopener">Falar com especialista</a>
+        </div>
+      </div>
+      <p class="pricing-note">
+        Todos os planos incluem configuração inicial e treinamento da Zenya para o seu negócio específico.
+        Sem fidelidade mínima.
+      </p>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="cta-final">
+    <div class="cta-hud-grid"></div>
+    <div class="container" style="position:relative;z-index:1;">
+      <span class="section-label">Próximo passo</span>
+      <h2 class="section-title">Pronto para parar de perder clientes no WhatsApp?</h2>
+      <p class="section-sub">
+        Manda uma mensagem agora. A própria Zenya vai te atender —
+        e você já vê ao vivo como funciona.
+      </p>
+      <div class="cta-actions">
+        <a href="https://wa.me/5512981303249?text=Ol%C3%A1%2C+vi+a+Zenya+para+escola+e+quero+saber+mais" class="btn-wpp" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.549 4.1 1.508 5.832L0 24l6.335-1.482A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.214-3.727.977.994-3.638-.234-.373A9.78 9.78 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+          Conversar com a Zenya no WhatsApp
+        </a>
+        <span class="cta-disclaimer">Sem compromisso · Sem contrato · 30 minutos para decidir</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHATSAPP FLOATING BUTTON -->
+  <a href="https://wa.me/5512981303249?text=Ol%C3%A1%2C+vi+a+Zenya+para+escola+e+quero+saber+mais" class="whatsapp-float" target="_blank" rel="noopener" aria-label="Falar com a Zenya pelo WhatsApp">
+    <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.112.549 4.1 1.508 5.832L0 24l6.335-1.482A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.214-3.727.977.994-3.638-.234-.373A9.78 9.78 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+  </a>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <span class="footer-logo">Sparkle AI</span>
+      <span class="footer-copy">© 2026 Sparkle AI · contato@sparkleai.tech</span>
+    </div>
+  </footer>
+
+
+<script>
+/* ─── Neural Particle Field ──────────────────────────────── */
+(function(){
+  var canvas = document.getElementById('heroParticles');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var particles = [], W, H;
+
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth;
+    H = canvas.height = canvas.offsetHeight;
+  }
+
+  function Particle() { this.reset(true); }
+  Particle.prototype.reset = function(init) {
+    this.x  = Math.random() * W;
+    this.y  = init ? Math.random() * H : H + 4;
+    this.r  = Math.random() * 1.3 + 0.3;
+    this.vy = -(Math.random() * 0.45 + 0.08);
+    this.vx = (Math.random() - 0.5) * 0.18;
+    this.alpha = Math.random() * 0.55 + 0.1;
+    var n = Math.random();
+    this.color = n > 0.72 ? '#00e5ff' : n > 0.44 ? '#a78bfa' : n > 0.2 ? '#f97316' : '#ffffff';
+  };
+  Particle.prototype.update = function() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.y < -4) this.reset(false);
+  };
+  Particle.prototype.draw = function() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  function drawConnections() {
+    for (var i = 0; i < particles.length; i++) {
+      for (var j = i + 1; j < particles.length; j++) {
+        var dx = particles[i].x - particles[j].x;
+        var dy = particles[i].y - particles[j].y;
+        var d  = Math.sqrt(dx*dx + dy*dy);
+        if (d < 100) {
+          ctx.save();
+          ctx.globalAlpha = (1 - d/100) * 0.13;
+          ctx.strokeStyle = '#06b6d4';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  function init() {
+    resize();
+    particles = [];
+    for (var i = 0; i < 75; i++) particles.push(new Particle());
+    animate();
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, W, H);
+    drawConnections();
+    particles.forEach(function(p){ p.update(); p.draw(); });
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', function(){ resize(); });
+  if (document.readyState === 'loading') {
+    window.addEventListener('load', init);
+  } else { init(); }
+})();
+
+/* ─── WhatsApp Float: show after 30% scroll on desktop ─── */
+(function(){
+  var btn = document.querySelector('.whatsapp-float');
+  if (!btn) return;
+  function checkScroll() {
+    var scrollPct = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight);
+    if (scrollPct >= 0.3) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  }
+  window.addEventListener('scroll', checkScroll, { passive: true });
+  checkScroll();
+})();
+</script>
+
+</body>
+</html>

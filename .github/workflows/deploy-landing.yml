@@ -1,4 +1,4 @@
-name: Deploy Landing Page — Hostinger
+name: Deploy Landing Pages — Hostinger
 
 on:
   push:
@@ -9,10 +9,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: Deploy via FTP
-    runs-on: ubuntu-latest
 
+  # ─── Landing raiz (zenya genérica) ───────────────────────────────────────
+  deploy-zenya:
+    name: Deploy zenya/ (landing raiz)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,3 +30,75 @@ jobs:
             **/*.md
             **/.git*
             **/*.sh
+            confeitaria/**
+            escola/**
+            ecommerce/**
+            consorcio/**
+
+  # ─── Confeitaria ─────────────────────────────────────────────────────────
+  deploy-confeitaria:
+    name: Deploy confeitaria/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy landing/confeitaria/ via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./landing/confeitaria/
+          server-dir: /public_html/zenya/confeitaria/
+
+  # ─── Escola ──────────────────────────────────────────────────────────────
+  deploy-escola:
+    name: Deploy escola/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy landing/escola/ via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./landing/escola/
+          server-dir: /public_html/zenya/escola/
+
+  # ─── E-commerce ──────────────────────────────────────────────────────────
+  deploy-ecommerce:
+    name: Deploy ecommerce/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy landing/ecommerce/ via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./landing/ecommerce/
+          server-dir: /public_html/zenya/ecommerce/
+
+  # ─── Consórcio ───────────────────────────────────────────────────────────
+  deploy-consorcio:
+    name: Deploy consorcio/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy landing/consorcio/ via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./landing/consorcio/
+          server-dir: /public_html/zenya/consorcio/
