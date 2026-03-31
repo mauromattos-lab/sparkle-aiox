@@ -54,9 +54,9 @@ O Supabase tem o **estado em tempo real** do que o runtime executou.
 | BUG-01 e BUG-02 do QA report | ✅ JÁ CORRIGIDOS |
 | `.gitignore` + push ao GitHub | ✅ mauromattos-lab/sparkle-aiox |
 | Script `scripts/vps-setup.sh` | ✅ CRIADO |
-| Deploy VPS (24/7) | ❌ PENDENTE — próximo passo |
-| DNS runtime.sparkleai.tech | ❌ PENDENTE — criar no painel Hostinger |
-| Nginx + HTTPS (Certbot) | ❌ PENDENTE — após deploy |
+| Deploy VPS (24/7) | ✅ ONLINE — runtime.sparkleai.tech |
+| DNS runtime.sparkleai.tech | ✅ APONTADO — 187.77.37.88 |
+| HTTPS (Traefik/Coolify) | ✅ ATIVO |
 | Friday v1.1 — audio via Z-API webhook | ❌ PENDENTE (transcriber existe, falta teste E2E) |
 | Zenya Confeitaria go-live | ❌ BLOQUEADO (BLOCK-01: Z-API pendente do Mauro) |
 | Dashboard mínimo (3 telas) | ❌ PENDENTE |
@@ -101,8 +101,8 @@ curl https://runtime.sparkleai.tech/health
 
 ## PRIORIDADE DE TRABALHO
 
-1. **Deploy VPS** — desbloqueado, depende só do Mauro rodar os comandos acima
-2. **Friday audio E2E** — pós-deploy
+1. **Webhook Z-API → runtime** — BLOCK-04: redirecionar para https://runtime.sparkleai.tech/friday/webhook
+2. **Friday audio E2E** — testar após webhook configurado
 3. **Dashboard mínimo** — portal Next.js com queries do Runtime + Supabase
 4. **Plano-mestre Fase 1** — prioridade padrão fora das urgências
 5. **Clientes** — entram como interrupção quando Mauro traz algo específico
