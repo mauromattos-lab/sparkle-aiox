@@ -1,0 +1,27 @@
+# Sparkle Runtime — Python dependencies
+# Python 3.11+
+
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Pydantic / settings
+pydantic>=2.11.7
+pydantic-settings>=2.7.0
+
+# Supabase
+supabase>=2.28.3
+
+# Anthropic (Claude)
+anthropic>=0.40.0
+
+# Groq (Whisper transcription)
+groq>=0.13.1
+
+# HTTP client
+httpx>=0.28.1
+
+# Async task queue
+arq==0.26.1
+redis==5.2.1
