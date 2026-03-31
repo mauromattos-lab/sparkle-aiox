@@ -23,5 +23,8 @@ groq>=0.13.1
 httpx>=0.28.1
 
 # Async task queue
-arq==0.26.1
-redis==5.2.1
+arq>=0.26.1
+redis>=5.2.1
+
+# Scheduler
+apscheduler>=3.10.0
