@@ -28,7 +28,11 @@ export async function GET(req: NextRequest) {
   }
 
   // Setar cookie HTTP-only — não acessível via JavaScript no browser
-  const response = NextResponse.redirect(new URL('/dashboard', req.url))
+  // Usar x-forwarded-host do Traefik para evitar redirect para 0.0.0.0:3000
+  const proto = req.headers.get('x-forwarded-proto') || 'https'
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'portal.sparkleai.tech'
+  const baseUrl = `${proto}://${host}`
+  const response = NextResponse.redirect(new URL('/dashboard', baseUrl))
   response.cookies.set('sparkle_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
