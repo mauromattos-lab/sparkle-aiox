@@ -86,6 +86,77 @@ def _gtts_tts(text: str) -> bytes | None:
                 pass
 
 
+def get_tts_info() -> dict:
+    """
+    Retorna o estado atual do engine TTS — usada pelo endpoint GET /friday/tts-info.
+
+    Verifica se ElevenLabs está configurado e responsivo.
+    Nunca falha silenciosamente: status é sempre explícito.
+
+    Returns:
+        dict com engine, voice_id, voice_name, status e fallback info.
+    """
+    api_key = settings.elevenlabs_api_key
+    elevenlabs_configured = bool(api_key)
+    elevenlabs_alive = False
+    voice_name = "unknown"
+
+    if elevenlabs_configured:
+        try:
+            import httpx
+            # Valida a API key e obtém o nome da voz ativa
+            r = httpx.get(
+                f"https://api.elevenlabs.io/v1/voices/{ELEVENLABS_VOICE_ID}",
+                headers={"xi-api-key": api_key},
+                timeout=8,
+            )
+            if r.status_code == 200:
+                elevenlabs_alive = True
+                voice_name = r.json().get("name", "unknown")
+            else:
+                print(f"[tts] ElevenLabs voice check retornou {r.status_code}")
+        except Exception as e:
+            print(f"[tts] ElevenLabs health check falhou: {e}")
+
+    # Verifica se gTTS está disponível como fallback
+    gtts_available = False
+    try:
+        import gtts  # noqa: F401
+        gtts_available = True
+    except ImportError:
+        pass
+
+    if elevenlabs_alive:
+        return {
+            "engine": "elevenlabs",
+            "voice_id": ELEVENLABS_VOICE_ID,
+            "voice_name": voice_name,
+            "status": "active",
+            "fallback_available": gtts_available,
+            "fallback_engine": "gtts" if gtts_available else None,
+        }
+    elif gtts_available:
+        return {
+            "engine": "gtts",
+            "voice_id": None,
+            "voice_name": "gTTS PT-BR",
+            "status": "fallback_active",
+            "fallback_available": True,
+            "fallback_engine": "gtts",
+            "elevenlabs_reason": "not_configured" if not elevenlabs_configured else "unreachable",
+        }
+    else:
+        return {
+            "engine": None,
+            "voice_id": None,
+            "voice_name": None,
+            "status": "unavailable",
+            "fallback_available": False,
+            "fallback_engine": None,
+            "elevenlabs_reason": "not_configured" if not elevenlabs_configured else "unreachable",
+        }
+
+
 def text_to_audio_url(
     text: str,
     filename_prefix: str = "friday",

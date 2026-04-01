@@ -19,6 +19,7 @@ from runtime.friday.dispatcher import classify_and_dispatch
 from runtime.friday.responder import build_response, build_response_plain, build_error_response
 from runtime.friday.transcriber import transcribe_bytes, transcribe_url
 from runtime.tasks.hydrator import hydrate_context
+from runtime.utils.tts import get_tts_info
 
 router = APIRouter()
 
@@ -55,6 +56,37 @@ class OnboardRequest(BaseModel):
 
 
 # ── Endpoints ──────────────────────────────────────────────
+
+@router.get("/tts-info")
+async def tts_info():
+    """
+    Smoke test RT-07 — expõe qual engine TTS está ativa para a Friday.
+
+    Faz um check real na API do ElevenLabs (não apenas variável de ambiente).
+    Garante que fallback nunca seja silencioso: status é sempre explícito.
+
+    Retorna:
+        engine: "elevenlabs" | "gtts" | null
+        voice_id: ID da voz ativa (ElevenLabs) ou null
+        voice_name: Nome da voz ou null
+        status: "active" | "fallback_active" | "unavailable"
+        fallback_available: bool
+        fallback_engine: "gtts" | null
+    """
+    try:
+        info = await asyncio.to_thread(get_tts_info)
+        return info
+    except Exception as e:
+        return {
+            "engine": None,
+            "voice_id": None,
+            "voice_name": None,
+            "status": "error",
+            "fallback_available": False,
+            "fallback_engine": None,
+            "error": str(e)[:200],
+        }
+
 
 @router.post("/message")
 async def receive_message(req: TextMessageRequest, background_tasks: BackgroundTasks):
