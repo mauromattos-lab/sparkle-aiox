@@ -25,10 +25,11 @@ INTENTS = [
     "brain_query",           # "brain, o que você sabe sobre X?", "consulta o brain sobre Y"
     "brain_ingest",          # "brain, aprende isso: X", "brain, salva: Y", "registra no brain"
     "loja_integrada_query",  # "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido" — Fun Personalize
+    "gap_report",            # "gaps do brain", "o que o brain não sabe", "relatório de gaps"
     "echo",                  # teste — retorna o que foi dito
 ]
 
-_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, echo
+_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, gap_report, echo
 
 REGRAS DE CLASSIFICACAO:
 - status_mrr: menciona MRR, faturamento, quanto fatura, receita mensal
@@ -41,6 +42,7 @@ REGRAS DE CLASSIFICACAO:
 - brain_query: "brain", "o que voce sabe sobre", "consulta o brain", "o que o brain sabe", "brain me fala" — extrai param: query (o que quer saber)
 - brain_ingest: "brain, aprende", "brain, salva", "brain, registra", "ensina o brain", "adiciona ao brain", "aprende isso" — extrai param: content (o conteudo a salvar)
 - loja_integrada_query: "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido", "onde esta meu pedido", "situacao do pedido", "acompanhar pedido" — extrai params: cpf, email ou pedido_id conforme disponivel no texto
+- gap_report: "gaps do brain", "o que o brain nao sabe", "relatorio de gaps", "brain tem gaps", "quais gaps do brain", "o que falta no brain", "lacunas do brain"
 - echo: apenas para testes com a palavra "echo"
 
 IMPORTANTE: Responda APENAS com JSON valido, sem blocos de codigo, sem markdown.

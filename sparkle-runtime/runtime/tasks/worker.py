@@ -162,6 +162,25 @@ async def trigger_weekly_briefing(ctx: dict) -> None:
     print(f"[worker] weekly_briefing triggered — task_id={task_id}")
 
 
+async def trigger_gap_report(ctx: dict) -> None:
+    """
+    ARQ cron: dispara a task gap_report toda segunda-feira às 11h UTC (8h Brasília).
+    Insere uma task na fila para ser executada pelo process_pending_tasks.
+    """
+    task = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").insert({
+            "agent_id": "friday",
+            "client_id": settings.sparkle_internal_client_id,
+            "task_type": "gap_report",
+            "payload": {"source": "cron_monday_8h_brasilia"},
+            "status": "pending",
+            "priority": 7,
+        }).execute()
+    )
+    task_id = task.data[0]["id"] if task.data else None
+    print(f"[worker] gap_report triggered — task_id={task_id}")
+
+
 async def trigger_health_check(ctx: dict) -> None:
     """
     ARQ cron: dispara a task health_alert a cada 15 minutos.
@@ -182,11 +201,12 @@ async def trigger_health_check(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_pending_tasks, trigger_daily_briefing, trigger_weekly_briefing, trigger_health_check]
+    functions = [process_pending_tasks, trigger_daily_briefing, trigger_weekly_briefing, trigger_gap_report, trigger_health_check]
     cron_jobs = [
         cron(process_pending_tasks, second={0, 15, 30, 45}),                        # every 15 seconds
         cron(trigger_daily_briefing, hour={11}, minute={0}),                         # 11h UTC = 8h Brasília
         cron(trigger_weekly_briefing, weekday={6}, hour={11}, minute={0}),           # sunday 11h UTC = 8h Brasília
+        cron(trigger_gap_report, weekday={0}, hour={11}, minute={0}),               # monday 11h UTC = 8h Brasília
         cron(trigger_health_check, second={0}, minute={0, 15, 30, 45}),             # every 15 min
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

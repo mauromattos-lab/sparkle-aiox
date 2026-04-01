@@ -14,6 +14,7 @@ from runtime.tasks.handlers.conversation_summary import handle_conversation_summ
 from runtime.tasks.handlers.create_note import handle_create_note
 from runtime.tasks.handlers.daily_briefing import handle_daily_briefing
 from runtime.tasks.handlers.echo import handle_echo
+from runtime.tasks.handlers.gap_report import handle_gap_report
 from runtime.tasks.handlers.health_alert import handle_health_alert
 from runtime.tasks.handlers.learn_from_conversation import handle_learn_from_conversation
 from runtime.tasks.handlers.loja_integrada_query import handle_loja_integrada_query
@@ -32,6 +33,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "create_note":              handle_create_note,
     "daily_briefing":           handle_daily_briefing,
     "echo":                     handle_echo,
+    "gap_report":               handle_gap_report,
     "health_alert":             handle_health_alert,
     "learn_from_conversation":  handle_learn_from_conversation,
     "loja_integrada_query":     handle_loja_integrada_query,

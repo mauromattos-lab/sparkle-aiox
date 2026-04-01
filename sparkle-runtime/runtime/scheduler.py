@@ -63,6 +63,10 @@ def _run_weekly_briefing() -> None:
     _run_and_execute("weekly_briefing", priority=6)
 
 
+def _run_gap_report() -> None:
+    _run_and_execute("gap_report", priority=7)
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -89,8 +93,16 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # Gap report toda segunda-feira às 8h de Brasília (11h UTC)
+    _scheduler.add_job(
+        _run_gap_report,
+        trigger=CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=_TZ),
+        id="gap_report",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    print("[scheduler] APScheduler iniciado — briefing 8h Brasília, weekly briefing dom 8h, health check 15min")
+    print("[scheduler] APScheduler iniciado — briefing 8h Brasília, weekly briefing dom 8h, gap report seg 8h, health check 15min")
 
 
 def stop_scheduler() -> None:

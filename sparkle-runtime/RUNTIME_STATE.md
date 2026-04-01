@@ -1,5 +1,5 @@
 # Sparkle Runtime — Estado de Implementação
-_Atualizado: 2026-04-01. Fonte de verdade para @dev, @qa, @devops e Orion._
+_Atualizado: 2026-04-01 (S4-02 gap_report). Fonte de verdade para @dev, @qa, @devops e Orion._
 _REGRA: atualizar este arquivo a cada handler criado, intent adicionado ou schema alterado._
 
 ---
@@ -54,6 +54,7 @@ Classificação feita por `claude-haiku-4-5-20251001`. Resultado inserido em `ru
 | `brain_query` | "brain, o que você sabe sobre X?", "consulta o brain" | `query` | `handle_brain_query` |
 | `brain_ingest` | "brain, aprende isso: X", "ensina o brain" | `content` | `handle_brain_ingest` |
 | `loja_integrada_query` | "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido", "onde está meu pedido" | `cpf`, `email` ou `pedido_id` (ao menos um) | `handle_loja_integrada_query` |
+| `gap_report` | "gaps do brain", "o que o brain não sabe", "relatório de gaps", "lacunas do brain" | — | `handle_gap_report` |
 | `echo` | texto contendo "echo" | — | `handle_echo` |
 | `task_free` | fallback de chat sem intent | — | `handle_chat` (alias) |
 
@@ -80,6 +81,7 @@ Classificação feita por `claude-haiku-4-5-20251001`. Resultado inserido em `ru
 | `status_mrr` | `handle_status_mrr` | `handlers/status_mrr.py` | Tenta buscar dados de `clients` (status=active) ou `services` (active=True). Fallback para lista hardcoded com 6 clientes (R$4.594/mês). | FUNCIONAL |
 | `status_report` | `handle_status_report` | `handlers/status_report.py` | Busca agentes em `agents`, últimas 10 tasks em `runtime_tasks`, custo de API do dia em `llm_cost_log`. | FUNCIONAL |
 | `weekly_briefing` | `handle_weekly_briefing` | `handlers/weekly_briefing.py` | Relatório dos últimos 7 dias: MRR, tasks por tipo/status, notas, conversas. Gera frase de encerramento com `claude-haiku-4-5-20251001`. Envia via WhatsApp. | FUNCIONAL |
+| `gap_report` | `handle_gap_report` | `handlers/gap_report.py` | Relatório semanal de gaps do Brain: busca queries `brain_query` sem resposta + registros `conversation_learning` da última semana. Analisa padrões com `claude-haiku-4-5-20251001` e gera top 5 gaps priorizados. Envia via WhatsApp. Cron: segunda-feira 08h Brasília. | FUNCIONAL |
 | `task_free` | `handle_chat` (alias) | `handlers/chat.py` | Alias de `chat` — conversa livre sem intent estruturado. | FUNCIONAL |
 
 ---
@@ -94,6 +96,7 @@ Modo produção. Requer Redis (`REDIS_URL`).
 | `process_pending_tasks` | A cada 15 segundos (`second={0,15,30,45}`) | Busca até 20 tasks `pending` e executa em paralelo |
 | `trigger_daily_briefing` | `11:00 UTC` (08:00 Brasília) | Insere task `daily_briefing` na fila |
 | `trigger_weekly_briefing` | Domingo `11:00 UTC` (08:00 Brasília) (`weekday={6}`) | Insere task `weekly_briefing` na fila |
+| `trigger_gap_report` | Segunda-feira `11:00 UTC` (08:00 Brasília) (`weekday={0}`) | Insere task `gap_report` na fila |
 | `trigger_health_check` | `second=0` a cada 15 min (`minute={0,15,30,45}`) | Insere task `health_alert` na fila |
 
 ### APScheduler (`runtime/scheduler.py`)
@@ -104,6 +107,7 @@ Modo fallback (in-process, sem Redis). Acionado no startup do FastAPI via `lifes
 | `health_check` | A cada 15 minutos (`IntervalTrigger`) | Cria e executa task `health_alert` inline |
 | `daily_briefing` | `08:00 Brasília` (`CronTrigger`) | Cria e executa task `daily_briefing` inline |
 | `weekly_briefing` | Domingo `08:00 Brasília` (`CronTrigger`, `day_of_week="sun"`) | Cria e executa task `weekly_briefing` inline |
+| `gap_report` | Segunda-feira `08:00 Brasília` (`CronTrigger`, `day_of_week="mon"`) | Cria e executa task `gap_report` inline |
 
 ---
 
@@ -302,7 +306,7 @@ Definidas em `runtime/config.py` via `pydantic_settings`. Lidas de `.env` ou do 
 | `ZAPI_INSTANCE_ID` | Sim | `integrations/zapi.py` | ID da instância |
 | `ZAPI_TOKEN` | Sim | `integrations/zapi.py` | Token da instância |
 | `ZAPI_CLIENT_TOKEN` | Sim | `integrations/zapi.py` | Header `client-token` |
-| `MAURO_WHATSAPP` | Sim (alertas) | `daily_briefing.py`, `health_alert.py`, `weekly_briefing.py` | Número para envio de alertas e briefings |
+| `MAURO_WHATSAPP` | Sim (alertas) | `daily_briefing.py`, `health_alert.py`, `weekly_briefing.py`, `gap_report.py` | Número para envio de alertas e briefings |
 | `ELEVENLABS_API_KEY` | Não | `utils/tts.py` | TTS primário. Sem ele, usa gTTS como fallback |
 | `REDIS_URL` | Não | `tasks/worker.py` | ARQ worker. Default: `redis://localhost:6379`. Sem Redis, usar `/tasks/poll` |
 | `N8N_API_KEY` | Não | `handlers/onboard_client.py` | Clone de workflows Zenya. Sem ele, etapa é pulada |
@@ -320,7 +324,7 @@ Definidas em `runtime/config.py` via `pydantic_settings`. Lidas de `.env` ou do 
 
 ### O que está no código (confirmado pela leitura)
 - Runtime completo em `sparkle-runtime/` — FastAPI + todos os handlers
-- 14 task types registrados no REGISTRY + alias `task_free`
+- 15 task types registrados no REGISTRY + alias `task_free`
 - Scheduler APScheduler (in-process) como fallback para ARQ
 - ARQ worker configurado como modo produção (requer Redis)
 - Onboarding autônomo implementado (Sprint 8) — inclui clone n8n
