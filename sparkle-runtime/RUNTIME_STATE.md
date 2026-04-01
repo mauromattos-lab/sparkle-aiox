@@ -43,6 +43,7 @@ Classificação feita por `claude-haiku-4-5-20251001`. Resultado inserido em `ru
 | `onboard_client` | "onborda [nome] site:[url] tipo:[tipo]" | `business_name`, `site_url`, `business_type`, `phone` | `handle_onboard_client` |
 | `brain_query` | "brain, o que você sabe sobre X?", "consulta o brain" | `query` | `handle_brain_query` |
 | `brain_ingest` | "brain, aprende isso: X", "ensina o brain" | `content` | `handle_brain_ingest` |
+| `loja_integrada_query` | "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido", "onde está meu pedido" | `cpf`, `email` ou `pedido_id` (ao menos um) | `handle_loja_integrada_query` |
 | `echo` | texto contendo "echo" | — | `handle_echo` |
 | `task_free` | fallback de chat sem intent | — | `handle_chat` (alias) |
 
@@ -64,6 +65,7 @@ Classificação feita por `claude-haiku-4-5-20251001`. Resultado inserido em `ru
 | `echo` | `handle_echo` | `handlers/echo.py` | Retorna o payload exato recebido. Usado para validar o pipeline end-to-end. | FUNCIONAL |
 | `health_alert` | `handle_health_alert` | `handlers/health_alert.py` | Verifica 3 condições: agentes sem heartbeat >30min, tasks travadas em `running` >10min, >5 falhas na última hora. Envia alerta WhatsApp se qualquer check falhar. Silêncio = saudável. | FUNCIONAL |
 | `learn_from_conversation` | `handle_learn_from_conversation` | `handlers/learn_from_conversation.py` | Analisa conversa concluída com `claude-haiku-4-5-20251001` e insere insights relevantes (alta/média) na `knowledge_base`. Filtra baixa relevância. | FUNCIONAL |
+| `loja_integrada_query` | `handle_loja_integrada_query` | `handlers/loja_integrada_query.py` | Consulta pedidos na API Loja Integrada por CPF, e-mail ou ID do pedido. Auth via `LOJA_INTEGRADA_API_KEY` (header `Authorization: chave_api {key}`). Retorna últimos 3 pedidos com número, status, data, total e itens. Stateless — sem persistência em Supabase. Usado pela Zenya da Fun Personalize. | FUNCIONAL |
 | `onboard_client` | `handle_onboard_client` | `handlers/onboard_client.py` | Pipeline: scrape site (httpx) → geração KB+system_prompt com `claude-sonnet-4-6` → upsert em `clients` → insert em `zenya_knowledge_base` → clone de 4 workflows n8n (se `N8N_API_KEY` disponível) → salva system_prompt em `notes`. | FUNCIONAL |
 | `status_mrr` | `handle_status_mrr` | `handlers/status_mrr.py` | Tenta buscar dados de `clients` (status=active) ou `services` (active=True). Fallback para lista hardcoded com 6 clientes (R$4.594/mês). | FUNCIONAL |
 | `status_report` | `handle_status_report` | `handlers/status_report.py` | Busca agentes em `agents`, últimas 10 tasks em `runtime_tasks`, custo de API do dia em `llm_cost_log`. | FUNCIONAL |
@@ -262,6 +264,7 @@ Definidas em `runtime/config.py` via `pydantic_settings`. Lidas de `.env` ou do 
 | `REDIS_URL` | Não | `tasks/worker.py` | ARQ worker. Default: `redis://localhost:6379`. Sem Redis, usar `/tasks/poll` |
 | `N8N_API_KEY` | Não | `handlers/onboard_client.py` | Clone de workflows Zenya. Sem ele, etapa é pulada |
 | `OPENAI_API_KEY` | Não | `handlers/brain_query.py` | Embeddings para vector search. Sem ele, usa full-text search como fallback |
+| `LOJA_INTEGRADA_API_KEY` | Não* | `handlers/loja_integrada_query.py` | API key da Fun Personalize (Loja Integrada). Sem ela, handler retorna erro amigável. *Obrigatória para Fun Personalize funcionar. |
 
 **Interno (não env):**
 - `sparkle_internal_client_id` = `"sparkle-internal"` (hardcoded no config)

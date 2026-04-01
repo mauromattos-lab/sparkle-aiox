@@ -16,6 +16,7 @@ from runtime.tasks.handlers.daily_briefing import handle_daily_briefing
 from runtime.tasks.handlers.echo import handle_echo
 from runtime.tasks.handlers.health_alert import handle_health_alert
 from runtime.tasks.handlers.learn_from_conversation import handle_learn_from_conversation
+from runtime.tasks.handlers.loja_integrada_query import handle_loja_integrada_query
 from runtime.tasks.handlers.onboard_client import handle_onboard_client
 from runtime.tasks.handlers.status_mrr import handle_status_mrr
 from runtime.tasks.handlers.status_report import handle_status_report
@@ -33,6 +34,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "echo":                     handle_echo,
     "health_alert":             handle_health_alert,
     "learn_from_conversation":  handle_learn_from_conversation,
+    "loja_integrada_query":     handle_loja_integrada_query,
     "onboard_client":           handle_onboard_client,
     "status_mrr":               handle_status_mrr,
     "status_report":            handle_status_report,

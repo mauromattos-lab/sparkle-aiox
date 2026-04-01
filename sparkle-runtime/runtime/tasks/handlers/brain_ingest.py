@@ -47,7 +47,7 @@ async def handle_brain_ingest(task: dict) -> dict:
                 "type": tipo,
                 "content": content,
                 "source": source,
-                "relevance": "high",
+                "relevance": "alta",
             }).execute()
         )
     except Exception as e:
