@@ -174,6 +174,43 @@ async def zapi_webhook(payload: ZAPIWebhookPayload, background_tasks: Background
 
 # ── Background helpers ─────────────────────────────────────
 
+async def _maybe_trigger_learning(from_number: str) -> None:
+    """
+    Verifica se a conversa do número atingiu 10+ mensagens.
+    Se sim, enfileira task conversation_summary em background.
+    Não bloqueia — silencia todas as exceções.
+    """
+    if not from_number:
+        return
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("conversation_history")
+            .select("id", count="exact")
+            .eq("phone", from_number)
+            .execute()
+        )
+        count = res.count if res.count is not None else len(res.data or [])
+        if count >= 10 and count % 10 == 0:
+            # Dispara a cada múltiplo de 10 para evitar flood
+            await asyncio.to_thread(
+                lambda: supabase.table("runtime_tasks").insert({
+                    "agent_id": "friday",
+                    "client_id": settings.sparkle_internal_client_id,
+                    "task_type": "conversation_summary",
+                    "payload": {
+                        "phone": from_number,
+                        "client_id": settings.sparkle_internal_client_id,
+                        "client_name": "Mauro (Friday)",
+                    },
+                    "status": "pending",
+                    "priority": 2,
+                }).execute()
+            )
+            print(f"[friday] Observer: conversation_summary enfileirada para {from_number} ({count} msgs)")
+    except Exception as e:
+        print(f"[friday] Observer: falha ao verificar histórico de {from_number}: {e}")
+
+
 async def _process_text(text: str, from_number: str) -> None:
     from runtime.integrations.zapi import send_text
     from runtime.tasks.worker import execute_task
@@ -184,6 +221,8 @@ async def _process_text(text: str, from_number: str) -> None:
         response = await _wait_for_task(task.get("id"), timeout=30)
         if from_number:
             await asyncio.to_thread(send_text, from_number, response)
+        # Observer: dispara aprendizado em background sem bloquear resposta
+        asyncio.create_task(_maybe_trigger_learning(from_number))
     except Exception as e:
         if from_number:
             from runtime.integrations.zapi import send_text as _send
@@ -213,6 +252,8 @@ async def _process_audio_url(audio_url: str, from_number: str) -> None:
             else:
                 print("[friday] TTS falhou — usando fallback texto")
                 await asyncio.to_thread(send_text, from_number, response)
+        # Observer: dispara aprendizado em background sem bloquear resposta
+        asyncio.create_task(_maybe_trigger_learning(from_number))
     except Exception as e:
         if from_number:
             from runtime.integrations.zapi import send_text as _send

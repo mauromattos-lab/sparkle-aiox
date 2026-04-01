@@ -19,7 +19,12 @@ _REGRA: atualizar este arquivo a cada handler criado, intent adicionado ou schem
 | POST | `/friday/audio` | Recebe arquivo de áudio (multipart OGG/MP3/WAV), transcreve via Groq Whisper, processa intent. |
 | POST | `/friday/audio-url` | Recebe JSON `{audio_url, from_number}`, transcreve via URL, processa intent. |
 | POST | `/friday/onboard` | Onboarding autônomo de cliente Zenya. Payload: `OnboardRequest`. Timeout 120s. |
-| POST | `/friday/webhook` | Webhook Z-API. Detecta texto ou áudio, processa em background, responde 200 imediatamente. |
+| POST | `/friday/webhook` | Webhook Z-API. Detecta texto ou áudio, processa em background, responde 200 imediatamente. Após cada mensagem, Observer Pattern verifica se conversa atingiu múltiplo de 10 mensagens e enfileira `conversation_summary` automaticamente. |
+
+### Zenya (`/zenya` — `runtime/zenya/router.py`)
+| Método | Path | O que faz |
+|--------|------|-----------|
+| POST | `/zenya/learn` | Recebe notificação do n8n ao encerrar conversa Zenya. Payload: `{phone, client_id, client_name, conversation_text}`. Enfileira task `learn_from_conversation` em background. Responde 200 imediatamente. |
 
 ### Tasks (`/tasks` — `runtime/tasks/worker.py`)
 | Método | Path | O que faz |
@@ -99,6 +104,27 @@ Modo fallback (in-process, sem Redis). Acionado no startup do FastAPI via `lifes
 | `health_check` | A cada 15 minutos (`IntervalTrigger`) | Cria e executa task `health_alert` inline |
 | `daily_briefing` | `08:00 Brasília` (`CronTrigger`) | Cria e executa task `daily_briefing` inline |
 | `weekly_briefing` | Domingo `08:00 Brasília` (`CronTrigger`, `day_of_week="sun"`) | Cria e executa task `weekly_briefing` inline |
+
+---
+
+## Observer Pattern — Aprendizado Automático de Conversas (S4-01)
+
+### Friday (conversas Mauro)
+- Trigger: após cada mensagem processada em `_process_text()` e `_process_audio_url()` no webhook `/friday/webhook`
+- Condição: conversa do `from_number` atingiu múltiplo de 10 mensagens em `conversation_history`
+- Ação: enfileira task `conversation_summary` (priority 2, client `sparkle-internal`)
+- Implementação: `asyncio.create_task(_maybe_trigger_learning(from_number))` — não bloqueia resposta ao usuário
+- Frequência: a cada 10 mensagens acumuladas (10, 20, 30...) — evita flood
+
+### Zenya (conversas clientes — via n8n)
+- Trigger: n8n envia `POST /zenya/learn` ao encerrar atendimento
+- Condição: n8n decide quando a conversa encerrou (inatividade, encerramento manual, etc.)
+- Ação: enfileira task `learn_from_conversation` diretamente (sem passar por `conversation_summary`)
+- Payload n8n: `{"phone": "55...", "client_id": "uuid", "client_name": "Plaka", "conversation_text": "..."}`
+- Formato aceito no `conversation_text`:
+  - `Cliente: msg\nZenya: resposta` (padrão n8n)
+  - `user: msg\nassistant: resposta` (padrão Runtime)
+- Arquivo: `runtime/zenya/router.py`
 
 ---
 
