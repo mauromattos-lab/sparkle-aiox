@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # Redis (ARQ)
     redis_url: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
+    # Brain — S8-P3 Embeddings
+    # BRAIN_EMBEDDINGS_ENABLED=false por padrão. Orion habilita após validar custo e comportamento.
+    brain_embeddings_enabled: bool = os.getenv("BRAIN_EMBEDDINGS_ENABLED", "false").lower() in ("true", "1", "yes")
+    # BRAIN_SIMILARITY_THRESHOLD: resultados do vector search abaixo deste valor são descartados.
+    # Fallback para text search se todos os resultados ficarem abaixo do threshold.
+    brain_similarity_threshold: float = float(os.getenv("BRAIN_SIMILARITY_THRESHOLD", "0.75"))
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
