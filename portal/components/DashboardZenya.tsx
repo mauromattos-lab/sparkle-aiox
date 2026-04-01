@@ -1,36 +1,36 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Card from './Card'
 import type { Client } from '@/lib/supabase'
 
-type Props = {
-  client: Client
+type Props = { client: Client }
+
+type ZenyaMetrics = {
+  total_mes: number
+  hoje: number
+  taxa_resolucao: number
+  conversoes: number
+  satisfacao: number
 }
 
 export default function DashboardZenya({ client }: Props) {
+  const [metrics, setMetrics] = useState<ZenyaMetrics | null>(null)
+
+  useEffect(() => {
+    fetch('/api/metrics/zenya')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setMetrics(d))
+      .catch(() => {})
+  }, [])
+
   const isActive = client.status === 'active' || client.status === 'ativo'
-
-  // Calcular "Zenya ativa há X dias" a partir de created_at (se disponível)
-  const createdAt = client.created_at
-  let diasAtiva: number | null = null
-  if (createdAt) {
-    const diff = Date.now() - new Date(createdAt).getTime()
-    diasAtiva = Math.floor(diff / (1000 * 60 * 60 * 24))
-  }
-
-  // Próxima segunda-feira
-  const hoje = new Date()
-  const diasParaSegunda = (8 - hoje.getDay()) % 7 || 7
-  const proximaSegunda = new Date(hoje)
-  proximaSegunda.setDate(hoje.getDate() + diasParaSegunda)
-  const proximaSegundaStr = proximaSegunda.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-  })
+  const diasAtiva = client.created_at
+    ? Math.floor((Date.now() - new Date(client.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    : null
 
   return (
     <section>
-      {/* Section header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
@@ -43,7 +43,6 @@ export default function DashboardZenya({ client }: Props) {
           <h2 className="text-base font-semibold text-white">Zenya — Atendimento IA</h2>
           <p className="text-xs text-slate-500">Agente de WhatsApp inteligente</p>
         </div>
-        {/* Status badge */}
         <div className="ml-auto">
           {isActive ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
@@ -59,43 +58,34 @@ export default function DashboardZenya({ client }: Props) {
         </div>
       </div>
 
-      {/* Card destaque: plano/valor (maior hierarquia visual) */}
       <div className="mb-4">
         <Card
-          title="Seu plano"
-          value={`R$${client.mrr.toLocaleString('pt-BR')}/mês`}
-          subtitle={client.plan}
+          title="Zenya ativa há"
+          value={diasAtiva !== null ? `${diasAtiva} dias` : '—'}
+          subtitle="Atendimento contínuo no WhatsApp"
           accent="cyan"
           highlight
         />
       </div>
 
-      {/* Cards secundários */}
+      {metrics && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <Card title="Conversas este mês" value={String(metrics.total_mes)} subtitle="Total de atendimentos" accent="purple" />
+          <Card title="Hoje" value={String(metrics.hoje)} subtitle="Conversas iniciadas" accent="cyan" />
+          <Card title="Taxa de resolução" value={`${metrics.taxa_resolucao}%`} subtitle="Resolvidos pela Zenya" accent="green" />
+          <Card title="Conversões" value={String(metrics.conversoes)} subtitle="Leads convertidos" accent="purple" />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Card
-          title="Próximo vencimento"
-          value={`Dia ${client.due_day}`}
-          subtitle="Renovação mensal"
-          accent="purple"
-        />
-        {diasAtiva !== null ? (
-          <Card
-            title="Zenya ativa há"
-            value={`${diasAtiva} dias`}
-            subtitle="Atendimento contínuo no WhatsApp"
-            accent="green"
-          />
+        <Card title="Próximo vencimento" value={`Dia ${client.due_day}`} subtitle="Renovação mensal" accent="purple" />
+        {metrics ? (
+          <Card title="Satisfação" value={`${metrics.satisfacao}%`} subtitle="Conversas com sentimento positivo" accent="green" />
         ) : (
-          <Card
-            title="Próximo relatório"
-            value={`Seg, ${proximaSegundaStr}`}
-            subtitle="Resumo semanal de atendimentos"
-            accent="green"
-          />
+          <Card title="Plano" value={`R$${client.mrr.toLocaleString('pt-BR')}/mês`} subtitle={client.plan} accent="green" />
         )}
       </div>
 
-      {/* Card: canal de contato */}
       <div className="glass rounded-2xl p-5 border border-white/8">
         <div className="flex items-center gap-2 mb-3">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" strokeWidth="2">

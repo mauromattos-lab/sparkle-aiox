@@ -1,34 +1,35 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Card from './Card'
 import type { Client } from '@/lib/supabase'
 
-type Props = {
-  client: Client
+type Props = { client: Client }
+
+type TrafegoMetrics = {
+  investimento_7d: number
+  leads_7d: number
+  impressoes_7d: number
+  ctr_medio: number
+  cliques_7d: number
 }
 
 export default function DashboardTrafego({ client }: Props) {
-  // Calcular "ativo há X dias" a partir de created_at (se disponível)
-  const createdAt = client.created_at
-  let diasAtivo: number | null = null
-  if (createdAt) {
-    const diff = Date.now() - new Date(createdAt).getTime()
-    diasAtivo = Math.floor(diff / (1000 * 60 * 60 * 24))
-  }
+  const [metrics, setMetrics] = useState<TrafegoMetrics | null>(null)
 
-  // Próxima segunda-feira
-  const hoje = new Date()
-  const diasParaSegunda = (8 - hoje.getDay()) % 7 || 7
-  const proximaSegunda = new Date(hoje)
-  proximaSegunda.setDate(hoje.getDate() + diasParaSegunda)
-  const proximaSegundaStr = proximaSegunda.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-  })
+  useEffect(() => {
+    fetch('/api/metrics/trafego')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setMetrics(d))
+      .catch(() => {})
+  }, [])
+
+  const diasAtivo = client.created_at
+    ? Math.floor((Date.now() - new Date(client.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    : null
 
   return (
     <section>
-      {/* Section header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-8 h-8 rounded-lg bg-cyan/10 border border-cyan/30 flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" strokeWidth="2">
@@ -48,43 +49,39 @@ export default function DashboardTrafego({ client }: Props) {
         </div>
       </div>
 
-      {/* Card destaque: plano/valor (maior hierarquia visual) */}
       <div className="mb-4">
         <Card
-          title="Seu plano"
-          value={`R$${client.mrr.toLocaleString('pt-BR')}/mês`}
-          subtitle={client.plan}
+          title="Gestão ativa há"
+          value={diasAtivo !== null ? `${diasAtivo} dias` : '—'}
+          subtitle="Campanhas sendo gerenciadas"
           accent="cyan"
           highlight
         />
       </div>
 
-      {/* Cards secundários */}
+      {metrics && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <Card
+            title="Investimento 7 dias"
+            value={`R$${metrics.investimento_7d.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            subtitle="Total gasto no período"
+            accent="purple"
+          />
+          <Card title="Leads gerados" value={String(metrics.leads_7d)} subtitle="Últimos 7 dias" accent="green" />
+          <Card title="Impressões" value={metrics.impressoes_7d.toLocaleString('pt-BR')} subtitle="Alcance total" accent="cyan" />
+          <Card title="CTR médio" value={`${metrics.ctr_medio}%`} subtitle="Taxa de cliques" accent="purple" />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Card
-          title="Próximo vencimento"
-          value={`Dia ${client.due_day}`}
-          subtitle="Renovação mensal"
-          accent="purple"
-        />
-        {diasAtivo !== null ? (
-          <Card
-            title="Gestão ativa há"
-            value={`${diasAtivo} dias`}
-            subtitle="Campanhas sendo gerenciadas"
-            accent="green"
-          />
+        <Card title="Próximo vencimento" value={`Dia ${client.due_day}`} subtitle="Renovação mensal" accent="purple" />
+        {metrics ? (
+          <Card title="Cliques" value={String(metrics.cliques_7d)} subtitle="Cliques nos anúncios (7 dias)" accent="green" />
         ) : (
-          <Card
-            title="Próximo relatório"
-            value={`Seg, ${proximaSegundaStr}`}
-            subtitle="Relatório mensal de performance"
-            accent="green"
-          />
+          <Card title="Plano" value={`R$${client.mrr.toLocaleString('pt-BR')}/mês`} subtitle={client.plan} accent="green" />
         )}
       </div>
 
-      {/* Card: canal de contato */}
       <div className="glass rounded-2xl p-5 border border-white/8">
         <div className="flex items-center gap-2 mb-3">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" strokeWidth="2">
