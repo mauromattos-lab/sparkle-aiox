@@ -19,6 +19,23 @@
 
 ---
 
+## Pipeline Obrigatório
+
+**Toda implementação de código segue este fluxo sem exceção:**
+
+```
+Orion (identifica + delega) → @dev (implementa) → @qa (revisa) → @devops (deploya)
+```
+
+- Orion **não escreve código diretamente** — identifica o que precisa ser feito e delega ao @dev
+- @dev **não deploya** — entrega para @qa revisar
+- @qa **não aprova sem testar** — verifica async consistency, lógica, schema
+- @devops **não deploya sem @qa aprovado** — gate obrigatório
+
+Se Orion fizer código inline, está violando este pipeline. O Mauro não deveria precisar supervisionar isso.
+
+---
+
 ## Sprint 0 — Estabilização (Esta semana, até 2026-04-06)
 
 **Meta:** Runtime rodando em produção. Friday responde pelo Runtime, não pelo n8n.
@@ -103,6 +120,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @dev |
+| **Agente** | @dev |
 | **DoD** | "Brain, aprende isso: [texto]" cria registro na knowledge_base |
 | **Dependência** | — |
 
@@ -119,6 +137,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @qa |
+| **Agente** | @qa |
 | **DoD** | Brain ingesta + consulta funcionam end-to-end via WhatsApp |
 | **Dependência** | S1-01 + S1-02 + S0-02 |
 
@@ -150,6 +169,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | **Mauro** → depois @dev |
+| **Agente** | @dev (executa após ação do Mauro) |
 | **Bloqueante** | Mauro criar instância Z-API e passar token |
 | **DoD** | Zenya Alexsandro responde pelo WhatsApp do negócio |
 
@@ -165,6 +185,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | **Mauro** → depois @dev |
+| **Agente** | @dev (executa após ação do Mauro) |
 | **Bloqueante** | Douglas responder com valores dos cursos e horários |
 
 **Após Douglas responder:**
@@ -183,6 +204,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @dev |
+| **Agente** | @dev |
 | **DoD** | Mauro recebe briefing às 8h todo dia pelo WhatsApp, sem pedir |
 | **Dependência** | S0-02 (Runtime em produção) |
 
@@ -197,6 +219,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @dev |
+| **Agente** | @dev |
 | **DoD** | Briefing semanal chega todo domingo às 8h |
 | **Dependência** | S3-01 |
 
@@ -208,6 +231,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @architect → @dev |
+| **Agente** | @architect → @dev (sequencial) |
 | **DoD** | Novo agente pode ser criado via API sem alterar código — só inserir registro no Supabase |
 | **Dependência** | — |
 
@@ -234,6 +258,7 @@ agents (
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @dev |
+| **Agente** | @dev |
 | **DoD** | Após cada conversa Zenya, Brain extrai aprendizado e registra |
 | **Dependência** | S1-01 (Brain operacional) |
 
@@ -248,6 +273,7 @@ agents (
 | Campo | Valor |
 |-------|-------|
 | **Responsável** | @dev |
+| **Agente** | @dev |
 | **DoD** | Friday envia para Mauro relatório de gaps semanais do Brain |
 | **Dependência** | S4-01 (pelo menos 1 semana de dados) |
 
