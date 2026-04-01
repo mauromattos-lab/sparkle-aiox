@@ -2,6 +2,8 @@
 // Retorna dados do cliente logado com base no cookie de sessão.
 // Usado pelo dashboard para carregar os dados sem sessionStorage.
 
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { supabaseServer } from '@/lib/supabase-server'

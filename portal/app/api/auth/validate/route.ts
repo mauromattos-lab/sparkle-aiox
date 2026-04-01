@@ -2,6 +2,8 @@
 // Valida o token de acesso, seta cookie HTTP-only e redireciona para /dashboard.
 // Chamado quando o cliente clica no link enviado via WhatsApp.
 
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
