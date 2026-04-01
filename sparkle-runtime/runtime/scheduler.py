@@ -24,20 +24,23 @@ _scheduler = AsyncIOScheduler()
 _TZ = ZoneInfo("America/Sao_Paulo")
 
 
-def _run_and_execute(task_type: str, priority: int = 5) -> None:
+async def _run_and_execute(task_type: str, priority: int = 5) -> None:
     """Cria task no Supabase e executa inline (modo dev sem ARQ)."""
+    import asyncio
     # Import aqui para evitar importação circular no module-level
     from runtime.tasks.worker import execute_task
 
     try:
-        res = supabase.table("runtime_tasks").insert({
-            "agent_id": "friday",
-            "client_id": settings.sparkle_internal_client_id,
-            "task_type": task_type,
-            "payload": {"triggered_by": "scheduler"},
-            "status": "pending",
-            "priority": priority,
-        }).execute()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": task_type,
+                "payload": {"triggered_by": "scheduler"},
+                "status": "pending",
+                "priority": priority,
+            }).execute()
+        )
 
         if not res.data:
             print(f"[scheduler] WARN: insert para {task_type} não retornou dados")
@@ -45,26 +48,26 @@ def _run_and_execute(task_type: str, priority: int = 5) -> None:
 
         task = res.data[0]
         print(f"[scheduler] Task {task_type} criada — id={task['id']}")
-        execute_task(task)
+        await execute_task(task)
         print(f"[scheduler] Task {task_type} executada")
     except Exception as e:
         print(f"[scheduler] Erro em {task_type}: {e}")
 
 
-def _run_health_check() -> None:
-    _run_and_execute("health_alert", priority=8)
+async def _run_health_check() -> None:
+    await _run_and_execute("health_alert", priority=8)
 
 
-def _run_daily_briefing() -> None:
-    _run_and_execute("daily_briefing", priority=6)
+async def _run_daily_briefing() -> None:
+    await _run_and_execute("daily_briefing", priority=6)
 
 
-def _run_weekly_briefing() -> None:
-    _run_and_execute("weekly_briefing", priority=6)
+async def _run_weekly_briefing() -> None:
+    await _run_and_execute("weekly_briefing", priority=6)
 
 
-def _run_gap_report() -> None:
-    _run_and_execute("gap_report", priority=7)
+async def _run_gap_report() -> None:
+    await _run_and_execute("gap_report", priority=7)
 
 
 def start_scheduler() -> None:
