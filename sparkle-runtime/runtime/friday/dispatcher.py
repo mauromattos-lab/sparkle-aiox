@@ -23,10 +23,11 @@ INTENTS = [
     "weekly_briefing", # "resumo da semana", "o que rolou essa semana"
     "onboard_client",  # "onborda [nome] site:[url] tipo:[tipo]" — Sprint 8
     "brain_query",     # "brain, o que você sabe sobre X?", "consulta o brain sobre Y"
+    "brain_ingest",    # "brain, aprende isso: X", "brain, salva: Y", "registra no brain"
     "echo",            # teste — retorna o que foi dito
 ]
 
-_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, echo
+_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, echo
 
 REGRAS DE CLASSIFICACAO:
 - status_mrr: menciona MRR, faturamento, quanto fatura, receita mensal
@@ -37,6 +38,7 @@ REGRAS DE CLASSIFICACAO:
 - weekly_briefing: resumo da semana, o que rolou essa semana
 - onboard_client: "onborda", "onboard", "configura zenya para", "cria cliente", "novo cliente zenya" — extrai params: business_name, site_url, business_type, phone
 - brain_query: "brain", "o que voce sabe sobre", "consulta o brain", "o que o brain sabe", "brain me fala" — extrai param: query (o que quer saber)
+- brain_ingest: "brain, aprende", "brain, salva", "brain, registra", "ensina o brain", "adiciona ao brain", "aprende isso" — extrai param: content (o conteudo a salvar)
 - echo: apenas para testes com a palavra "echo"
 
 IMPORTANTE: Responda APENAS com JSON valido, sem blocos de codigo, sem markdown.
@@ -99,6 +101,9 @@ async def classify_and_dispatch(
 
     if intent == "brain_query" and params.get("query"):
         task_payload["query"] = params["query"]
+
+    if intent == "brain_ingest" and params.get("content"):
+        task_payload["content"] = params["content"]
 
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({

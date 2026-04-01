@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Callable
 
 from runtime.tasks.handlers.activate_agent import handle_activate_agent
+from runtime.tasks.handlers.brain_ingest import handle_brain_ingest
 from runtime.tasks.handlers.brain_query import handle_brain_query
 from runtime.tasks.handlers.chat import handle_chat
 from runtime.tasks.handlers.conversation_summary import handle_conversation_summary
@@ -23,6 +24,7 @@ from runtime.tasks.handlers.weekly_briefing import handle_weekly_briefing
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
     "activate_agent":           handle_activate_agent,
+    "brain_ingest":             handle_brain_ingest,
     "brain_query":              handle_brain_query,
     "chat":                     handle_chat,
     "conversation_summary":     handle_conversation_summary,

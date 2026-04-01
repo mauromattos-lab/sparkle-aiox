@@ -98,7 +98,7 @@ async def _search_knowledge_base(query: str) -> list[dict]:
                         "match_count": 6,
                     },
                 ).execute()
-            )
+            )  # type: ignore
             if rpc_result.data:
                 return rpc_result.data
     except Exception as e:
@@ -120,7 +120,7 @@ async def _text_search(query: str) -> list[dict]:
     try:
         result = await asyncio.to_thread(
             lambda: supabase.table("knowledge_base")
-            .select("id,title,content,source,client_id")
+            .select("id,type,content,source,client_id")
             .text_search("content", search_term)
             .limit(6)
             .execute()
@@ -132,7 +132,7 @@ async def _text_search(query: str) -> list[dict]:
             first_word = words[0] if words else query[:20]
             result = await asyncio.to_thread(
                 lambda: supabase.table("knowledge_base")
-                .select("id,title,content,source,client_id")
+                .select("id,type,content,source,client_id")
                 .ilike("content", f"%{first_word}%")
                 .limit(6)
                 .execute()
@@ -172,9 +172,9 @@ def _format_chunks(chunks: list[dict]) -> str:
     """Formata os chunks para o prompt do Claude."""
     lines = []
     for i, chunk in enumerate(chunks, 1):
-        title = chunk.get("title") or "Sem título"
-        content = (chunk.get("content") or "")[:800]  # limita por chunk
+        tipo = chunk.get("type") or "info"
+        content = (chunk.get("content") or "")[:800]
         source = chunk.get("source") or ""
         source_info = f" (fonte: {source})" if source else ""
-        lines.append(f"[{i}] {title}{source_info}\n{content}")
+        lines.append(f"[{i}] [{tipo}]{source_info}\n{content}")
     return "\n\n---\n\n".join(lines)
