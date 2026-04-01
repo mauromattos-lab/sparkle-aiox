@@ -25,20 +25,26 @@ jobs:
           host: 187.77.37.88
           username: root
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          envs: SUPABASE_URL,SUPABASE_SERVICE_KEY,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY
           script: |
             set -e
             REPO_DIR=/opt/sparkle-portal
             COMMIT_SHA="${{ github.sha }}"
 
-            # Pull latest code
+            # Clona repo se não existir, senão faz pull
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              git clone https://github.com/mauromattos-lab/sparkle-aiox.git $REPO_DIR
+            else
+              cd $REPO_DIR
+              git fetch origin main
+              git reset --hard origin/main
+            fi
             cd $REPO_DIR
-            git fetch origin main
-            git reset --hard origin/main
 
-            # Tag current image as previous for rollback
+            # Tag imagem atual como previous para rollback
             docker tag sparkle-portal:latest sparkle-portal:previous 2>/dev/null || true
 
-            # Build new image on VPS
+            # Build nova imagem no VPS
             cd $REPO_DIR/portal
             docker build \
               --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
@@ -47,53 +53,71 @@ jobs:
               -t sparkle-portal:latest \
               .
 
-            # Create env file (never exposed in ps aux)
-            cat > /tmp/portal-deploy.env << EOF
-            NODE_ENV=production
-            SUPABASE_URL=$SUPABASE_URL
-            SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
-            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-            NEXT_PUBLIC_APP_URL=https://portal.sparkleai.tech
-            EOF
+            # Deploy via Python (evita problema de escaping de backticks no shell)
+            SUPABASE_URL="$SUPABASE_URL" \
+            SUPABASE_SERVICE_KEY="$SUPABASE_SERVICE_KEY" \
+            NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            python3 << 'PYEOF'
+            import subprocess, os, sys
 
-            # Replace container
-            docker stop sparkle-portal 2>/dev/null || true
-            docker rm sparkle-portal 2>/dev/null || true
+            env_vars = [
+                "NODE_ENV=production",
+                f"SUPABASE_URL={os.environ.get('SUPABASE_URL','')}",
+                f"SUPABASE_SERVICE_KEY={os.environ.get('SUPABASE_SERVICE_KEY','')}",
+                f"NEXT_PUBLIC_SUPABASE_URL={os.environ.get('NEXT_PUBLIC_SUPABASE_URL','')}",
+                f"NEXT_PUBLIC_SUPABASE_ANON_KEY={os.environ.get('NEXT_PUBLIC_SUPABASE_ANON_KEY','')}",
+                "NEXT_PUBLIC_APP_URL=https://portal.sparkleai.tech",
+            ]
 
-            docker run -d \
-              --name sparkle-portal \
-              --network sparkle-net \
-              --env-file /tmp/portal-deploy.env \
-              --label "traefik.enable=true" \
-              --label "traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)" \
-              --label "traefik.http.routers.portal.entrypoints=websecure" \
-              --label "traefik.http.routers.portal.tls.certresolver=letsencrypt" \
-              --label "traefik.http.services.portal.loadbalancer.server.port=3000" \
-              --restart unless-stopped \
-              sparkle-portal:latest
+            subprocess.run(["docker", "stop", "sparkle-portal"], capture_output=True)
+            subprocess.run(["docker", "rm", "sparkle-portal"], capture_output=True)
 
-            # Remove env file immediately
-            rm -f /tmp/portal-deploy.env
+            env_args = []
+            for e in env_vars:
+                env_args += ["--env", e]
 
-            # Health check
-            sleep 8
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>/dev/null || echo "000")
+            cmd = ["docker", "run", "-d",
+                "--name", "sparkle-portal",
+                "--network", "sparkle-portal-net",
+                "--label", "traefik.enable=true",
+                "--label", "traefik.http.routers.portal.rule=Host(`portal.sparkleai.tech`)",
+                "--label", "traefik.http.routers.portal.entrypoints=https",
+                "--label", "traefik.http.routers.portal.tls=true",
+                "--label", "traefik.http.routers.portal.tls.certresolver=letsencrypt",
+                "--label", "traefik.http.services.portal.loadbalancer.server.port=3000",
+                "--restart", "unless-stopped",
+            ] + env_args + ["sparkle-portal:latest"]
+
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                print("ERROR:", r.stderr)
+                sys.exit(1)
+            print("Container started:", r.stdout.strip())
+            PYEOF
+
+            # Health check via URL pública
+            sleep 10
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://portal.sparkleai.tech/ 2>/dev/null || echo "000")
 
             if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
-              echo "ERROR: Portal health check falhou (HTTP $HTTP_CODE). Rollback..."
-              docker stop sparkle-portal || true
-              docker rm sparkle-portal || true
-              docker run -d \
-                --name sparkle-portal \
-                --network sparkle-net \
-                --label "traefik.enable=true" \
-                --label "traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)" \
-                --label "traefik.http.routers.portal.entrypoints=websecure" \
-                --label "traefik.http.routers.portal.tls.certresolver=letsencrypt" \
-                --label "traefik.http.services.portal.loadbalancer.server.port=3000" \
-                --restart unless-stopped \
-                sparkle-portal:previous
+              echo "ERROR: Portal health check falhou (HTTP $HTTP_CODE). Rollback para imagem anterior..."
+              python3 -c "
+import subprocess
+subprocess.run(['docker','stop','sparkle-portal'], capture_output=True)
+subprocess.run(['docker','rm','sparkle-portal'], capture_output=True)
+subprocess.run(['docker','run','-d',
+  '--name','sparkle-portal',
+  '--network','sparkle-portal-net',
+  '--label','traefik.enable=true',
+  '--label','traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)',
+  '--label','traefik.http.routers.portal.entrypoints=https',
+  '--label','traefik.http.routers.portal.tls=true',
+  '--label','traefik.http.routers.portal.tls.certresolver=letsencrypt',
+  '--label','traefik.http.services.portal.loadbalancer.server.port=3000',
+  '--restart','unless-stopped',
+  'sparkle-portal:previous'])
+"
               exit 1
             fi
 
