@@ -26,6 +26,11 @@ _REGRA: atualizar este arquivo a cada handler criado, intent adicionado ou schem
 |--------|------|-----------|
 | POST | `/tasks/poll` | Pega a task pendente de maior prioridade e executa. Fallback sem Redis. |
 
+### Agents (`/agent` — `runtime/agents/router.py`) — S3-03
+| Método | Path | O que faz |
+|--------|------|-----------|
+| POST | `/agent/invoke` | Invoca qualquer agente registrado na tabela `agents` pelo `agent_id`. Busca `system_prompt`, `model`, `max_tokens` no Supabase e chama `call_claude()`. Stateless, multi-tenant. Retorna `{response, agent_id, model}`. 404 se agente inexistente ou inativo. |
+
 ---
 
 ## Intents Registrados (Friday Dispatcher)
@@ -83,6 +88,7 @@ Modo produção. Requer Redis (`REDIS_URL`).
 |-----|---------|---------------|
 | `process_pending_tasks` | A cada 15 segundos (`second={0,15,30,45}`) | Busca até 20 tasks `pending` e executa em paralelo |
 | `trigger_daily_briefing` | `11:00 UTC` (08:00 Brasília) | Insere task `daily_briefing` na fila |
+| `trigger_weekly_briefing` | Domingo `11:00 UTC` (08:00 Brasília) (`weekday={6}`) | Insere task `weekly_briefing` na fila |
 | `trigger_health_check` | `second=0` a cada 15 min (`minute={0,15,30,45}`) | Insere task `health_alert` na fila |
 
 ### APScheduler (`runtime/scheduler.py`)
@@ -92,6 +98,7 @@ Modo fallback (in-process, sem Redis). Acionado no startup do FastAPI via `lifes
 |-----|---------|---------------|
 | `health_check` | A cada 15 minutos (`IntervalTrigger`) | Cria e executa task `health_alert` inline |
 | `daily_briefing` | `08:00 Brasília` (`CronTrigger`) | Cria e executa task `daily_briefing` inline |
+| `weekly_briefing` | Domingo `08:00 Brasília` (`CronTrigger`, `day_of_week="sun"`) | Cria e executa task `weekly_briefing` inline |
 
 ---
 
@@ -206,6 +213,16 @@ Colunas derivadas exclusivamente dos selects/inserts encontrados no código.
 | `agent_id` | text | PK/identificador |
 | `status` | text | `idle`, `running`, `error` |
 | `last_heartbeat` | timestamptz | usado pelo health_alert |
+| `name` | text | Nome legível do agente (ex: "Zenya - Ensinaja") — S3-03 |
+| `system_prompt` | text | Prompt de sistema completo. Nullable (agentes internos definem no código) — S3-03 |
+| `model` | text | ID do modelo Claude. DEFAULT `claude-haiku-4-5-20251001` — S3-03 |
+| `max_tokens` | integer | Limite de tokens de saída. DEFAULT 1024 — S3-03 |
+| `client_id` | text | FK lógica para `clients`. Nullable (agentes internos) — S3-03 |
+| `tools` | jsonb | Array de strings com nomes de tools disponíveis. DEFAULT `[]` — S3-03 |
+| `active` | boolean | false = desativado, não pode ser invocado via /agent/invoke. DEFAULT true — S3-03 |
+| `created_at` | timestamptz | Timestamp de criação. DEFAULT now() — S3-03 |
+
+**ATENÇÃO:** Colunas S3-03 requerem execução manual do SQL do `docs/S3-03-agent-invoke-spec.md` no Supabase (SQL Editor). SQL não foi aplicado automaticamente.
 
 ### `llm_cost_log`
 | Coluna | Tipo inferido | Observação |

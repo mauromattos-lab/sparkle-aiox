@@ -59,6 +59,10 @@ def _run_daily_briefing() -> None:
     _run_and_execute("daily_briefing", priority=6)
 
 
+def _run_weekly_briefing() -> None:
+    _run_and_execute("weekly_briefing", priority=6)
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -77,8 +81,16 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # Weekly briefing todo domingo às 8h de Brasília (11h UTC)
+    _scheduler.add_job(
+        _run_weekly_briefing,
+        trigger=CronTrigger(day_of_week="sun", hour=8, minute=0, timezone=_TZ),
+        id="weekly_briefing",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    print("[scheduler] APScheduler iniciado — briefing 8h Brasília, health check 15min")
+    print("[scheduler] APScheduler iniciado — briefing 8h Brasília, weekly briefing dom 8h, health check 15min")
 
 
 def stop_scheduler() -> None:

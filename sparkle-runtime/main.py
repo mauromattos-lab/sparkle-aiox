@@ -43,9 +43,11 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────
 from runtime.friday.router import router as friday_router
 from runtime.tasks.worker import router as tasks_router
+from runtime.agents.router import router as agents_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
+app.include_router(agents_router, prefix="/agent", tags=["agents"])
 
 
 # ── Health ─────────────────────────────────────────────────
