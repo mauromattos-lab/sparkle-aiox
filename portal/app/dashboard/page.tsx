@@ -137,9 +137,8 @@ export default function DashboardPage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/5 mt-16 py-6">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span className="text-xs text-slate-600">Portal do Cliente &copy; {new Date().getFullYear()} Sparkle AI</span>
-          <span className="text-xs text-slate-700">Powered by Sparkle AIOX</span>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-center">
+          <span className="text-xs text-slate-700">&copy; {new Date().getFullYear()} {client.company}</span>
         </div>
       </footer>
     </div>

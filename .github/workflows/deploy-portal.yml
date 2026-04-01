@@ -1,0 +1,126 @@
+name: Deploy — Sparkle Portal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portal/**'
+      - '.github/workflows/deploy-portal.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Portal to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 187.77.37.88
+          username: root
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            REPO_DIR=/opt/sparkle-portal
+            COMMIT_SHA="${{ github.sha }}"
+
+            # Pull latest code
+            cd $REPO_DIR
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Tag current image as previous for rollback
+            docker tag sparkle-portal:latest sparkle-portal:previous 2>/dev/null || true
+
+            # Build new image on VPS
+            cd $REPO_DIR/portal
+            docker build \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              -t sparkle-portal:$COMMIT_SHA \
+              -t sparkle-portal:latest \
+              .
+
+            # Create env file (never exposed in ps aux)
+            cat > /tmp/portal-deploy.env << EOF
+            NODE_ENV=production
+            SUPABASE_URL=$SUPABASE_URL
+            SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
+            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+            NEXT_PUBLIC_APP_URL=https://portal.sparkleai.tech
+            EOF
+
+            # Replace container
+            docker stop sparkle-portal 2>/dev/null || true
+            docker rm sparkle-portal 2>/dev/null || true
+
+            docker run -d \
+              --name sparkle-portal \
+              --network sparkle-net \
+              --env-file /tmp/portal-deploy.env \
+              --label "traefik.enable=true" \
+              --label "traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)" \
+              --label "traefik.http.routers.portal.entrypoints=websecure" \
+              --label "traefik.http.routers.portal.tls.certresolver=letsencrypt" \
+              --label "traefik.http.services.portal.loadbalancer.server.port=3000" \
+              --restart unless-stopped \
+              sparkle-portal:latest
+
+            # Remove env file immediately
+            rm -f /tmp/portal-deploy.env
+
+            # Health check
+            sleep 8
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>/dev/null || echo "000")
+
+            if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
+              echo "ERROR: Portal health check falhou (HTTP $HTTP_CODE). Rollback..."
+              docker stop sparkle-portal || true
+              docker rm sparkle-portal || true
+              docker run -d \
+                --name sparkle-portal \
+                --network sparkle-net \
+                --label "traefik.enable=true" \
+                --label "traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)" \
+                --label "traefik.http.routers.portal.entrypoints=websecure" \
+                --label "traefik.http.routers.portal.tls.certresolver=letsencrypt" \
+                --label "traefik.http.services.portal.loadbalancer.server.port=3000" \
+                --restart unless-stopped \
+                sparkle-portal:previous
+              exit 1
+            fi
+
+            echo "Portal deploy OK — HTTP $HTTP_CODE"
+
+      - name: Calculate duration
+        id: duration
+        if: always()
+        run: |
+          END=$(date +%s)
+          echo "seconds=$((END - ${{ steps.timer.outputs.start }}))" >> $GITHUB_OUTPUT
+
+      - name: Log deploy to Supabase
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          [ "$STATUS" = "success" ] && STATUS="success" || STATUS="failed"
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/deploy_log" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"service\":\"portal\",\"commit_sha\":\"${{ github.sha }}\",\"status\":\"$STATUS\",\"triggered_by\":\"github-actions/${{ github.event_name }}\",\"duration_ms\":$(( ${{ steps.duration.outputs.seconds || 0 }} * 1000 )),\"smoke_passed\":${{ job.status == 'success' && 'true' || 'false' }}}" || true
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.ZAPI_BASE_URL }}/instances/${{ secrets.ZAPI_INSTANCE_ID }}/token/${{ secrets.ZAPI_TOKEN }}/send-text" \
+            -H "Client-Token: ${{ secrets.ZAPI_CLIENT_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"phone\":\"${{ secrets.MAURO_PHONE }}\",\"message\":\"[DEVOPS] Deploy Portal FALHOU. Rollback executado. Commit: ${{ github.sha }}.\"}" || true

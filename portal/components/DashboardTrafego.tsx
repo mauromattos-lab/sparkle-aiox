@@ -18,10 +18,13 @@ export default function DashboardTrafego({ client }: Props) {
   const [metrics, setMetrics] = useState<TrafegoMetrics | null>(null)
 
   useEffect(() => {
-    fetch('/api/metrics/trafego')
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    fetch('/api/metrics/trafego', { signal: controller.signal })
       .then(r => r.ok ? r.json() : null)
       .then(d => d && setMetrics(d))
       .catch(() => {})
+      .finally(() => clearTimeout(timeout))
   }, [])
 
   const diasAtivo = client.created_at
@@ -60,7 +63,7 @@ export default function DashboardTrafego({ client }: Props) {
       </div>
 
       {metrics && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Card
             title="Investimento 7 dias"
             value={`R$${metrics.investimento_7d.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}

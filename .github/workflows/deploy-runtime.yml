@@ -1,0 +1,116 @@
+name: Deploy — Sparkle Runtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sparkle-runtime/**'
+      - '.github/workflows/deploy-runtime.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options: [production]
+
+jobs:
+  deploy:
+    name: Deploy Runtime to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 187.77.37.88
+          username: root
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            RUNTIME_DIR=/opt/sparkle-runtime/sparkle-runtime
+
+            # Salva hash atual para rollback
+            PREV_HASH=$(cd $RUNTIME_DIR && git rev-parse HEAD)
+            echo "PREV_HASH=$PREV_HASH"
+
+            # Pull
+            cd $RUNTIME_DIR
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Restart services
+            systemctl restart sparkle-runtime sparkle-worker
+
+            # Aguarda serviço estabilizar
+            sleep 5
+
+            # Health check
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health)
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "ERROR: Health check falhou (HTTP $HTTP_CODE). Executando rollback..."
+              git reset --hard $PREV_HASH
+              systemctl restart sparkle-runtime sparkle-worker
+              sleep 5
+              ROLLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health)
+              echo "Rollback health check: HTTP $ROLLBACK_CODE"
+              exit 1
+            fi
+
+            echo "Deploy OK — HTTP $HTTP_CODE"
+
+      - name: Get health check result
+        id: health
+        if: success()
+        run: |
+          HEALTH=$(curl -s --max-time 10 https://runtime.sparkleai.tech/health 2>/dev/null || echo '{"status":"unreachable"}')
+          echo "result=$HEALTH" >> $GITHUB_OUTPUT
+
+      - name: Calculate duration
+        id: duration
+        if: always()
+        run: |
+          END=$(date +%s)
+          START=${{ steps.timer.outputs.start }}
+          echo "seconds=$((END - START))" >> $GITHUB_OUTPUT
+
+      - name: Log deploy to Supabase
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          [ "$STATUS" = "success" ] && STATUS="success" || STATUS="failed"
+          HEALTH_JSON='${{ steps.health.outputs.result }}'
+          [ -z "$HEALTH_JSON" ] && HEALTH_JSON='{"status":"unknown"}'
+
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/deploy_log" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service\": \"runtime\",
+              \"commit_sha\": \"${{ github.sha }}\",
+              \"status\": \"$STATUS\",
+              \"triggered_by\": \"github-actions/${{ github.event_name }}\",
+              \"duration_ms\": $(( ${{ steps.duration.outputs.seconds || 0 }} * 1000 )),
+              \"smoke_passed\": ${{ job.status == 'success' && 'true' || 'false' }}
+            }" || true
+
+      - name: Notify via WhatsApp on failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.ZAPI_BASE_URL }}/instances/${{ secrets.ZAPI_INSTANCE_ID }}/token/${{ secrets.ZAPI_TOKEN }}/send-text" \
+            -H "Client-Token: ${{ secrets.ZAPI_CLIENT_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"phone\": \"${{ secrets.MAURO_PHONE }}\",
+              \"message\": \"[DEVOPS] Deploy Runtime FALHOU. Commit: ${{ github.sha }}. Rollback executado automaticamente. Ver GitHub Actions para detalhes.\"
+            }" || true

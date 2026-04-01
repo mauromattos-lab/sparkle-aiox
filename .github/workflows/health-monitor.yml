@@ -1,0 +1,52 @@
+name: Health Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-runtime:
+    name: Check Runtime Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Runtime /health
+        id: runtime
+        run: |
+          RESPONSE=$(curl -s --max-time 10 https://runtime.sparkleai.tech/health 2>/dev/null || echo '{"status":"unreachable"}')
+          STATUS=$(echo $RESPONSE | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "parse_error")
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          if [ "$STATUS" != "ok" ]; then
+            echo "::error::Runtime degradado: $STATUS"
+            exit 1
+          fi
+          echo "Runtime OK: $STATUS"
+
+      - name: Notify WhatsApp on Runtime failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.ZAPI_BASE_URL }}/instances/${{ secrets.ZAPI_INSTANCE_ID }}/token/${{ secrets.ZAPI_TOKEN }}/send-text" \
+            -H "Client-Token: ${{ secrets.ZAPI_CLIENT_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"phone\":\"${{ secrets.MAURO_PHONE }}\",\"message\":\"[ALERTA] Sparkle Runtime OFFLINE ou DEGRADADO. Status: ${{ steps.runtime.outputs.status }}. Verificar imediatamente.\"}" || true
+
+  check-portal:
+    name: Check Portal Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Portal
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://portal.sparkleai.tech/ 2>/dev/null || echo "000")
+          if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
+            echo "::error::Portal offline (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "Portal OK: HTTP $HTTP_CODE"
+
+      - name: Notify WhatsApp on Portal failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.ZAPI_BASE_URL }}/instances/${{ secrets.ZAPI_INSTANCE_ID }}/token/${{ secrets.ZAPI_TOKEN }}/send-text" \
+            -H "Client-Token: ${{ secrets.ZAPI_CLIENT_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"phone\":\"${{ secrets.MAURO_PHONE }}\",\"message\":\"[ALERTA] Portal Sparkle OFFLINE (HTTP $HTTP_CODE). Verificar imediatamente.\"}" || true

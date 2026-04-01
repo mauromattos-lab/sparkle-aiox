@@ -18,10 +18,13 @@ export default function DashboardZenya({ client }: Props) {
   const [metrics, setMetrics] = useState<ZenyaMetrics | null>(null)
 
   useEffect(() => {
-    fetch('/api/metrics/zenya')
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    fetch('/api/metrics/zenya', { signal: controller.signal })
       .then(r => r.ok ? r.json() : null)
       .then(d => d && setMetrics(d))
       .catch(() => {})
+      .finally(() => clearTimeout(timeout))
   }, [])
 
   const isActive = client.status === 'active' || client.status === 'ativo'
@@ -32,12 +35,8 @@ export default function DashboardZenya({ client }: Props) {
   return (
     <section>
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
+        <div className="w-8 h-8 rounded-lg overflow-hidden border border-accent/30">
+          <img src="/zenya.png" alt="Zenya" className="w-full h-full object-cover" />
         </div>
         <div>
           <h2 className="text-base font-semibold text-white">Zenya — Atendimento IA</h2>
@@ -69,7 +68,7 @@ export default function DashboardZenya({ client }: Props) {
       </div>
 
       {metrics && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Card title="Conversas este mês" value={String(metrics.total_mes)} subtitle="Total de atendimentos" accent="purple" />
           <Card title="Hoje" value={String(metrics.hoje)} subtitle="Conversas iniciadas" accent="cyan" />
           <Card title="Taxa de resolução" value={`${metrics.taxa_resolucao}%`} subtitle="Resolvidos pela Zenya" accent="green" />
