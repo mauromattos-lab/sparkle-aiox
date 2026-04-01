@@ -15,7 +15,7 @@ from runtime.config import settings
 from runtime.db import supabase
 
 BUCKET = "friday-audio"
-ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel — voz feminina natural em PT
+ELEVENLABS_VOICE_ID = "RGymW84CSmfVugnA5tvA"  # Roberta — voz oficial da Friday (configurada na conta ElevenLabs)
 ELEVENLABS_MODEL = "eleven_multilingual_v2"
 
 

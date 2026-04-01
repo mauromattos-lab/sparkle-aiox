@@ -28,3 +28,6 @@ redis>=5.2.1
 
 # Scheduler
 apscheduler>=3.10.0
+
+# TTS fallback
+gtts>=2.5.0
