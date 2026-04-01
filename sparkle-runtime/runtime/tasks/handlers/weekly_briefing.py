@@ -12,6 +12,7 @@ Acionado manualmente ("me dá o briefing semanal") ou via cron.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from runtime.config import settings
@@ -20,17 +21,17 @@ from runtime.tasks.handlers.status_mrr import handle_status_mrr
 from runtime.utils.llm import call_claude
 
 
-def handle_weekly_briefing(task: dict) -> dict:
+async def handle_weekly_briefing(task: dict) -> dict:
     """
     Monta o relatório semanal e opcionalmente envia via WhatsApp.
     Retorna {"message": "<texto>"}.
     """
-    texto = _build_weekly_text(task)
+    texto = await _build_weekly_text(task)
 
     if settings.mauro_whatsapp:
         try:
             from runtime.integrations.zapi import send_text
-            send_text(settings.mauro_whatsapp, texto)
+            await asyncio.to_thread(send_text, settings.mauro_whatsapp, texto)
         except Exception as e:
             print(f"[weekly_briefing] failed to send WhatsApp: {e}")
 
@@ -39,7 +40,7 @@ def handle_weekly_briefing(task: dict) -> dict:
 
 # ── Builder ────────────────────────────────────────────────────────────────────
 
-def _build_weekly_text(task: dict) -> str:
+async def _build_weekly_text(task: dict) -> str:
     from zoneinfo import ZoneInfo
     tz = ZoneInfo("America/Sao_Paulo")
     now_brt = datetime.now(tz)
@@ -53,7 +54,7 @@ def _build_weekly_text(task: dict) -> str:
 
     # ── 1. MRR ──────────────────────────────────────────────
     try:
-        mrr_result = handle_status_mrr({})
+        mrr_result = await handle_status_mrr({})
         total_mrr = mrr_result.get("total_mrr", 0)
         clients = mrr_result.get("clients", [])
         mrr_fmt = f"R$ {total_mrr:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -70,8 +71,8 @@ def _build_weekly_text(task: dict) -> str:
 
     # ── 2. Tasks dos últimos 7 dias ──────────────────────────
     try:
-        res = (
-            supabase.table("runtime_tasks")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
             .select("task_type,status")
             .gte("created_at", cutoff_iso)
             .execute()
@@ -99,8 +100,8 @@ def _build_weekly_text(task: dict) -> str:
 
     # ── 3. Notas criadas nos últimos 7 dias ──────────────────
     try:
-        res = (
-            supabase.table("notes")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("notes")
             .select("summary,content,created_at")
             .gte("created_at", cutoff_iso)
             .order("created_at", desc=True)
@@ -118,8 +119,8 @@ def _build_weekly_text(task: dict) -> str:
 
     # ── 4. Conversas atendidas ───────────────────────────────
     try:
-        res = (
-            supabase.table("conversation_history")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("conversation_history")
             .select("phone")
             .gte("created_at", cutoff_iso)
             .eq("role", "user")
@@ -138,7 +139,7 @@ def _build_weekly_text(task: dict) -> str:
     # ── 5. Frase de encerramento gerada pela Friday ──────────
     try:
         task_id = task.get("id")
-        closing = call_claude(
+        closing = await call_claude(
             prompt=(
                 "Você é Friday, assistente da Sparkle AIOX. "
                 "Escreva UMA frase de encerramento motivadora e direta para o briefing semanal do Mauro. "

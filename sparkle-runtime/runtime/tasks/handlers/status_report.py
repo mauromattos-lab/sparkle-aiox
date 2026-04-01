@@ -8,7 +8,7 @@ from __future__ import annotations
 from runtime.db import supabase
 
 
-def handle_status_report(task: dict) -> dict:
+async def handle_status_report(task: dict) -> dict:
     summary_lines = []
 
     # Active agents

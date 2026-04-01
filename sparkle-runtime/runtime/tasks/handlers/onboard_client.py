@@ -19,6 +19,7 @@ Modelos:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import uuid
@@ -45,7 +46,7 @@ N8N_KEY = None  # carregado no runtime via settings (injetado se disponível)
 
 # ── HTML utils ─────────────────────────────────────────────
 
-def _scrape_site(url: str) -> str:
+async def _scrape_site(url: str) -> str:
     """Baixa a página e extrai texto limpo (sem tags HTML). Máx 8.000 chars."""
     if not url:
         return ""
@@ -53,9 +54,11 @@ def _scrape_site(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     try:
-        r = httpx.get(url, timeout=15, follow_redirects=True, verify=False, headers={
-            "User-Agent": "Mozilla/5.0 (compatible; SparkleBot/1.0)"
-        })
+        r = await asyncio.to_thread(
+            lambda: httpx.get(url, timeout=15, follow_redirects=True, verify=False, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; SparkleBot/1.0)"
+            })
+        )
         r.raise_for_status()
         html = r.text
     except Exception as e:
@@ -101,7 +104,7 @@ REGRAS para o system_prompt:
 IMPORTANTE: Responda APENAS com JSON válido, sem blocos de código, sem markdown."""
 
 
-def _generate_kb_and_prompt(
+async def _generate_kb_and_prompt(
     business_name: str,
     business_type: str,
     site_content: str,
@@ -120,7 +123,7 @@ CONTEÚDO DO SITE:
 {site_content or '[site não disponível ou não informado]'}
 """.strip()
 
-    raw = call_claude(
+    raw = await call_claude(
         prompt=context,
         system=_KB_SYSTEM,
         model="claude-sonnet-4-6",
@@ -144,7 +147,7 @@ CONTEÚDO DO SITE:
 
 # ── Supabase: criar cliente + inserir KB ───────────────────
 
-def _upsert_client(
+async def _upsert_client(
     business_name: str,
     business_type: str,
     phone: str,
@@ -157,23 +160,25 @@ def _upsert_client(
     slug = re.sub(r"[^a-z0-9]+", "-", business_name.lower()).strip("-")
 
     try:
-        res = supabase.table("clients").upsert({
-            "id": client_id,
-            "name": business_name,
-            "slug": slug,
-            "type": business_type,
-            "phone": phone,
-            "status": "onboarding",
-            "mrr": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }, on_conflict="id").execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("clients").upsert({
+                "id": client_id,
+                "name": business_name,
+                "slug": slug,
+                "type": business_type,
+                "phone": phone,
+                "status": "onboarding",
+                "mrr": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="id").execute()
+        )
         return client_id
     except Exception as e:
         print(f"[onboard] upsert client falhou: {e}")
         return client_id
 
 
-def _insert_kb(client_id: str, kb_items: list[dict]) -> int:
+async def _insert_kb(client_id: str, kb_items: list[dict]) -> int:
     """Insere itens de KB em `zenya_knowledge_base`. Retorna qtd inserida."""
     if not kb_items:
         return 0
@@ -191,7 +196,9 @@ def _insert_kb(client_id: str, kb_items: list[dict]) -> int:
         })
 
     try:
-        supabase.table("zenya_knowledge_base").insert(records).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_knowledge_base").insert(records).execute()
+        )
         return len(records)
     except Exception as e:
         print(f"[onboard] insert KB falhou: {e}")
@@ -281,7 +288,7 @@ def _clone_workflows_n8n(
 
 # ── Handler principal ──────────────────────────────────────
 
-def handle_onboard_client(task: dict) -> dict:
+async def handle_onboard_client(task: dict) -> dict:
     """
     Onboarding autônomo de novo cliente Zenya.
 
@@ -313,11 +320,11 @@ def handle_onboard_client(task: dict) -> dict:
 
     # 1. Scrape site
     print(f"[onboard] Iniciando onboarding: {business_name} ({site_url})")
-    site_content = _scrape_site(site_url) if site_url else ""
+    site_content = await _scrape_site(site_url) if site_url else ""
     steps.append(f"Site: {'scraped' if site_content else 'indisponível'}")
 
     # 2. Gerar KB + system prompt
-    generated = _generate_kb_and_prompt(
+    generated = await _generate_kb_and_prompt(
         business_name=business_name,
         business_type=business_type,
         site_content=site_content,
@@ -332,15 +339,16 @@ def handle_onboard_client(task: dict) -> dict:
 
     # 3. Criar/atualizar cliente no Supabase
     slug = re.sub(r"[^a-z0-9]+", "-", business_name.lower()).strip("-")
-    actual_client_id = _upsert_client(business_name, business_type, phone, client_id)
+    actual_client_id = await _upsert_client(business_name, business_type, phone, client_id)
     steps.append(f"Cliente: {actual_client_id[:8]}...")
 
     # 4. Inserir KB
-    kb_count = _insert_kb(actual_client_id, kb_items)
+    kb_count = await _insert_kb(actual_client_id, kb_items)
     steps.append(f"KB inserida: {kb_count} registros")
 
     # 5. Clonar workflows n8n
-    workflows = _clone_workflows_n8n(
+    workflows = await asyncio.to_thread(
+        _clone_workflows_n8n,
         business_name=business_name,
         slug=slug,
         phone=phone,
@@ -351,14 +359,16 @@ def handle_onboard_client(task: dict) -> dict:
 
     # 6. Salvar system_prompt como nota no Supabase
     try:
-        supabase.table("notes").insert({
-            "client_id": actual_client_id,
-            "agent_id": "friday",
-            "task_id": task_id,
-            "content": system_prompt,
-            "summary": f"System prompt gerado para {business_name}",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("notes").insert({
+                "client_id": actual_client_id,
+                "agent_id": "friday",
+                "task_id": task_id,
+                "content": system_prompt,
+                "summary": f"System prompt gerado para {business_name}",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        )
     except Exception as e:
         print(f"[onboard] save system_prompt falhou: {e}")
 

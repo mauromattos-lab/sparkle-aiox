@@ -57,7 +57,7 @@ def _ensure_knowledge_base_table() -> None:
             print(f"[learn] could not create knowledge_base table: {e}")
 
 
-def handle_learn_from_conversation(task: dict) -> dict:
+async def handle_learn_from_conversation(task: dict) -> dict:
     """
     Extrai aprendizados de uma conversa e insere no KB do cliente.
 
@@ -87,7 +87,7 @@ def handle_learn_from_conversation(task: dict) -> dict:
 
     print(f"[learn] Analisando conversa {conversation_id} para {client_name} ({len(conversation)} msgs)")
 
-    raw = call_claude(
+    raw = await call_claude(
         prompt=prompt,
         system=EXTRACT_SYSTEM,
         model="claude-haiku-4-5-20251001",

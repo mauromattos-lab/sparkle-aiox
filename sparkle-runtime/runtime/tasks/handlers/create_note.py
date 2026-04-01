@@ -13,7 +13,7 @@ from runtime.config import settings
 from runtime.db import supabase
 
 
-def handle_create_note(task: dict) -> dict:
+async def handle_create_note(task: dict) -> dict:
     """
     Extrai o conteúdo da nota do payload e salva no Supabase.
     Retorna {"message": "Anotado ✅ — <resumo>"}.

@@ -14,7 +14,7 @@ from __future__ import annotations
 from runtime.db import supabase
 
 
-def handle_conversation_summary(task: dict) -> dict:
+async def handle_conversation_summary(task: dict) -> dict:
     """
     Busca histórico de conversa de um número e cria task de aprendizado.
 

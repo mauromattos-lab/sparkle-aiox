@@ -7,6 +7,7 @@ Acionado automaticamente pelo ARQ cron job em worker.py (11h UTC = 8h Brasília)
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from runtime.config import settings
@@ -14,25 +15,25 @@ from runtime.db import supabase
 from runtime.tasks.handlers.status_mrr import handle_status_mrr
 
 
-def handle_daily_briefing(task: dict) -> dict:
+async def handle_daily_briefing(task: dict) -> dict:
     """
     Monta e envia o relatório diário às 8h de Brasília.
     Retorna {"message": "<texto enviado>"} para o result da task.
     """
-    texto = _build_briefing_text()
+    texto = await _build_briefing_text()
 
     # Envia via WhatsApp se o número estiver configurado
     if settings.mauro_whatsapp:
         try:
             from runtime.integrations.zapi import send_text
-            send_text(settings.mauro_whatsapp, texto)
+            await asyncio.to_thread(send_text, settings.mauro_whatsapp, texto)
         except Exception as e:
             print(f"[daily_briefing] failed to send WhatsApp: {e}")
 
     return {"message": texto}
 
 
-def _build_briefing_text() -> str:
+async def _build_briefing_text() -> str:
     """Constrói o texto amigável do relatório diário."""
     from zoneinfo import ZoneInfo
     tz = ZoneInfo("America/Sao_Paulo")
@@ -47,8 +48,8 @@ def _build_briefing_text() -> str:
 
     # --- 1. Tasks executadas nas últimas 24h por tipo ---
     try:
-        res = (
-            supabase.table("runtime_tasks")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
             .select("task_type")
             .gte("completed_at", cutoff_iso)
             .eq("status", "done")
@@ -71,8 +72,8 @@ def _build_briefing_text() -> str:
 
     # --- 2. Mensagens recebidas (conversation_history) nas últimas 24h ---
     try:
-        res = (
-            supabase.table("conversation_history")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("conversation_history")
             .select("phone")
             .gte("created_at", cutoff_iso)
             .eq("role", "user")
@@ -88,8 +89,8 @@ def _build_briefing_text() -> str:
 
     # --- 3. Notas criadas nas últimas 24h ---
     try:
-        res = (
-            supabase.table("notes")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("notes")
             .select("summary,content")
             .gte("created_at", cutoff_iso)
             .execute()
@@ -106,7 +107,7 @@ def _build_briefing_text() -> str:
 
     # --- 4. MRR atual ---
     try:
-        mrr_result = handle_status_mrr({})
+        mrr_result = await handle_status_mrr({})
         total_mrr = mrr_result.get("total_mrr", 0)
         n_clients = len(mrr_result.get("clients", []))
         mrr_formatted = f"R$ {total_mrr:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")

@@ -16,7 +16,7 @@ from runtime.config import settings
 from runtime.db import supabase
 
 
-def handle_health_alert(task: dict) -> dict:
+async def handle_health_alert(task: dict) -> dict:
     """
     Verifica saúde do runtime e envia alertas via WhatsApp se necessário.
     Retorna {"message": "ok"} se tudo saudável, ou lista de alertas encontrados.

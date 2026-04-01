@@ -20,7 +20,7 @@ _HARDCODED_CLIENTS = [
 _HARDCODED_MRR = sum(c["mrr"] for c in _HARDCODED_CLIENTS)
 
 
-def handle_status_mrr(task: dict) -> dict:
+async def handle_status_mrr(task: dict) -> dict:
     """
     Retorna o MRR atual. Tenta Supabase primeiro; cai no fallback se necessário.
     """

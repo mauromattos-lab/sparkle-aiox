@@ -27,19 +27,19 @@ router = APIRouter()
 
 # ── Core executor ──────────────────────────────────────────
 
-def execute_task(task: dict) -> None:
+async def execute_task(task: dict) -> None:
     """
-    Execute a single task synchronously.
+    Execute a single task asynchronously.
     Updates Supabase status: running → done | failed.
     """
     task_id = task["id"]
     task_type = task.get("task_type", "")
 
-    _update_task(task_id, {"status": "running", "started_at": _now()})
+    await _update_task(task_id, {"status": "running", "started_at": _now()})
 
     handler = get_handler(task_type)
     if not handler:
-        _update_task(task_id, {
+        await _update_task(task_id, {
             "status": "failed",
             "error": f"No handler registered for task_type '{task_type}'",
             "completed_at": _now(),
@@ -47,8 +47,8 @@ def execute_task(task: dict) -> None:
         return
 
     try:
-        result = handler(task)
-        _update_task(task_id, {
+        result = await handler(task)
+        await _update_task(task_id, {
             "status": "done",
             "result": result,
             "completed_at": _now(),
@@ -57,22 +57,24 @@ def execute_task(task: dict) -> None:
         retry_count = task.get("retry_count", 0)
         max_retries = task.get("max_retries", 3)
         if retry_count < max_retries:
-            _update_task(task_id, {
+            await _update_task(task_id, {
                 "status": "pending",
                 "retry_count": retry_count + 1,
                 "error": str(e),
             })
         else:
-            _update_task(task_id, {
+            await _update_task(task_id, {
                 "status": "failed",
                 "error": str(e),
                 "completed_at": _now(),
             })
 
 
-def _update_task(task_id: str, data: dict) -> None:
+async def _update_task(task_id: str, data: dict) -> None:
     data["updated_at"] = _now()
-    supabase.table("runtime_tasks").update(data).eq("id", task_id).execute()
+    await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").update(data).eq("id", task_id).execute()
+    )
 
 
 def _now() -> str:
@@ -82,13 +84,13 @@ def _now() -> str:
 # ── In-process polling endpoint (dev / no-Redis fallback) ──
 
 @router.post("/poll")
-def poll_one_task():
+async def poll_one_task():
     """
     Pick the highest-priority pending task and execute it.
     Used in development or as fallback when ARQ worker isn't running.
     """
-    res = (
-        supabase.table("runtime_tasks")
+    res = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks")
         .select("*")
         .eq("status", "pending")
         .order("priority", desc=True)
@@ -100,16 +102,16 @@ def poll_one_task():
         return {"status": "no_tasks"}
 
     task = res.data[0]
-    execute_task(task)
+    await execute_task(task)
     return {"status": "executed", "task_id": task["id"], "task_type": task["task_type"]}
 
 
 # ── ARQ worker settings ─────────────────────────────────────
 
 async def process_pending_tasks(ctx: dict) -> None:
-    """ARQ job: poll and process all pending tasks."""
-    res = (
-        supabase.table("runtime_tasks")
+    """ARQ job: poll and process all pending tasks in parallel."""
+    res = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks")
         .select("*")
         .eq("status", "pending")
         .order("priority", desc=True)
@@ -118,8 +120,8 @@ async def process_pending_tasks(ctx: dict) -> None:
         .execute()
     )
     tasks = res.data or []
-    for task in tasks:
-        execute_task(task)
+    if tasks:
+        await asyncio.gather(*[execute_task(task) for task in tasks])
 
 
 async def trigger_daily_briefing(ctx: dict) -> None:
@@ -127,14 +129,16 @@ async def trigger_daily_briefing(ctx: dict) -> None:
     ARQ cron: dispara a task daily_briefing às 8h de Brasília (11h UTC).
     Insere uma task na fila para ser executada pelo process_pending_tasks.
     """
-    task = supabase.table("runtime_tasks").insert({
-        "agent_id": "friday",
-        "client_id": settings.sparkle_internal_client_id,
-        "task_type": "daily_briefing",
-        "payload": {"source": "cron_8h_brasilia"},
-        "status": "pending",
-        "priority": 8,
-    }).execute()
+    task = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").insert({
+            "agent_id": "friday",
+            "client_id": settings.sparkle_internal_client_id,
+            "task_type": "daily_briefing",
+            "payload": {"source": "cron_8h_brasilia"},
+            "status": "pending",
+            "priority": 8,
+        }).execute()
+    )
     task_id = task.data[0]["id"] if task.data else None
     print(f"[worker] daily_briefing triggered — task_id={task_id}")
 
@@ -144,14 +148,16 @@ async def trigger_health_check(ctx: dict) -> None:
     ARQ cron: dispara a task health_alert a cada 15 minutos.
     Verifica saúde das Zenyas e alerta Mauro via WhatsApp se houver problema.
     """
-    task = supabase.table("runtime_tasks").insert({
-        "agent_id": "friday",
-        "client_id": settings.sparkle_internal_client_id,
-        "task_type": "health_alert",
-        "payload": {"source": "cron_15min"},
-        "status": "pending",
-        "priority": 8,
-    }).execute()
+    task = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").insert({
+            "agent_id": "friday",
+            "client_id": settings.sparkle_internal_client_id,
+            "task_type": "health_alert",
+            "payload": {"source": "cron_15min"},
+            "status": "pending",
+            "priority": 8,
+        }).execute()
+    )
     task_id = task.data[0]["id"] if task.data else None
     print(f"[worker] health_alert triggered — task_id={task_id}")
 

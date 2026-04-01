@@ -51,7 +51,7 @@ class OnboardRequest(BaseModel):
     site_url: str = ""
     phone: str = ""
     extra_info: str = ""
-    client_id: Optional[str] = None  # existing Supabase client_id, if any
+    client_id: Optional[str] = None
 
 
 # ── Endpoints ──────────────────────────────────────────────
@@ -61,9 +61,9 @@ async def receive_message(req: TextMessageRequest, background_tasks: BackgroundT
     """Accept plain text from Mauro and process intent."""
     try:
         from runtime.tasks.worker import execute_task
-        task = classify_and_dispatch(req.text, from_number=req.from_number)
+        task = await classify_and_dispatch(req.text, from_number=req.from_number)
         task = hydrate_context(task)
-        execute_task(task)
+        await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
         return {"status": "ok", "task_id": task.get("id"), "response": response_text}
     except Exception as e:
@@ -76,10 +76,10 @@ async def receive_audio_file(file: UploadFile = File(...), from_number: str = ""
     try:
         from runtime.tasks.worker import execute_task
         audio_bytes = await file.read()
-        transcript = transcribe_bytes(audio_bytes, filename=file.filename or "audio.ogg")
-        task = classify_and_dispatch(transcript, from_number=from_number)
+        transcript = await asyncio.to_thread(transcribe_bytes, audio_bytes, file.filename or "audio.ogg")
+        task = await classify_and_dispatch(transcript, from_number=from_number)
         task = hydrate_context(task)
-        execute_task(task)
+        await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
         return {
             "status": "ok",
@@ -96,10 +96,10 @@ async def receive_audio_url(req: AudioUrlRequest):
     """Accept audio URL (e.g. from Z-API) and process."""
     try:
         from runtime.tasks.worker import execute_task
-        transcript = transcribe_url(req.audio_url)
-        task = classify_and_dispatch(transcript, from_number=req.from_number)
+        transcript = await asyncio.to_thread(transcribe_url, req.audio_url)
+        task = await classify_and_dispatch(transcript, from_number=req.from_number)
         task = hydrate_context(task)
-        execute_task(task)
+        await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
         return {
             "status": "ok",
@@ -120,23 +120,25 @@ async def onboard_client(req: OnboardRequest):
     """
     try:
         from runtime.tasks.worker import execute_task
-        task = supabase.table("runtime_tasks").insert({
-            "agent_id": "friday",
-            "client_id": settings.sparkle_internal_client_id,
-            "task_type": "onboard_client",
-            "payload": {
-                "business_name": req.business_name,
-                "business_type": req.business_type,
-                "site_url": req.site_url,
-                "phone": req.phone,
-                "extra_info": req.extra_info,
-                "client_id": req.client_id,
-            },
-            "status": "pending",
-            "priority": 9,
-        }).execute()
+        task = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "onboard_client",
+                "payload": {
+                    "business_name": req.business_name,
+                    "business_type": req.business_type,
+                    "site_url": req.site_url,
+                    "phone": req.phone,
+                    "extra_info": req.extra_info,
+                    "client_id": req.client_id,
+                },
+                "status": "pending",
+                "priority": 9,
+            }).execute()
+        )
         task_record = task.data[0] if task.data else {}
-        execute_task(task_record)
+        await execute_task(task_record)
         response_text = await _wait_for_task(task_record.get("id"), timeout=120)
         return {
             "status": "ok",
@@ -176,16 +178,16 @@ async def _process_text(text: str, from_number: str) -> None:
     from runtime.integrations.zapi import send_text
     from runtime.tasks.worker import execute_task
     try:
-        task = classify_and_dispatch(text, from_number=from_number)
+        task = await classify_and_dispatch(text, from_number=from_number)
         task = hydrate_context(task)
-        execute_task(task)
+        await execute_task(task)
         response = await _wait_for_task(task.get("id"), timeout=30)
         if from_number:
-            send_text(from_number, response)
+            await asyncio.to_thread(send_text, from_number, response)
     except Exception as e:
         if from_number:
             from runtime.integrations.zapi import send_text as _send
-            _send(from_number, build_error_response(e))
+            await asyncio.to_thread(_send, from_number, build_error_response(e))
 
 
 async def _process_audio_url(audio_url: str, from_number: str) -> None:
@@ -194,14 +196,12 @@ async def _process_audio_url(audio_url: str, from_number: str) -> None:
     from runtime.utils.tts import text_to_audio_url
     try:
         print(f"[friday] Áudio recebido de {from_number!r}, transcrevendo...")
-        transcript = transcribe_url(audio_url)
-        task = classify_and_dispatch(transcript, from_number=from_number)
+        transcript = await asyncio.to_thread(transcribe_url, audio_url)
+        task = await classify_and_dispatch(transcript, from_number=from_number)
         task = hydrate_context(task)
-        execute_task(task)
+        await execute_task(task)
         response = await _wait_for_task(task.get("id"), timeout=30)
         if from_number:
-            # Espelha a modalidade: Mauro mandou áudio → Friday responde em áudio
-            # response já é a string final — remover markdown antes do TTS
             import re
             plain_response = re.sub(r'\*+([^*]+)\*+', r'\1', response)
             plain_response = re.sub(r'_([^_]+)_', r'\1', plain_response)
@@ -209,15 +209,14 @@ async def _process_audio_url(audio_url: str, from_number: str) -> None:
             tts_url = text_to_audio_url(plain_response)
             if tts_url:
                 print(f"[friday] Respondendo em áudio: {tts_url}")
-                send_audio(from_number, tts_url)
+                await asyncio.to_thread(send_audio, from_number, tts_url)
             else:
-                # Fallback: TTS falhou → envia texto normal
                 print("[friday] TTS falhou — usando fallback texto")
-                send_text(from_number, response)
+                await asyncio.to_thread(send_text, from_number, response)
     except Exception as e:
         if from_number:
             from runtime.integrations.zapi import send_text as _send
-            _send(from_number, build_error_response(e))
+            await asyncio.to_thread(_send, from_number, build_error_response(e))
 
 
 async def _wait_for_task(task_id: Optional[str], timeout: int = 20) -> str:
@@ -232,7 +231,9 @@ async def _wait_for_task(task_id: Optional[str], timeout: int = 20) -> str:
     import time
     deadline = time.time() + timeout
     while time.time() < deadline:
-        result = supabase.table("runtime_tasks").select("*").eq("id", task_id).single().execute()
+        result = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").select("*").eq("id", task_id).single().execute()
+        )
         task = result.data or {}
         if task.get("status") in ("done", "failed"):
             return build_response(task)

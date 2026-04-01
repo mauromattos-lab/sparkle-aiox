@@ -24,7 +24,7 @@ _KNOWN_AGENTS = {
 }
 
 
-def handle_activate_agent(task: dict) -> dict:
+async def handle_activate_agent(task: dict) -> dict:
     """
     Registra solicitação de ativação de agente no Supabase.
     Retorna {"message": "<confirmação>"}.

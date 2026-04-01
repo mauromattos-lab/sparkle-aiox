@@ -12,6 +12,7 @@ Sprint 3:
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -88,11 +89,11 @@ def _get_current_datetime() -> str:
     return f"{dia_semana}, {now.day:02d} de {mes} de {now.year} às {now.hour:02d}:{now.minute:02d}"
 
 
-def _get_history(phone: str, limit: int = 5) -> list[dict]:
+async def _get_history(phone: str, limit: int = 5) -> list[dict]:
     """Busca histórico de conversa do número (ordem cronológica)."""
     try:
-        res = (
-            supabase.table("conversation_history")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("conversation_history")
             .select("role,content")
             .eq("phone", phone)
             .order("created_at", desc=True)
@@ -106,19 +107,21 @@ def _get_history(phone: str, limit: int = 5) -> list[dict]:
         return []
 
 
-def _save_to_history(phone: str, user_msg: str, assistant_msg: str) -> None:
+async def _save_to_history(phone: str, user_msg: str, assistant_msg: str) -> None:
     """Salva par de mensagens no histórico com timestamps distintos (BUG-02 fix)."""
     try:
         now = datetime.now(timezone.utc)
-        supabase.table("conversation_history").insert([
-            {"phone": phone, "role": "user", "content": user_msg, "created_at": now.isoformat()},
-            {"phone": phone, "role": "assistant", "content": assistant_msg, "created_at": (now + timedelta(seconds=1)).isoformat()},
-        ]).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("conversation_history").insert([
+                {"phone": phone, "role": "user", "content": user_msg, "created_at": now.isoformat()},
+                {"phone": phone, "role": "assistant", "content": assistant_msg, "created_at": (now + timedelta(seconds=1)).isoformat()},
+            ]).execute()
+        )
     except Exception as e:
         print(f"[chat] history save failed: {e}")
 
 
-def handle_chat(task: dict) -> dict:
+async def handle_chat(task: dict) -> dict:
     """
     Conversa livre com Claude Sonnet usando a persona da Friday.
     Injeta datetime atual + histórico de conversa no contexto.
@@ -138,7 +141,7 @@ def handle_chat(task: dict) -> dict:
     system_prompt = _FRIDAY_SYSTEM_BASE + f"\nData e hora atual: {current_datetime} (horário de Brasília)\n"
 
     # --- Histórico de conversa ---
-    history = _get_history(phone)
+    history = await _get_history(phone)
     history_text = ""
     for msg in history:
         role_label = "Mauro" if msg["role"] == "user" else "Friday"
@@ -150,7 +153,7 @@ def handle_chat(task: dict) -> dict:
         prompt_with_history = user_text
 
     # --- Chamada ao Claude ---
-    response = call_claude(
+    response = await call_claude(
         prompt=prompt_with_history,
         system=system_prompt,
         model="claude-sonnet-4-6",
@@ -162,6 +165,6 @@ def handle_chat(task: dict) -> dict:
     )
 
     # --- Salva no histórico ---
-    _save_to_history(phone, user_text, response)
+    await _save_to_history(phone, user_text, response)
 
     return {"message": response}

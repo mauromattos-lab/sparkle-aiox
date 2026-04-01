@@ -5,6 +5,7 @@ Uses Claude Haiku for intent classification (cheap + fast).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Optional
 
@@ -21,10 +22,11 @@ INTENTS = [
     "activate_agent",  # "ativa o @dev pra fazer X", "chama o arquiteto"
     "weekly_briefing", # "resumo da semana", "o que rolou essa semana"
     "onboard_client",  # "onborda [nome] site:[url] tipo:[tipo]" — Sprint 8
+    "brain_query",     # "brain, o que você sabe sobre X?", "consulta o brain sobre Y"
     "echo",            # teste — retorna o que foi dito
 ]
 
-_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, echo
+_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, echo
 
 REGRAS DE CLASSIFICACAO:
 - status_mrr: menciona MRR, faturamento, quanto fatura, receita mensal
@@ -34,16 +36,20 @@ REGRAS DE CLASSIFICACAO:
 - activate_agent: ativa @agente para fazer algo
 - weekly_briefing: resumo da semana, o que rolou essa semana
 - onboard_client: "onborda", "onboard", "configura zenya para", "cria cliente", "novo cliente zenya" — extrai params: business_name, site_url, business_type, phone
+- brain_query: "brain", "o que voce sabe sobre", "consulta o brain", "o que o brain sabe", "brain me fala" — extrai param: query (o que quer saber)
 - echo: apenas para testes com a palavra "echo"
 
 IMPORTANTE: Responda APENAS com JSON valido, sem blocos de codigo, sem markdown.
 Formato: {"intent": "<intent>", "params": {}, "summary": "<1 linha resumindo o pedido>"}
 
 Para onboard_client, extraia params do texto:
-{"intent": "onboard_client", "params": {"business_name": "X", "site_url": "url", "business_type": "tipo", "phone": "55..."}, "summary": "Onboarding X"}"""
+{"intent": "onboard_client", "params": {"business_name": "X", "site_url": "url", "business_type": "tipo", "phone": "55..."}, "summary": "Onboarding X"}
+
+Para brain_query, extraia params do texto:
+{"intent": "brain_query", "params": {"query": "o que o usuário quer saber"}, "summary": "Brain query: <tema>"}"""
 
 
-def classify_and_dispatch(
+async def classify_and_dispatch(
     text: str,
     from_number: str = "",
     task_id: Optional[str] = None,
@@ -52,7 +58,7 @@ def classify_and_dispatch(
     Classify intent from text and insert a runtime_task.
     Returns the created task record.
     """
-    raw = call_claude(
+    raw = await call_claude(
         prompt=text,
         system=_CLASSIFY_SYSTEM,
         model="claude-haiku-4-5-20251001",
@@ -64,11 +70,9 @@ def classify_and_dispatch(
     )
 
     try:
-        # Strip markdown code fences if Haiku wraps the JSON (e.g. ```json ... ```)
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             lines = cleaned.splitlines()
-            # Remove first line (```json or ```) and last line (```)
             lines = [l for l in lines if not l.strip().startswith("```")]
             cleaned = "\n".join(lines).strip()
         parsed = json.loads(cleaned)
@@ -79,7 +83,6 @@ def classify_and_dispatch(
     params: dict = parsed.get("params", {})
     summary: str = parsed.get("summary", text[:200])
 
-    # Guard: only allow known intents
     if intent not in INTENTS:
         intent = "chat"
 
@@ -91,17 +94,21 @@ def classify_and_dispatch(
         "from_number": from_number,
     }
 
-    # Para onboard_client: eleva params para o nível do payload (handler espera campos planos)
     if intent == "onboard_client" and params:
         task_payload.update(params)
 
-    task = supabase.table("runtime_tasks").insert({
-        "agent_id": "friday",
-        "client_id": settings.sparkle_internal_client_id,
-        "task_type": intent,
-        "payload": task_payload,
-        "status": "pending",
-        "priority": 7,
-    }).execute()
+    if intent == "brain_query" and params.get("query"):
+        task_payload["query"] = params["query"]
+
+    task = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").insert({
+            "agent_id": "friday",
+            "client_id": settings.sparkle_internal_client_id,
+            "task_type": intent,
+            "payload": task_payload,
+            "status": "pending",
+            "priority": 7,
+        }).execute()
+    )
 
     return task.data[0] if task.data else {}
