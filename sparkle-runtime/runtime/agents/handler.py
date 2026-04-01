@@ -1,5 +1,5 @@
 """
-Agent invocation handler — S3-03.
+Agent invocation handler — S3-03 + S5-02.
 
 Fetches agent configuration from Supabase `agents` table and calls Claude
 via call_claude(). Never calls anthropic.Client directly.
@@ -7,7 +7,11 @@ via call_claude(). Never calls anthropic.Client directly.
 Flow:
   1. SELECT agent from Supabase WHERE agent_id=? AND active=true
   2. Extract system_prompt, model, max_tokens, client_id
-  3. Optionally enrich system_prompt with context (from_number, etc.)
+  3. Optionally enrich system_prompt with context:
+     - S5-01: context["system_prompt_override"] replaces the DB system_prompt entirely
+     - S5-02: context["phone"] triggers Member State Engine lookup and injects member
+              context block at the end of system_prompt
+     - from_number: append user phone number to system_prompt
   4. Call call_claude() with purpose="agent_invoke" for cost attribution
   5. Return dict with response, agent_id, model
 """
@@ -78,7 +82,26 @@ async def invoke_agent(
         or settings.sparkle_internal_client_id
     )
 
-    # 3. Enrich system_prompt with context if from_number is present
+    # 2b. system_prompt_override — used by character_handler to inject soul_prompt.
+    # When provided, replaces the agent's DB system_prompt entirely.
+    # This allows a generic "character-runner" agent to be reused by any character
+    # without modifying the agents table.
+    if context.get("system_prompt_override"):
+        system_prompt = context["system_prompt_override"]
+
+    # 3a. S5-02 — inject Member State Engine context if phone is in context
+    phone: str = context.get("phone", "")
+    if phone:
+        try:
+            from runtime.members.handler import get_member_context_for_agent
+            member_context = await get_member_context_for_agent(phone)
+            if member_context:
+                system_prompt = f"{system_prompt}\n\n{member_context}" if system_prompt else member_context
+        except Exception as _member_exc:
+            # Member context is best-effort — never block agent invocation
+            print(f"[agent/handler] member context fetch failed for {phone}: {_member_exc}")
+
+    # 3b. Enrich system_prompt with context if from_number is present
     from_number: str = context.get("from_number", "")
     if from_number and system_prompt:
         system_prompt = f"{system_prompt}\n\nNúmero do usuário: {from_number}"

@@ -1,5 +1,5 @@
 # Sparkle Runtime — Estado de Implementação
-_Atualizado: 2026-04-01 (S4-02 gap_report). Fonte de verdade para @dev, @qa, @devops e Orion._
+_Atualizado: 2026-04-01 (S5-02 member-state-engine). Fonte de verdade para @dev, @qa, @devops e Orion._
 _REGRA: atualizar este arquivo a cada handler criado, intent adicionado ou schema alterado._
 
 ---
@@ -34,7 +34,22 @@ _REGRA: atualizar este arquivo a cada handler criado, intent adicionado ou schem
 ### Agents (`/agent` — `runtime/agents/router.py`) — S3-03
 | Método | Path | O que faz |
 |--------|------|-----------|
-| POST | `/agent/invoke` | Invoca qualquer agente registrado na tabela `agents` pelo `agent_id`. Busca `system_prompt`, `model`, `max_tokens` no Supabase e chama `call_claude()`. Stateless, multi-tenant. Retorna `{response, agent_id, model}`. 404 se agente inexistente ou inativo. |
+| POST | `/agent/invoke` | Invoca qualquer agente registrado na tabela `agents` pelo `agent_id`. Busca `system_prompt`, `model`, `max_tokens` no Supabase e chama `call_claude()`. Stateless, multi-tenant. Retorna `{response, agent_id, model}`. 404 se agente inexistente ou inativo. Aceita `system_prompt_override` em `context` para injeção de soul_prompt de personagens sem modificar a tabela `agents`. |
+
+### Characters (`/character` — `runtime/characters/router.py`) — S5-01
+| Método | Path | O que faz |
+|--------|------|-----------|
+| POST | `/character/message` | Envia mensagem para um personagem. Payload: `{slug, message, user_identifier, channel, respond_with_audio}`. Busca personagem em `characters`, enriquece com lore público e histórico de 8 msgs, invoca agente associado com soul_prompt override, persiste em `character_conversations`. Se `respond_with_audio=True` e `voice_id` disponível, gera TTS via ElevenLabs (bucket `character-audio`). Retorna `{response, character_slug, model, audio_url, voice_id}`. 404 se slug inválido. 503 se sem agente vinculado. |
+| GET | `/character/{slug}` | Perfil público do personagem (sem soul_prompt, lore secreto, primary_agent_id). Retorna: slug, name, tagline, specialty, avatar_url, avatar_style, active_channels, lore_status. |
+
+### Members (`/member` — `runtime/members/router.py`) — S5-02
+| Método | Path | O que faz |
+|--------|------|-----------|
+| GET | `/member/{phone}` | Retorna perfil completo do membro: dados base + estado EAV (todos os keys, cada um com `value`, `set_by`, `updated_at`) + últimas 10 interações em ordem cronológica. 404 se membro não existe. |
+| POST | `/member` | Upsert de membro. Payload: `{phone, name?, email?, tags?}`. Cria ou atualiza — campos null não sobrescrevem valores existentes. |
+| POST | `/member/{phone}/state` | Upsert de um único key/value de estado EAV. Payload: `{key, value, set_by?}`. Auto-cria o membro se não existir. |
+| POST | `/member/{phone}/state/batch` | Upsert de múltiplos keys EAV em paralelo (asyncio.gather). Payload: `{states: [{key, value, set_by?}]}`. Auto-cria membro antes dos upserts. |
+| POST | `/member/{phone}/interaction` | Registra interação do membro. Payload: `{character_id?, channel?, summary?, sentiment?}`. Auto-cria membro se não existir. |
 
 ---
 
@@ -143,9 +158,10 @@ Modo fallback (in-process, sem Redis). Acionado no startup do FastAPI via `lifes
 ### TTS (`runtime/utils/tts.py`)
 - Provider primário: **ElevenLabs** (`eleven_multilingual_v2`, voice ID `21m00Tcm4TlvDq8ikWAM` — Rachel)
 - Fallback: **gTTS** (Google Text-to-Speech)
-- Upload para Supabase Storage, bucket `friday-audio` (público)
+- Upload para Supabase Storage, bucket `friday-audio` (público) — padrão Friday
 - Retorna URL pública para `send_audio()` Z-API
 - Ativado quando Mauro envia áudio → Friday responde em áudio
+- **S5-01:** `text_to_audio_url` agora aceita `voice_id` (ElevenLabs ID do personagem) e `bucket` opcionais. Personagens usam bucket `character-audio` e seu próprio `voice_id` da tabela `characters`. Sem `voice_id`, usa Rachel (comportamento original preservado).
 
 ### Context Hydrator (`runtime/tasks/hydrator.py`)
 - Rodado entre `classify_and_dispatch()` e `execute_task()` em todos os endpoints Friday
@@ -254,6 +270,92 @@ Colunas derivadas exclusivamente dos selects/inserts encontrados no código.
 
 **ATENÇÃO:** Colunas S3-03 requerem execução manual do SQL do `docs/S3-03-agent-invoke-spec.md` no Supabase (SQL Editor). SQL não foi aplicado automaticamente.
 
+### `characters` — S5-01
+| Coluna | Tipo inferido | Observação |
+|--------|---------------|------------|
+| `id` | UUID | PK |
+| `slug` | text | UNIQUE. Identificador de URL (ex: finch, pip) |
+| `name` | text | Nome do personagem |
+| `tagline` | text | Nullable |
+| `soul_prompt` | text | System prompt completo. Nunca exposto no GET público. |
+| `personality_traits` | jsonb | Array de strings |
+| `specialty` | text | Área de especialização |
+| `values` | jsonb | Array de strings — crenças fundacionais |
+| `voice_id` | text | Nullable. ElevenLabs voice ID. |
+| `voice_model` | text | DEFAULT `eleven_multilingual_v2` |
+| `avatar_url` | text | Nullable |
+| `avatar_style` | text | Nullable. Ex: illustrated, realistic |
+| `active_channels` | jsonb | Ex: `["whatsapp"]` |
+| `primary_agent_id` | text | FK → agents.agent_id. Nullable. |
+| `lore_status` | text | `hidden` / `hinted` / `revealed` |
+| `universe_connections` | jsonb | Relacionamentos com outros personagens |
+| `active` | boolean | DEFAULT true |
+| `created_at` / `updated_at` | timestamptz | updated_at atualizado por trigger |
+
+**ATENÇÃO:** Tabela criada via SQL manual (Parte 1 do S5-01-character-runtime-spec.md). Executar no Supabase antes de usar os endpoints.
+
+### `character_lore` — S5-01
+| Coluna | Tipo inferido | Observação |
+|--------|---------------|------------|
+| `id` | UUID | PK |
+| `character_id` | UUID | FK → characters.id CASCADE DELETE |
+| `lore_type` | text | origin / arc / hint / relationship / milestone / secret |
+| `title` | text | |
+| `content` | text | |
+| `is_public` | boolean | false = interno | true = pode ser narrado pelo personagem |
+| `reveal_after` | timestamptz | Nullable. Liberação programada. |
+| `tags` | jsonb | Array de strings |
+| `created_at` | timestamptz | |
+
+### `character_conversations` — S5-01
+| Coluna | Tipo inferido | Observação |
+|--------|---------------|------------|
+| `id` | UUID | PK |
+| `character_id` | UUID | FK → characters.id CASCADE DELETE |
+| `user_identifier` | text | Ex: "55119999999" (WhatsApp), "@username" (Instagram) |
+| `channel` | text | whatsapp / instagram / youtube_comment / community / portal |
+| `role` | text | `user` ou `character` |
+| `content` | text | |
+| `metadata` | jsonb | DEFAULT `{}`. Ex: tts_url, message_id |
+| `created_at` | timestamptz | |
+
+**Índice principal:** `(character_id, user_identifier, channel, created_at DESC)` — lookup de histórico por usuário+personagem+canal.
+
+### `members` — S5-02
+| Coluna | Tipo | Observação |
+|--------|------|------------|
+| `phone` | text | PK — identificador único (E.164 ou local) |
+| `name` | text | nullable |
+| `email` | text | nullable |
+| `tags` | jsonb | array de strings livres (ex: `["vip", "lead-quente"]`) |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | auto-updated via trigger |
+
+### `member_states` — S5-02
+| Coluna | Tipo | Observação |
+|--------|------|------------|
+| `id` | UUID | PK |
+| `phone` | text | FK → `members.phone` ON DELETE CASCADE |
+| `key` | text | nome do atributo de estado (ex: `objetivo_saude`) |
+| `value` | text | valor (sempre texto, sem tipagem forçada) |
+| `set_by` | text | quem definiu: agent_id, character slug, `"system"`, `"user"` |
+| `updated_at` | timestamptz | auto-updated via trigger |
+
+**Unique index:** `(phone, key)` — permite upsert sem duplicatas.
+
+### `member_interactions` — S5-02
+| Coluna | Tipo | Observação |
+|--------|------|------------|
+| `id` | UUID | PK |
+| `phone` | text | FK → `members.phone` ON DELETE CASCADE |
+| `character_id` | text | slug do personagem (nullable se interação interna) |
+| `channel` | text | `whatsapp`, `instagram`, `portal`, `community`, `internal` |
+| `summary` | text | resumo 1-2 frases da interação |
+| `sentiment` | text | `positivo`, `neutro`, `negativo`, `ansioso` (nullable) |
+| `created_at` | timestamptz | |
+
+**Índice principal:** `(phone, created_at DESC)` — lookup de interações recentes.
+
 ### `llm_cost_log`
 | Coluna | Tipo inferido | Observação |
 |--------|---------------|------------|
@@ -278,6 +380,7 @@ Colunas derivadas exclusivamente dos selects/inserts encontrados no código.
 | `claude-haiku-4-5-20251001` | `weekly_briefing.py` | Frase de encerramento do briefing semanal |
 | `claude-sonnet-4-6` | `chat.py` | Conversa Friday (modelo padrão para qualidade) |
 | `claude-sonnet-4-6` | `onboard_client.py` | Geração de KB + system prompt do cliente |
+| `claude-sonnet-4-6` | `character-runner` (agents table) | Agente genérico de execução de personagens. Soul prompt sempre injetado via `system_prompt_override` da tabela `characters`. |
 
 **Default em `llm.py`:** `claude-haiku-4-5-20251001`
 
@@ -328,6 +431,8 @@ Definidas em `runtime/config.py` via `pydantic_settings`. Lidas de `.env` ou do 
 - Scheduler APScheduler (in-process) como fallback para ARQ
 - ARQ worker configurado como modo produção (requer Redis)
 - Onboarding autônomo implementado (Sprint 8) — inclui clone n8n
+- **S5-01 Character Runtime**: tabelas `characters`, `character_lore`, `character_conversations` + endpoints `/character/message` e `/character/{slug}` + `system_prompt_override` em `agents/handler.py`
+- **S5-02 Member State Engine**: tabelas `members`, `member_states`, `member_interactions` + endpoints `/member/*` + injeção de contexto do membro em `agents/handler.py` via `context.phone`
 
 ### O que o código indica como pendente / não-executável agora
 - `activate_agent`: registra solicitação mas **não executa o agente** — lifecycle management pendente ("Sprint futuro" conforme comentário no handler)

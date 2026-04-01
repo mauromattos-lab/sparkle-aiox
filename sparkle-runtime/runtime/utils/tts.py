@@ -19,25 +19,25 @@ ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel — voz feminina natural 
 ELEVENLABS_MODEL = "eleven_multilingual_v2"
 
 
-def _ensure_bucket() -> None:
+def _ensure_bucket(bucket: str) -> None:
     try:
-        supabase.storage.create_bucket(BUCKET, options={"public": True})
+        supabase.storage.create_bucket(bucket, options={"public": True})
     except Exception:
         pass
 
 
-def _upload_mp3(audio_bytes: bytes, filename_prefix: str) -> str | None:
+def _upload_mp3(audio_bytes: bytes, filename_prefix: str, bucket: str) -> str | None:
     """Faz upload dos bytes para Supabase Storage e retorna URL pública."""
     file_name = f"{filename_prefix}_{uuid.uuid4().hex[:8]}.mp3"
-    supabase.storage.from_(BUCKET).upload(
+    supabase.storage.from_(bucket).upload(
         path=file_name,
         file=audio_bytes,
         file_options={"content-type": "audio/mpeg"},
     )
-    return supabase.storage.from_(BUCKET).get_public_url(file_name)
+    return supabase.storage.from_(bucket).get_public_url(file_name)
 
 
-def _elevenlabs_tts(text: str) -> bytes | None:
+def _elevenlabs_tts(text: str, voice_id: str | None = None) -> bytes | None:
     """Gera áudio via ElevenLabs API. Retorna bytes MP3 ou None se falhar."""
     try:
         import httpx
@@ -45,7 +45,8 @@ def _elevenlabs_tts(text: str) -> bytes | None:
         if not api_key:
             return None
 
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+        active_voice_id = voice_id or ELEVENLABS_VOICE_ID
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{active_voice_id}"
         headers = {
             "xi-api-key": api_key,
             "Content-Type": "application/json",
@@ -85,17 +86,29 @@ def _gtts_tts(text: str) -> bytes | None:
                 pass
 
 
-def text_to_audio_url(text: str, filename_prefix: str = "friday") -> str | None:
+def text_to_audio_url(
+    text: str,
+    filename_prefix: str = "friday",
+    voice_id: str | None = None,
+    bucket: str | None = None,
+) -> str | None:
     """
     Converte texto em áudio MP3 e faz upload ao Supabase Storage.
     Tenta ElevenLabs primeiro, fallback para gTTS.
     Retorna URL pública ou None se tudo falhar.
+
+    Args:
+        text: Texto a converter em áudio.
+        filename_prefix: Prefixo do arquivo no Storage (ex: "friday", "character_finch").
+        voice_id: Voice ID ElevenLabs a usar. None = usa ELEVENLABS_VOICE_ID (Rachel/Friday).
+        bucket: Bucket do Supabase Storage. None = usa "friday-audio".
     """
+    active_bucket = bucket or BUCKET
     try:
-        _ensure_bucket()
+        _ensure_bucket(active_bucket)
 
         # Tentar ElevenLabs primeiro
-        audio_bytes = _elevenlabs_tts(text)
+        audio_bytes = _elevenlabs_tts(text, voice_id=voice_id)
         provider = "elevenlabs"
 
         # Fallback para gTTS
@@ -107,7 +120,7 @@ def text_to_audio_url(text: str, filename_prefix: str = "friday") -> str | None:
         if not audio_bytes:
             return None
 
-        url = _upload_mp3(audio_bytes, filename_prefix)
+        url = _upload_mp3(audio_bytes, filename_prefix, active_bucket)
         print(f"[tts] Áudio gerado via {provider}: {url}")
         return url
 

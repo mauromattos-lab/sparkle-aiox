@@ -45,11 +45,15 @@ from runtime.friday.router import router as friday_router
 from runtime.tasks.worker import router as tasks_router
 from runtime.agents.router import router as agents_router
 from runtime.zenya.router import router as zenya_router
+from runtime.characters.router import router as characters_router
+from runtime.members.router import router as members_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
 app.include_router(agents_router, prefix="/agent", tags=["agents"])
 app.include_router(zenya_router, prefix="/zenya", tags=["zenya"])
+app.include_router(characters_router, prefix="/character", tags=["characters"])
+app.include_router(members_router, prefix="/member", tags=["members"])
 
 
 # ── Health ─────────────────────────────────────────────────
