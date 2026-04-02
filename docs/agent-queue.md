@@ -25,6 +25,88 @@ updated: 2026-03-30
 
 ---
 
+## Sprint 8 — Em Andamento (2026-04-01)
+
+### [SPRINT8-P1] Brain Separation — Runtime vs Produto
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev (implementou) + @qa (aprovou 2026-04-01) |
+| **Bloqueante** | — |
+| **PRD** | `docs/sprints/sprint-8-prds.md` |
+| **QA Report** | `docs/reviews/qa-p1-brain-separation.md` |
+| **Nota** | 101 registros migrados, isolamento confirmado, pytest 10/10. Tech-debt: text search multi-palavra — resolve em P3 (embeddings). |
+
+---
+
+### [SPRINT8-P2] Friday Autônoma — Alertas + Handoff
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev (implementou) + Orion (ativou crons 2026-04-01) |
+| **Bloqueante** | — |
+| **PRD** | `docs/sprints/sprint-8-prds.md` |
+
+**Decisão Mauro (2026-04-01):** Cliente piloto = **Mauro** (número próprio). Mensagens de teste = Orion decide sem consultar Mauro.
+
+**FUNCIONAL (2026-04-01):** 3 crons ativos no scheduler.py: risk_alert (09:30), billing_risk (08:45), upsell_opportunity (seg 07:30). Teste real: 6 alertas enviados no WhatsApp do Mauro ✅. Anti-spam validado: segunda execução = 0 enviados, 6 skipped_spam ✅. Serviço reiniciado: `systemctl restart sparkle-runtime` → active.
+
+---
+
+### [SPRINT8-P3] Embeddings + Busca Semântica Brain
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev (implementou + fixes) + @qa (aprovou 2026-04-01) |
+| **Bloqueante** | — |
+| **QA** | APROVADO (2026-04-01) — AC-2 PASS, AC-3 PASS (threshold adaptativo 0.50→0.40), AC-6 PASS |
+| **PO** | APROVADO — valor de negócio confirmado, sem riscos |
+| **Nota** | OPENAI_API_KEY configurada na VPS. BRAIN_EMBEDDINGS_ENABLED=true. Backfill 101/101 chunks ($0.000172). Endpoint POST /brain/search em produção. Threshold adaptativo implementado. |
+
+---
+
+### [SPRINT8-P4] Lore — Zenya + Personagens
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_MAURO` |
+| **Responsável** | Mauro (sessão noturna) → @dev |
+| **Bloqueante** | Sessão de lore — Mauro disponível à noite (2026-04-01) |
+
+---
+
+### [SPRINT8-P5] Instagram DM Pilot
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @devops (iniciar processo Meta app review) |
+| **Bloqueante** | Aprovação Meta app (5-10 dias) |
+
+**Decisão Mauro (2026-04-01):** Cliente piloto = **Mauro** (conta própria para todos os testes).
+
+---
+
+### [SPRINT8-P6] Mission Control — Painel de Implementação
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev (implementou) + Orion (deploy 2026-04-01) |
+| **Bloqueante** | — |
+
+**Decisão Mauro (2026-04-01):** Mission Control vai no **Portal** (interface visual). WhatsApp descartado — sem capacidade visual. Modelo MCU: fases com estado por item, não barra de progresso.
+
+**FUNCIONAL (2026-04-01):** `portal/app/mission-control/page.tsx` + `useAgentWorkItems.ts` + `AgentCard.tsx` deployed. Acessível em https://portal.sparkleai.tech/mission-control ✅. Supabase Realtime WebSocket ativo. 5 estados visuais (idle/active/blocked/done/error). Traefik config file-based em `/traefik/dynamic/portal.yml` no coolify-proxy.
+
+---
+
+### [SPRINT8-TECH] Supabase Connection Pool sob Carga
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect |
+| **Contexto** | QA identificou 502s "Server disconnected" em 7+ chamadas paralelas ao Supabase. Causa raiz: pool de conexões sem limite. Não bloqueia Sprint 8, mas precisa fix antes de carga real de clientes. |
+
+---
+
 ## Itens em Execução
 
 ### ~~[ITEM-01] Script Auto-Clonagem v3~~ — FUNCIONAL ✅
@@ -181,23 +263,10 @@ Executado por @architect em 2026-03-30.
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `AGUARDANDO_MAURO` |
-| **Bloqueante** | Redirecionar Z-API para o Runtime (porta 8003) + descomissionar workflows n8n não-cliente |
-| **Próximo agente** | @dev (remover workflows n8n Friday não-cliente + config Z-API → Runtime) |
-
-**Update 2026-03-31**: Friday agora é o Sparkle Runtime (FastAPI, Sprint 8 completo). Plan: descomissionar workflows n8n que não são de cliente (Friday Brain n8n, Sparkle Gateway n8n) e redirecionar Z-API para `https://[runtime-url]/friday/webhook`. Manter apenas workflows de cliente (Plaka, Ensinaja, Confeitaria, Fun Personalize).
-
-**O que está FUNCIONAL (ativo no n8n)**:
-- ZApi Router (ID: `LMcmB2oYX5RGnFxc`): ativo, roteamento correto
-- Friday Brain (ID: `Izoupz82zVf6kZRQ`): ativo
-- Friday Notifier (ID: `zxznYpW2PBhJrGjV`): ativo
-- Sparkle Gateway (ID: `hCukbZX875Y18ThZ`): ativo, 16 nodes
-- Supabase: `friday_tasks`, `v_mrr_summary`, `v_payments_overdue`, `v_client_health`, `v_billing_calendar` — EXISTEM
-
-**O que bloqueia produção**:
-- Z-API "Ao receber" ainda aponta para Chatwoot direto (não para o router)
-
-**Ação Mauro**: Painel Z-API → "Ao receber" → alterar URL para `https://n8n.sparkleai.tech/webhook/zapi-router`
+| **Status** | `FUNCIONAL` |
+| **Responsável** | — |
+| **Bloqueante** | — |
+| **Nota** | Z-API já aponta para Runtime desde 2026-03-31. Confirmado via logs: POST /friday/message recebidos. |
 
 ---
 
