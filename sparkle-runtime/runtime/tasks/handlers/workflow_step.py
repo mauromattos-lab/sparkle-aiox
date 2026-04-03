@@ -20,7 +20,6 @@ from typing import Any
 
 from runtime.db import supabase
 from runtime.config import settings
-from runtime.tasks.registry import get_handler
 
 
 # ── Template resolution ─────────────────────────────────────────────
@@ -197,6 +196,7 @@ async def _execute_step_task(
         }
 
     # Execute via handler
+    from runtime.tasks.registry import get_handler  # lazy import to avoid circular
     handler = get_handler(task_type)
     if not handler:
         error_msg = f"No handler registered for task_type '{task_type}'"
