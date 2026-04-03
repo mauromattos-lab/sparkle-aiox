@@ -2,11 +2,17 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs:
-- health_check : a cada 15 minutos
-- daily_briefing: todo dia às 8h de Brasília (11h UTC)
+Jobs (8 total):
+- health_check            : a cada 15 minutos
+- daily_briefing          : todo dia às 8h de Brasília
+- daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
+- weekly_briefing         : todo domingo às 8h de Brasília
+- gap_report              : toda segunda às 8h de Brasília
+- billing_risk            : todo dia às 8h45 de Brasília (OPS-4)
+- risk_alert              : todo dia às 9h30 de Brasília (OPS-4)
+- upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
 
-Ambos criam a task no Supabase E executam inline via execute_task(),
+Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
 """
 from __future__ import annotations
@@ -70,6 +76,24 @@ async def _run_gap_report() -> None:
     await _run_and_execute("gap_report", priority=7)
 
 
+async def _run_daily_decision_moment() -> None:
+    await _run_and_execute("daily_decision_moment", priority=9)
+
+
+# ── OPS-4: Friday proactive initiatives ─────────────────────
+
+async def _run_billing_risk() -> None:
+    await _run_and_execute("friday_initiative_billing", priority=7)
+
+
+async def _run_risk_alert() -> None:
+    await _run_and_execute("friday_initiative_risk", priority=7)
+
+
+async def _run_upsell_opportunity() -> None:
+    await _run_and_execute("friday_initiative_upsell", priority=5)
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -104,8 +128,42 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # Daily Decision Moment às 9h de Brasília (12h UTC) — S9-P5
+    _scheduler.add_job(
+        _run_daily_decision_moment,
+        trigger=CronTrigger(hour=9, minute=0, timezone=_TZ),
+        id="daily_decision_moment",
+        replace_existing=True,
+    )
+
+    # OPS-4: billing_risk às 8h45 de Brasília
+    _scheduler.add_job(
+        _run_billing_risk,
+        trigger=CronTrigger(hour=8, minute=45, timezone=_TZ),
+        id="billing_risk",
+        replace_existing=True,
+    )
+
+    # OPS-4: risk_alert às 9h30 de Brasília
+    _scheduler.add_job(
+        _run_risk_alert,
+        trigger=CronTrigger(hour=9, minute=30, timezone=_TZ),
+        id="risk_alert",
+        replace_existing=True,
+    )
+
+    # OPS-4: upsell_opportunity toda segunda às 7h30 de Brasília
+    _scheduler.add_job(
+        _run_upsell_opportunity,
+        trigger=CronTrigger(day_of_week="mon", hour=7, minute=30, timezone=_TZ),
+        id="upsell_opportunity",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    print("[scheduler] APScheduler iniciado — briefing 8h Brasília, weekly briefing dom 8h, gap report seg 8h, health check 15min")
+    jobs = _scheduler.get_jobs()
+    job_names = ", ".join(j.id for j in jobs)
+    print(f"[scheduler] APScheduler iniciado — {len(jobs)} jobs: {job_names}")
 
 
 def stop_scheduler() -> None:
