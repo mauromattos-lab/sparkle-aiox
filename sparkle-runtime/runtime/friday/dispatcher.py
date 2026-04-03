@@ -97,6 +97,52 @@ Para activate_agent, extraia params do texto:
 
 import re as _re
 
+_URL_PATTERN = _re.compile(
+    r'https?://[^\s<>"\']+|(?:www\.)[^\s<>"\']+',
+    _re.IGNORECASE,
+)
+
+
+def _detect_url(text: str) -> str | None:
+    """Retorna a primeira URL encontrada no texto, ou None."""
+    match = _URL_PATTERN.search(text)
+    return match.group(0) if match else None
+
+
+def _is_youtube(url: str) -> bool:
+    return "youtube.com" in url or "youtu.be" in url
+
+
+async def _handle_url_ingest(text: str, url: str, from_number: str) -> dict:
+    """Cria task brain_ingest_pipeline para URL detectada na mensagem."""
+    source_type = "youtube" if _is_youtube(url) else "url"
+
+    # Texto extra alem da URL pode ser titulo/contexto
+    extra_text = text.replace(url, "").strip()
+    title = extra_text[:100] if extra_text else ""
+
+    task = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").insert({
+            "agent_id": "friday",
+            "client_id": settings.sparkle_internal_client_id,
+            "task_type": "brain_ingest_pipeline",
+            "payload": {
+                "source_ref": url,
+                "source_type": source_type,
+                "title": title or f"Ingestao via Friday: {url[:80]}",
+                "persona": "especialista",
+                "run_dna": False,
+                "run_insights": True,
+                "run_narrative": False,
+                "run_synthesis": True,
+                "from_number": from_number,
+            },
+            "status": "pending",
+            "priority": 7,
+        }).execute()
+    )
+    return task.data[0] if task.data else {}
+
 
 async def _handle_gap_approval(text: str) -> dict | None:
     """
@@ -216,6 +262,29 @@ async def classify_and_dispatch(
     Returns the created task record.
     from_audio=True: sinaliza que a mensagem veio de transcrição de voz.
     """
+    # URL detection: se a mensagem contem URL, roteia para brain_ingest_pipeline
+    detected_url = _detect_url(text)
+    if detected_url:
+        ingest_task = await _handle_url_ingest(text, detected_url, from_number)
+        # Executa pipeline em background — Friday responde imediatamente
+        from runtime.tasks.worker import execute_task
+        asyncio.create_task(execute_task(ingest_task))
+        # Retorna task com status done e mensagem amigavel (nao espera pipeline)
+        source_label = "video do YouTube" if _is_youtube(detected_url) else "link"
+        ack_msg = f"Recebi o {source_label}! Tô processando e jogando no Brain. Quando terminar, esse conhecimento já vai estar disponível pro sistema todo."
+        ack_task = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "chat",
+                "payload": {"original_text": text, "url_detected": detected_url},
+                "status": "done",
+                "result": {"message": ack_msg, "ingest_task_id": ingest_task.get("id")},
+                "priority": 7,
+            }).execute()
+        )
+        return ack_task.data[0] if ack_task.data else {"status": "done", "result": {"message": ack_msg}}
+
     # SYS-5: check gap approval before normal classification
     gap_result = await _handle_gap_approval(text)
     if gap_result is not None:
