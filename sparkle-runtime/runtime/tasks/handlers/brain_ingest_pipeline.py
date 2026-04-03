@@ -153,6 +153,64 @@ async def _run_narrative_synthesis(
         return {"error": str(e)}
 
 
+# ── Fase 5b: Insight Extraction (condicional) ────────────────
+
+async def _run_extract_insights(
+    chunk_ids: list[str],
+    raw_id: Optional[str],
+    task_id: Optional[str],
+    client_id: Optional[str],
+) -> Optional[dict]:
+    """Executa extract_insights inline para os chunks inseridos."""
+    try:
+        from runtime.tasks.handlers.extract_insights import handle_extract_insights
+        fake_task = {
+            "id": task_id,
+            "client_id": client_id,
+            "payload": {
+                "source_chunk_ids": chunk_ids,
+                "source_raw_ingestion_id": str(raw_id) if raw_id else None,
+                "min_confidence": 0.6,
+            },
+        }
+        result = await handle_extract_insights(fake_task)
+        return {
+            "processed": result.get("processed", 0),
+            "inserted": result.get("inserted", 0),
+            "domain_distribution": result.get("domain_distribution", {}),
+        }
+    except Exception as e:
+        print(f"[brain_pipeline] Insight extraction falhou: {e}")
+        return {"error": str(e)}
+
+
+# ── Fase 6b: Cross-Source Synthesis (condicional) ────────────
+
+async def _run_cross_source_synthesis(
+    task_id: Optional[str],
+    client_id: Optional[str],
+) -> Optional[dict]:
+    """Executa cross_source_synthesis para dominios com massa critica."""
+    try:
+        from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
+        fake_task = {
+            "id": task_id,
+            "client_id": client_id or settings.sparkle_internal_client_id,
+            "payload": {
+                "min_insights": 5,
+            },
+        }
+        result = await handle_cross_source_synthesis(fake_task)
+        return {
+            "processed": result.get("processed", 0),
+            "updated": result.get("updated", 0),
+            "skipped": result.get("skipped", 0),
+        }
+    except Exception as e:
+        print(f"[brain_pipeline] Cross-source synthesis falhou: {e}")
+        return {"error": str(e)}
+
+
 # ── Handler principal ─────────────────────────────────────────
 
 async def handle_brain_ingest_pipeline(task: dict) -> dict:
@@ -245,12 +303,19 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
     if not chunk_ids:
         return {"error": "Nenhum chunk inserido com sucesso"}
 
-    # ── FASE 5: DNA Extraction (condicional) ──
+    # ── FASE 5a: DNA Extraction (condicional) ──
     dna_stats = None
     if payload.get("run_dna", True) and chunk_ids:
         dna_stats = await _run_extract_dna(chunk_ids, task_id, client_id)
 
-    # ── FASE 6: Narrative Synthesis (condicional) ──
+    # ── FASE 5b: Insight Extraction (condicional) ──
+    insight_stats = None
+    if payload.get("run_insights", True) and chunk_ids:
+        insight_stats = await _run_extract_insights(
+            chunk_ids, raw_id, task_id, client_id,
+        )
+
+    # ── FASE 6a: Narrative Synthesis (condicional) ──
     narrative_stats = None
     if payload.get("run_narrative", True):
         narrative_stats = await _run_narrative_synthesis(
@@ -258,6 +323,11 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
             task_id=task_id,
             client_id=client_id,
         )
+
+    # ── FASE 6b: Cross-Source Synthesis (condicional) ──
+    synthesis_stats = None
+    if payload.get("run_synthesis", True) and insight_stats and insight_stats.get("inserted", 0) > 0:
+        synthesis_stats = await _run_cross_source_synthesis(task_id, client_id)
 
     result = {
         "message": (
@@ -268,7 +338,9 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
         "chunk_ids": [str(cid) for cid in chunk_ids],
         "total_text_length": len(raw_text),
         "dna": dna_stats,
+        "insights": insight_stats,
         "narrative": narrative_stats,
+        "synthesis": synthesis_stats,
         "brain_worthy": True,
         "brain_content": (
             f"Pipeline de ingestao concluida: '{title}' — "

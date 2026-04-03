@@ -43,6 +43,8 @@ BRAIN_EXEMPT_TASK_TYPES = frozenset({
     "extract_client_dna",     # SYS-4: extracao de DNA do cliente
     "observer_gap_analysis",  # SYS-5: analise de gaps do sistema
     "auto_implement_gap",     # SYS-5: implementacao automatica de gaps
+    "extract_insights",       # Brain Fase 5: extrai insights de chunks
+    "cross_source_synthesis", # Brain Fase 6: sintese cruzada por dominio
 })
 
 
