@@ -155,14 +155,19 @@ async def handle_generate_content(task: dict) -> dict:
     if not topic:
         return {"message": "generate_content: topic obrigatório no payload."}
 
-    # 1. Buscar contexto do Brain
-    brain_chunks = await _query_brain(topic, client_id)
-    brain_context_ids = [c["id"] for c in brain_chunks if c.get("id")]
+    # 1. Buscar contexto do Brain (3 niveis: sintese → insights → chunks)
+    from runtime.brain.knowledge import retrieve_knowledge
 
-    brain_context_text = ""
-    if brain_chunks:
-        snippets = [c.get("content") or c.get("raw_content", "") for c in brain_chunks[:6]]
-        brain_context_text = "\n\n---\n\n".join(s[:400] for s in snippets if s)
+    knowledge = await retrieve_knowledge(
+        topic=topic,
+        insight_types=["framework", "tecnica", "principio"],
+        client_id=client_id,
+        max_insights=6,
+        max_chunks=3,
+    )
+    brain_context_text = knowledge["context_text"]
+    brain_context_ids = [i["id"] for i in knowledge.get("insights", []) if i.get("id")]
+    brain_context_ids += [c["id"] for c in knowledge.get("chunks", []) if c.get("id")]
 
     # 2. Montar prompt
     persona_prompt = _PERSONA_PROMPTS.get(persona, _PERSONA_PROMPTS["zenya"])
@@ -229,7 +234,9 @@ async def handle_generate_content(task: dict) -> dict:
         "content_id": content_id,
         "format": fmt,
         "persona": persona,
-        "brain_chunks_used": len(brain_chunks),
+        "brain_insights_used": len(knowledge.get("insights", [])),
+        "brain_chunks_used": len(knowledge.get("chunks", [])),
+        "brain_synthesis_domain": knowledge.get("synthesis", {}).get("domain") if knowledge.get("synthesis") else None,
         "hashtags": hashtags,
         "content": clean_content,
         "status": "draft",
