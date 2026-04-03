@@ -296,7 +296,7 @@ async def classify_and_dispatch(
                     payload["ingest_type"] = "manual"
                     payload["source_agent"] = "mauro"
 
-                task = await asyncio.to_thread(
+                ingest_task = await asyncio.to_thread(
                     lambda: supabase.table("runtime_tasks").insert({
                         "agent_id": "friday",
                         "client_id": settings.sparkle_internal_client_id,
@@ -306,7 +306,24 @@ async def classify_and_dispatch(
                         "priority": 7,
                     }).execute()
                 )
-                return task.data[0] if task.data else {}
+                ingest_record = ingest_task.data[0] if ingest_task.data else {}
+                # Executa pipeline em background — Friday responde imediatamente
+                from runtime.tasks.worker import execute_task
+                asyncio.create_task(execute_task(ingest_record))
+                word_count = len(content.split())
+                ack_msg = f"Recebi! Tô jogando no Brain ({word_count} palavras). Vou extrair os insights e quando terminar, esse conhecimento fica disponível pro sistema todo."
+                ack_task = await asyncio.to_thread(
+                    lambda: supabase.table("runtime_tasks").insert({
+                        "agent_id": "friday",
+                        "client_id": settings.sparkle_internal_client_id,
+                        "task_type": "chat",
+                        "payload": {"original_text": text[:200], "brain_ingest_triggered": True},
+                        "status": "done",
+                        "result": {"message": ack_msg, "ingest_task_id": ingest_record.get("id")},
+                        "priority": 7,
+                    }).execute()
+                )
+                return ack_task.data[0] if ack_task.data else {"status": "done", "result": {"message": ack_msg}}
             break
 
     # URL detection: se a mensagem contem URL, roteia para brain_ingest_pipeline
