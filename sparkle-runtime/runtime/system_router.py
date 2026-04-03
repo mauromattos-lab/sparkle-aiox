@@ -11,7 +11,7 @@ Permite que agentes construtores entendam o que já existe antes de propor mudan
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -158,6 +158,171 @@ async def update_state(update: StateUpdate):
                 return {"action": "created", "sprint_item": update.sprint_item, "status": update.status}
             return {"action": "updated", "sprint_item": update.sprint_item, "status": update.status}
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+# ── Pulse (consolidated dashboard endpoint) ────────────────
+
+
+@router.get("/pulse")
+async def get_pulse():
+    """
+    Endpoint consolidado para o Command Panel (SYS-6).
+
+    Retorna:
+      - agents: lista de agentes com status ao vivo
+      - brain: chunks hoje, ultimas 5 ingestoes, total
+      - workflows: instancias ativas, completadas hoje
+      - clients: ativos, MRR total
+      - timestamp
+    """
+    supabase_url = settings.supabase_url
+    supabase_key = settings.supabase_key
+    if not supabase_url or not supabase_key:
+        raise HTTPException(status_code=500, detail="Supabase nao configurado")
+
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+
+    async def _fetch(path: str, params: dict) -> list:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{supabase_url}/rest/v1/{path}",
+                params=params,
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            return []
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    # Run all queries in parallel
+    (
+        running_tasks,
+        recent_tasks,
+        last_ingestions,
+        active_workflows,
+        active_clients,
+        chunks_today_count,
+        chunks_total_count,
+        workflows_completed_today_count,
+    ) = await asyncio.gather(
+        # Tasks currently running (agents working)
+        _fetch("runtime_tasks", {
+            "select": "id,agent_id,task_type,status,created_at,payload",
+            "status": "eq.running",
+            "order": "created_at.desc",
+            "limit": "20",
+        }),
+        # Recent tasks (last 24h) for agent activity
+        _fetch("runtime_tasks", {
+            "select": "id,agent_id,task_type,status,created_at,completed_at",
+            "created_at": f"gte.{(now - timedelta(hours=24)).isoformat()}",
+            "order": "created_at.desc",
+            "limit": "50",
+        }),
+        # Last 5 ingestions
+        _fetch("brain_raw_ingestions", {
+            "select": "id,title,source_type,chunks_generated,status,created_at",
+            "order": "created_at.desc",
+            "limit": "5",
+        }),
+        # Active workflows
+        _fetch("workflow_instances", {
+            "select": "id,name,template_slug,status,current_step,created_at,updated_at",
+            "status": "eq.running",
+            "order": "created_at.desc",
+            "limit": "10",
+        }),
+        # Active clients
+        _fetch("clients", {
+            "select": "id,name,company,mrr,status,has_zenya",
+            "status": "eq.ativo",
+            "order": "name.asc",
+        }),
+        # Counts via Supabase client (exact count)
+        _count_table_since("brain_chunks", today_start),
+        _count_table("brain_chunks"),
+        _count_workflow_completed_today(today_start),
+    )
+
+    # Build agent status from running tasks + known agents
+    known_agents = ["orion", "analyst", "dev", "qa", "architect", "po", "devops"]
+    running_agent_ids = {t.get("agent_id", "").lower() for t in running_tasks}
+
+    agents_status = []
+    for agent_name in known_agents:
+        is_working = agent_name in running_agent_ids
+        # Find last task for this agent
+        agent_tasks = [t for t in recent_tasks if (t.get("agent_id") or "").lower() == agent_name]
+        last_action = None
+        if agent_tasks:
+            last = agent_tasks[0]
+            last_action = {
+                "task_type": last.get("task_type"),
+                "status": last.get("status"),
+                "at": last.get("created_at"),
+            }
+        agents_status.append({
+            "id": agent_name,
+            "status": "working" if is_working else "idle",
+            "last_action": last_action,
+        })
+
+    # MRR total
+    mrr_total = sum(c.get("mrr", 0) for c in active_clients)
+
+    return {
+        "agents": agents_status,
+        "brain": {
+            "chunks_today": chunks_today_count,
+            "chunks_total": chunks_total_count,
+            "last_ingestions": last_ingestions,
+        },
+        "workflows": {
+            "active": active_workflows,
+            "active_count": len(active_workflows),
+            "completed_today": workflows_completed_today_count,
+        },
+        "clients": {
+            "active": len(active_clients),
+            "mrr_total": mrr_total,
+            "list": active_clients,
+        },
+        "timestamp": now.isoformat(),
+    }
+
+
+async def _count_table_since(table: str, since_iso: str) -> int:
+    """Count rows in a table since a given timestamp."""
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table(table)
+            .select("id", count="exact")
+            .gte("created_at", since_iso)
+            .limit(1)
+            .execute()
+        )
+        return res.count if res.count is not None else 0
+    except Exception:
+        return -1
+
+
+async def _count_workflow_completed_today(today_start: str) -> int:
+    """Count workflows completed today."""
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("workflow_instances")
+            .select("id", count="exact")
+            .eq("status", "completed")
+            .gte("completed_at", today_start)
+            .limit(1)
+            .execute()
+        )
+        return res.count if res.count is not None else 0
+    except Exception:
+        return -1
 
 
 @router.get("/state")
