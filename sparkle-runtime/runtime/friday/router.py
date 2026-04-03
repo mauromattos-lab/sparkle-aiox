@@ -184,7 +184,9 @@ async def receive_message(req: TextMessageRequest, background_tasks: BackgroundT
         from runtime.tasks.worker import execute_task
         task = await classify_and_dispatch(req.text, from_number=req.from_number)
         task = hydrate_context(task)
-        await execute_task(task)
+        # Skip execute se task ja veio done (URL ingest ack, gap approval)
+        if task.get("status") != "done":
+            await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
         return {"status": "ok", "task_id": task.get("id"), "response": response_text}
     except Exception as e:
@@ -355,7 +357,9 @@ async def _process_text(text: str, from_number: str) -> None:
 
         task = await classify_and_dispatch(text, from_number=from_number)
         task = hydrate_context(task)
-        await execute_task(task)
+        # Skip execute se task ja veio done (URL ingest ack, gap approval)
+        if task.get("status") != "done":
+            await execute_task(task)
         response = await _wait_for_task(task.get("id"), timeout=30)
         if from_number:
             await asyncio.to_thread(send_text, from_number, response)
