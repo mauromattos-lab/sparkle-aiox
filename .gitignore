@@ -27,3 +27,11 @@ Thumbs.db
 .aios-core/local/
 .claude/settings.local.json
 .aios/install-log.txt
+
+# Python virtualenv (nunca commitar)
+.venv/
+__pycache__/
+*.pyc
+
+# Mega Brain (repositório separado — não rastrear pelo git do Sparkle)
+mega-brain/

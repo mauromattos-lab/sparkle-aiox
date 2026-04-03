@@ -2,7 +2,7 @@
 name: agent-queue
 description: Kanban textual de handoff entre agentes — estado atual, bloqueios, responsável por item. Leia antes de qualquer sessão para saber ONDE estamos e quem tem a bola.
 type: project
-updated: 2026-03-30
+updated: 2026-04-02
 ---
 
 # Agent Queue — Sparkle AIOX
@@ -25,248 +25,154 @@ updated: 2026-03-30
 
 ---
 
-## Sprint 8 — Em Andamento (2026-04-01)
+## Visão do Sistema — Onde Estamos
 
-### [SPRINT8-P1] Brain Separation — Runtime vs Produto
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Responsável** | @dev (implementou) + @qa (aprovou 2026-04-01) |
-| **Bloqueante** | — |
-| **PRD** | `docs/sprints/sprint-8-prds.md` |
-| **QA Report** | `docs/reviews/qa-p1-brain-separation.md` |
-| **Nota** | 101 registros migrados, isolamento confirmado, pytest 10/10. Tech-debt: text search multi-palavra — resolve em P3 (embeddings). |
+```
+AIOS (sistema nervoso)  +  Mega Brain (cérebro)  +  Runtime (corpo)  =  SISTEMA
+     ✅ documentado            ✅ analisado            ✅ rodando
+     ⚠️ vive em sessões       ⚠️ não implementado     ✅ produção
+     
+PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
+```
 
 ---
 
-### [SPRINT8-P2] Friday Autônoma — Alertas + Handoff
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Responsável** | @dev (implementou) + Orion (ativou crons 2026-04-01) |
-| **Bloqueante** | — |
-| **PRD** | `docs/sprints/sprint-8-prds.md` |
+## Sprint SYSTEM — Fechar o Sistema (próximo)
 
-**Decisão Mauro (2026-04-01):** Cliente piloto = **Mauro** (número próprio). Mensagens de teste = Orion decide sem consultar Mauro.
+### [SYS-1] Pipeline de Ingestão Mega Brain no Runtime
 
-**FUNCIONAL (2026-04-01):** 3 crons ativos no scheduler.py: risk_alert (09:30), billing_risk (08:45), upsell_opportunity (seg 07:30). Teste real: 6 alertas enviados no WhatsApp do Mauro ✅. Anti-spam validado: segunda execução = 0 enviados, 6 skipped_spam ✅. Serviço reiniciado: `systemctl restart sparkle-runtime` → active.
-
----
-
-### [SPRINT8-P3] Embeddings + Busca Semântica Brain
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Responsável** | @dev (implementou + fixes) + @qa (aprovou 2026-04-01) |
-| **Bloqueante** | — |
-| **QA** | APROVADO (2026-04-01) — AC-2 PASS, AC-3 PASS (threshold adaptativo 0.50→0.40), AC-6 PASS |
-| **PO** | APROVADO — valor de negócio confirmado, sem riscos |
-| **Nota** | OPENAI_API_KEY configurada na VPS. BRAIN_EMBEDDINGS_ENABLED=true. Backfill 101/101 chunks ($0.000172). Endpoint POST /brain/search em produção. Threshold adaptativo implementado. |
-
----
-
-### [SPRINT8-P4] Lore — Zenya + Personagens
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_MAURO` |
-| **Responsável** | Mauro (sessão noturna) → @dev |
-| **Bloqueante** | Sessão de lore — Mauro disponível à noite (2026-04-01) |
-
----
-
-### [SPRINT8-P5] Instagram DM Pilot
 | Campo | Valor |
 |-------|-------|
 | **Status** | `PENDENTE` |
-| **Responsável** | @devops (iniciar processo Meta app review) |
-| **Bloqueante** | Aprovação Meta app (5-10 dias) |
-
-**Decisão Mauro (2026-04-01):** Cliente piloto = **Mauro** (conta própria para todos os testes).
-
----
-
-### [SPRINT8-P6] Mission Control — Painel de Implementação
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Responsável** | @dev (implementou) + Orion (deploy 2026-04-01) |
-| **Bloqueante** | — |
-
-**Decisão Mauro (2026-04-01):** Mission Control vai no **Portal** (interface visual). WhatsApp descartado — sem capacidade visual. Modelo MCU: fases com estado por item, não barra de progresso.
-
-**FUNCIONAL (2026-04-01):** `portal/app/mission-control/page.tsx` + `useAgentWorkItems.ts` + `AgentCard.tsx` deployed. Acessível em https://portal.sparkleai.tech/mission-control ✅. Supabase Realtime WebSocket ativo. 5 estados visuais (idle/active/blocked/done/error). Traefik config file-based em `/traefik/dynamic/portal.yml` no coolify-proxy.
+| **Responsável** | @architect (design) → @dev (implementação) |
+| **Bloqueante** | — (pode começar) |
+| **Impacto** | Brain aprende de qualquer fonte (PDFs, transcrições, cursos, vídeos). Fecha o ciclo Brain como cérebro coletivo. |
+| **Referências** | `docs/brain/dna-finch-mechanism.md`, `docs/architecture/mega-brain-analysis.md`, `docs/strategy/mega-brain-evaluation.md` |
+| **Nota** | Pipeline em 6 fases: raw → chunking → canonicalização → insight extraction → narrative synthesis → vetorização. Implementar como handler no Runtime, não como CLI. |
 
 ---
 
-### [SPRINT8-TECH] Supabase Connection Pool sob Carga
+### [SYS-2] Agent Context Persistente — Regra 1 do Sparkle OS
+
 | Campo | Valor |
 |-------|-------|
 | **Status** | `PENDENTE` |
-| **Responsável** | @architect |
-| **Contexto** | QA identificou 502s "Server disconnected" em 7+ chamadas paralelas ao Supabase. Causa raiz: pool de conexões sem limite. Não bloqueia Sprint 8, mas precisa fix antes de carga real de clientes. |
+| **Responsável** | @architect (design) → @dev (implementação) |
+| **Bloqueante** | — (pode começar) |
+| **Impacto** | Todo agente ativado pelo Runtime já nasce sabendo: ferramentas, outros agentes, recursos, processos. Não depende de sessão Claude Code. |
+| **Nota** | Hoje isso vive em `AGENT_CONTEXT.md` e `agent-toolkit-standard.md` — funciona em sessões mas morre quando fecha. Precisa virar contexto injetado automaticamente pelo Runtime no activate_agent. |
 
 ---
 
-## Itens em Execução
-
-### ~~[ITEM-01] Script Auto-Clonagem v3~~ — FUNCIONAL ✅
-
-Validado por Orion em 2026-03-30. Script clona os 4 workflows corretos (00, 01, 05, 07) — mínimo por cliente. Os 13 do material são recursos disponíveis, não todos obrigatórios. `system_prompt_id` não é parâmetro CLI — é o ID gerado após clone, usado em PUT separado. Script em `scripts/clone-zenya-client.py`.
-
----
-
-### ~~[ITEM-02] Weekly Report V2~~ — AGUARDANDO ATIVAÇÃO ✅
-
-PUT executado por Orion em 2026-03-30 (06:41 UTC). Workflow `U68uGoBZsRxXSARL` atualizado no n8n (12 nodes). **Pendente**: Mauro ativar manualmente no n8n UI (bug de webhook impede ativação via API). Após ativação → marcar FUNCIONAL.
-
----
-
-### ~~[ITEM-03] Squads C-01/C-02 — Fix~~ — FUNCIONAL ✅
-
-Validado por Orion em 2026-03-30. C-01 e C-02 corretos. Todos os fixes de @dev aplicados e documentados nos headers v1.1.0.
-
----
-
-### [ITEM-04] Contract Generator — QA + Fix
+### [SYS-3] Handoff Automático entre Agentes — Regra 2 do Sparkle OS
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `AGUARDANDO_MAURO` |
-| **Responsável** | Mauro |
-| **Bloqueante** | Obter `AUTENTIQUE_TOKEN` do painel Autentique e criar `contract-generator/.env` |
-| **Próximo agente** | Pronto para uso após token configurado |
-| **Tipo** | [ARTEFATO] — aprovado para go-live, fixes prioritários aplicados |
-
-**QA concluído por @qa em 2026-03-30 — aprovado sem bloqueadores críticos.**
-
-Fixes já aplicados por Orion:
-- `contract-generator/.env.example` criado
-- Campo valor: `step="any"` → `step="1"` (evita divergência valor/extenso no PDF)
-
-Fixes menores pendentes (baixa prioridade — não bloqueiam uso):
-- Validação matemática CPF/CNPJ (issue #6 do relatório)
-- `btn-back-bottom` binding mover para `bindEvents()` (manutenibilidade)
-- `updateFieldsForType` chamar no `DOMContentLoaded` (hardening)
-
-**Ação Mauro**: Painel Autentique → Configurações → API → copiar token → criar `contract-generator/.env` com o token. Depois: `pip install -r requirements.txt && python contract-generator/server.py` → abrir `index.html`.
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect (design) → @dev (implementação) |
+| **Bloqueante** | CORE-1 (workflow engine) ✅ já implementado |
+| **Impacto** | Agente A termina → dispara agente B automaticamente via workflow engine. Sem Orion no meio. Sem Mauro no meio. |
+| **Nota** | Workflow engine (CORE-1) já suporta encadeamento. Falta: templates de workflow para processos reais (onboarding, landing page, conteúdo). |
 
 ---
 
-### ~~[ITEM-05] Cleanup Root~~ — FUNCIONAL ✅
-
-Arquivos `tmp_*.py` removidos da raiz. 2026-03-29.
-
----
-
----
-
-### ~~[ITEM-05] Bootstrap Files — 8 Agentes~~ — FUNCIONAL ✅
-
-Criados por @architect em 2026-03-30: architect.md, devops.md, po.md, pm.md, sm.md, ux.md, data-engineer.md, squad-creator.md. Todos em `docs/operations/agent-bootstrap/`.
-
----
-
-### ~~[ITEM-06] Fase 0.5 — Sparkle Brain~~ — FUNCIONAL ✅
+### [SYS-4] DNA Schema por Cliente — Brain Estruturado
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `FUNCIONAL` |
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect (design) → @dev (implementação) |
+| **Bloqueante** | SYS-1 (pipeline de ingestão) |
+| **Impacto** | Cada cliente tem DNA extraído automaticamente (tom, persona, regras, diferenciais). Zenya nasce mais inteligente. Onboarding semi-autônomo. |
+| **Referências** | `docs/archive/reviews/architect-megabrain-review.md` (schema `zenya_config` proposto) |
+
+---
+
+### [SYS-5] Observer Pattern Real — Auto-evolução Estágio 1
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect (design) → @dev (implementação) |
+| **Bloqueante** | SYS-1, SYS-2 |
+| **Impacto** | Agentes detectam lacunas e reportam. Mauro aprova. Novo agente criado do template. Sistema cresce. |
+| **Nota** | Cron de gap_report já existe (S4-02, segunda 8h). Falta: template de agente para criação automática, fluxo de aprovação Mauro, registro no Brain. |
+
+---
+
+### [SYS-6] Painel de Comando — Interface do Mauro com o Sistema
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect (design) → @ux + @dev (implementação) |
+| **Bloqueante** | SYS-1/2/3 (design da arquitetura define quais dados o painel consome) |
+| **Impacto** | Mauro pilota o sistema visualmente. Não é dashboard — é experiência de comando. |
+| **Stack** | Next.js (portal/ já existe), Supabase Realtime WebSocket, portal.sparkleai.tech |
+| **Lei 15** | "Se parece com Notion ou Trello, está errado. Se parece com Overwatch ou Final Fantasy, está no caminho certo." |
+| **Evolução** | SYS-1→Brain ao vivo. SYS-2→Agentes e skills visíveis. SYS-3→Workflows ao vivo. SYS-4→DNA sendo extraído. SYS-5→Gaps e novos agentes propostos. |
+
+---
+
+## Sprint OPS — Clientes (em andamento)
+
+### [OPS-3] Zenya Ensinaja — Go-Live
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` — segunda-feira |
 | **Responsável** | @dev |
-| **Bloqueante** | — |
-| **Data** | 2026-04-01 |
-| **Tipo** | brain_query + brain_ingest implementados no Runtime |
-
-**Decisão 2026-04-01:** N8n não entra em desenvolvimento novo. Os 5 workflows JSON existentes em `n8n-workflows/` servem como **referência de lógica** para @dev reconstruir no Runtime (FastAPI + ARQ + Redis). Não serão importados no n8n.
-
-**Schema Supabase já executado** ✅ (6 tabelas + 2 views + RLS + ivfflat index + função RPC `match_brain_chunks`)
-
-**Referência de lógica** (não importar — usar como spec para Runtime):
-- `brain-ingest-especialista.json` — ingesta conteúdo de especialista
-- `brain-search.json` — busca vetorial + síntese Claude
-- `brain-extract-dna.json` — extração das 6 camadas DNA via Opus
-- `brain-detect-cargo-threshold.json` — geração automática de Cargo Agents
-- `brain-ingest-cliente.json` — pipeline isolado por cliente
-
-**Ação @dev**: Implementar os 5 handlers equivalentes no Runtime. Brain Fase A primeiro (endpoint de consulta simples via Friday — 3-5 dias).
+| **Bloqueante** | Feriado (02/04). Dados do Douglas já extraídos (10 cursos). |
+| **Story** | `docs/stories/sprint-ops/ops-3.story.md` |
+| **Impacto** | R$650/mês desbloqueado |
+| **Nota** | WhatsApp: (12) 98197-4622. Endereço: Rua Comendador Custódio Vieira, 198 — Lorena. KB para ingerir com dados completos. |
 
 ---
 
-### ~~[ITEM-07] Processos — Atualização AGENT_CONTEXT.md~~ — FUNCIONAL ✅
+### [OPS-5] Instagram DM Pilot
 
-Executado por @architect em 2026-03-30.
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_MAURO` |
+| **Responsável** | Mauro (~45 min) → @dev |
+| **Bloqueante** | Mauro criar app no Meta for Developers |
+| **Guia** | `docs/operations/meta-instagram-app-setup.md` |
+| **Nota** | Verify token já configurado na VPS. Mauro precisa: (1) verificar conta Instagram Professional, (2) criar app tipo Business, (3) gerar System User Token. |
+
+---
+
+### [OPS-6] VPS Path Unification
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @devops |
+| **Bloqueante** | — |
+| **Impacto** | Eliminar confusão `/opt/sparkle-runtime/` vs `/opt/sparkle-runtime/sparkle-runtime/`. Unificar em um só path. Adicionar `.venv/` ao .gitignore. |
 
 ---
 
 ## Bloqueados — Aguardando Mauro
 
-### [BLOCK-01] Confeitaria Alexsandro — Go-live
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_MAURO` |
-| **Responsável** | Mauro |
-| **Bloqueante** | Conectar WhatsApp +5511976908238 na instância Z-API criada (QR code), mas ANTES precisa do fluxo completo da Gê |
-| **Próximo agente** | @dev (criar Chatwoot inbox + ativar workflows + configurar fluxo) |
-
-**Update 2026-03-31**: Instância Z-API criada. Fluxos n8n já existem (clonados). Falta: criar Chatwoot inbox, configurar id_conversa_alerta e número de escalonamento, ativar workflows n8n — conectar WhatsApp só depois disso.
-
-**O que está FUNCIONAL**:
-- System prompt no n8n (ID: `u7BDmAvPE4Sm6NXd`) configurado via PUT
-- KB 193 registros no Supabase `zenya_knowledge_base`
-
-**O que ainda é ARTEFATO (não funcional)**:
-- Chatwoot inbox: NÃO criado (depende de instância Z-API)
-- Workflows n8n: clonados mas INATIVOS
-- `id_conversa_alerta`: placeholder, precisa ID real pós-inbox
-
-**Ação Mauro**: Acessar painel Z-API → criar nova instância → copiar token + instance_id → passar para @dev.
-
----
-
-### [BLOCK-02] Ensinaja Douglas — Go-live
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_MAURO` |
-| **Responsável** | Mauro |
-| **Bloqueante** | Resposta do Douglas (valores cursos, horários) — mensagem enviada |
-| **Próximo agente** | @dev (atualizar KB + ativar workflows quando Douglas responder) |
-
-**O que está FUNCIONAL**:
-- System prompt no n8n (ID: `agEnqd5797ugaxEp`) configurado
-- KB 35 registros no Supabase
-- Fluxos n8n já existem (clonados, só ativar)
-
-**O que ainda é ARTEFATO (não funcional)**:
-- Workflows n8n: clonados mas INATIVOS (aguardam configuração final)
-- Google Sheets `ensina_leads`: não criado
-- Número do Douglas no escalar humano: placeholder
-
-**Update 2026-03-31**: Mensagem para Douglas enviada. Aguardando resposta para completar KB + ativar.
-
----
-
 ### [BLOCK-03] Fun Personalize Julia — Go-live
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Bloqueante** | — |
-| **Próximo agente** | @dev (integração Loja Integrada no Runtime, não no n8n) |
-
-**Update 2026-04-01**: API key da Julia JÁ recebida. Integração Loja Integrada vai no **Runtime** (decisão: n8n apenas para clientes existentes já configurados — nada novo). @dev implementa handler no Runtime para consultar pedidos via API Loja Integrada.
+| **Status** | `AGUARDANDO_CREDENCIAIS` |
+| **Responsável** | Mauro (cobrar API key Julia + criar Z-API instance) → @qa (validação e2e) |
+| **Bloqueante** | API key Loja Integrada (Julia não enviou) + Z-API instance para Julia |
+| **Nota** | Código PRONTO: handler `send_character_message` + integração Loja Integrada + intent detection. Bug crítico corrigido: handler não existia no registry (afetaria todos os clientes Zenya multi-tenant). Falta: deploy VPS + credenciais + QA. |
 
 ---
 
-### [BLOCK-04] Friday — End-to-end (Runtime)
+### [BLOCK-04] Lore — Zenya + Personagens
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Responsável** | — |
-| **Bloqueante** | — |
-| **Nota** | Z-API já aponta para Runtime desde 2026-03-31. Confirmado via logs: POST /friday/message recebidos. |
+| **Status** | `AGUARDANDO_MAURO` |
+| **Responsável** | Mauro (sessão) → @dev (popular `character_lore` no banco) |
+| **Bloqueante** | Sessão de lore com Mauro |
+| **Nota** | Lore canônico já aprovado (`docs/zenya/zenya-lore-canonical.md`). Open questions: awakening event, Juno, ensemble characters, relação Zenya-Brain, formato YouTube. |
 
 ---
 
@@ -275,24 +181,8 @@ Executado por @architect em 2026-03-30.
 | Campo | Valor |
 |-------|-------|
 | **Status** | `AGUARDANDO_MAURO` |
-| **Bloqueante** | Adicionar saldo na conta de anúncios + enviar vídeos/criativos |
-| **Próximo agente** | squad trafego-pago (ativar ad sets + adicionar criativos) |
-
-**O que está CRIADO (2026-03-31)**:
-- Campanha 1: Consórcio Imóvel — `act_1273799064911268`, PAUSED
-- Campanha 2: Consórcio Veículo — `act_1273799064911268`, PAUSED
-- 4 ad sets criados com public Advantage+ desabilitado, segmentação manual: Financiamento, Real Estate, Automóveis, Setor automotivo
-- PAGE_ID: `456788517514349`, sem pixel, sem Instagram conectado via API
-
-**Pendente para ir ao ar**:
-- Adicionar saldo na conta da Gabriela
-- Gabriela enviar vídeos/imagens para criativos
-- Retargeting (Campanha 3): precisa de Instagram @handle para obter IG Account ID
-- Considerar mudar objetivo para MESSAGES/OUTCOME_ENGAGEMENT (análise histórica: objetivo original era MESSAGES, R$6,74/conversa benchmark)
-
-**Análise histórica CSV executada**: objetivo original era MESSAGES (não LEADS), frequência 4,96 (saturado), criativo de vídeo com 23% completion rate — base boa para recriar.
-
-**Ação Mauro**: Adicionar saldo + enviar materiais de criativo para Gabriela.
+| **Bloqueante** | Adicionar saldo + enviar criativos |
+| **Nota** | 2 campanhas + 4 ad sets criados (PAUSED). Aguardando saldo e vídeos/imagens. |
 
 ---
 
@@ -301,88 +191,82 @@ Executado por @architect em 2026-03-30.
 | Campo | Valor |
 |-------|-------|
 | **Status** | `AGUARDANDO_MAURO` |
-| **Bloqueante** | Enviar mensagem para João Lúcio + conectar número WhatsApp na Z-API (QR code) |
-| **Próximo agente** | @dev (lógica no Runtime — não importar blueprints n8n) |
-
-**Decisão 2026-04-01:** Os 3 blueprints JSON não são importados no n8n. Servem como referência de lógica para implementação no Runtime.
-
-**O que ainda é necessário**:
-- Mauro: enviar mensagem para João + conectar WhatsApp Z-API (QR code)
-- @dev: executar `docs/stories/vitalis-supabase-setup.sql` + implementar handlers no Runtime
-- Classifier prompt em `squads/trafego-pago/` — referência para @dev
+| **Bloqueante** | Mensagem para João Lúcio + conectar WhatsApp na Z-API |
+| **Nota** | SQL pronto. Implementação vai no Runtime. |
 
 ---
+
+### [BLOCK-07] Contract Generator — Token Autentique
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_MAURO` |
+| **Bloqueante** | Obter `AUTENTIQUE_TOKEN` do painel |
+| **Nota** | QA aprovado. Fixes aplicados. Pronto para uso após token. |
+
+---
+
+### [BLOCK-08] Supabase Connection Pool
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @architect |
+| **Nota** | QA identificou 502s em 7+ chamadas paralelas. Precisa fix antes de carga real de clientes. |
 
 ---
 
 ## PARKED
 
 ### Friday Gateway — Webhook 404
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `PARKED` |
-| **Decisão** | Mauro: "vamos resolver depois que tiver mais estruturados" |
-| **Contexto** | `/webhook/gateway` retorna 404 persistentemente. Causa raiz: registro de webhook corrompido após múltiplos PUTs. Não bloqueia nenhum go-live de cliente. |
+| **Status** | `PARKED` — Mauro: "vamos resolver depois que tiver mais estruturados" |
 
 ---
 
 ## DEPRECATED
 
 ### Master Workflow Parametrizado
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `DEPRECATED` |
-| **Motivo** | Substituído pelo modelo v3 clone + delta. Secretária v3 (97 nodes) é superior — agentes só clonam e aplicam delta por cliente. |
+| **Status** | `DEPRECATED` — Substituído por clone + delta v3 |
 
 ---
 
-## Itens FUNCIONAIS (referência — não repetir)
+## Itens FUNCIONAIS — Concluídos (referência)
 
-| Item | Status | Data |
-|------|--------|------|
-| Plaka — system prompt enxuto (4.935 chars) no n8n | FUNCIONAL | 2026-03-27 |
-| Plaka — Google Sheets KB (52 scripts / 5 abas) | FUNCIONAL | 2026-03-27 |
-| Plaka — Workflow rastrear pedido (ID: `jag4nERPiqJBalYm`) ativado | FUNCIONAL | 2026-03-27 |
-| Vitalis — dados Meta Ads coletados no Supabase (77 dias) | FUNCIONAL | 2026-03-26 |
-| Vitalis — relatório Score 55/100 no Supabase | FUNCIONAL | 2026-03-27 |
-| Gabriela — partner assignment BM configurado | FUNCIONAL | 2026-03-27 |
-| Sparkle ZApi Router (ID: `LMcmB2oYX5RGnFxc`) | FUNCIONAL (ativo, routing correto, aguarda Z-API redirect) | 2026-03-29 |
-| Friday Brain (ID: `Izoupz82zVf6kZRQ`) | FUNCIONAL (ativo, aguarda Z-API redirect para testar e2e) | 2026-03-28 |
-| Friday Notifier (ID: `zxznYpW2PBhJrGjV`) | FUNCIONAL (ativo, aguarda e2e) | 2026-03-28 |
-| Sparkle Gateway (ID: `hCukbZX875Y18ThZ`) | FUNCIONAL (ativo, 16 nodes, aguarda e2e) | 2026-03-29 |
-| Confeitaria — system prompt no n8n (ID: `u7BDmAvPE4Sm6NXd`) | FUNCIONAL | 2026-03-29 |
-| Confeitaria — KB 193 registros Supabase | FUNCIONAL | 2026-03-29 |
-| Ensinaja — system prompt no n8n (ID: `agEnqd5797ugaxEp`) | FUNCIONAL | 2026-03-27 |
-| Ensinaja — KB 35 registros Supabase | FUNCIONAL | 2026-03-27 |
-| AGENT_CONTEXT.md — contexto obrigatório para todos os agentes | FUNCIONAL (desatualizado — ITEM-07 pendente) | 2026-03-29 |
-| sparkle-os-processes.md — 6 processos definidos | FUNCIONAL | 2026-03-29 |
-| Landing pages nicho (confeitaria/escola/ecommerce/consorcio) | DEPLOYED | 2026-03-29 |
-| Portal logout fix (httpOnly cookie server-side) | FUNCIONAL | 2026-03-29 |
-| Supabase: friday_tasks + 4 views Friday | EXISTEM | 2026-03-29 |
-| Cleanup root tmp_*.py (16 arquivos) | FUNCIONAL | 2026-03-29 |
-| Supabase: tabela `agent_queue` + view `v_agent_queue_active` (esteira da fábrica) | FUNCIONAL | 2026-03-29 |
-| Bootstrap por agente: `docs/operations/agent-bootstrap/` (@dev, @qa, @analyst) | FUNCIONAL | 2026-03-29 |
-| Plaka delta-v3.md — spec técnica deltas (agente-off gate + Google Sheets KB) | FUNCIONAL | 2026-03-29 |
-| Plaka agente-off gate — node `Check Agente-Off Gate` no workflow 371QcYGrXmZ1n8bV | FUNCIONAL | 2026-03-29 |
-| Weekly Report V2 (ID: U68uGoBZsRxXSARL, 12 nodes) — ativo no n8n, segunda 9h | FUNCIONAL | 2026-03-30 |
-| scripts/clone-zenya-client.py — clona 4 workflows core (00,01,05,07), validado | FUNCIONAL | 2026-03-30 |
-| SOUL.md v1.1 — alma universal da Zenya em docs/zenya/SOUL.md | FUNCIONAL | 2026-03-29 |
-| Contract generator Autentique — server.py + script.js + index.html | ARTEFATO (QA em execução) | 2026-03-30 |
-| Supabase RLS — 8 políticas aplicadas (vitalis, prospects, friday_tasks) | FUNCIONAL | 2026-03-29 |
-| Bootstrap files — 8 agentes (architect, devops, po, pm, sm, ux, data-engineer, squad-creator) | FUNCIONAL | 2026-03-30 |
-| Constitution v1.1 — Princípio 8 (colaboração proativa) + agent-toolkit-standard atualizado | FUNCIONAL | 2026-03-30 |
-| Fase 0.5 brief — docs/architecture/aios-v2/fase-0.5-megabrain-dev-brief.md | FUNCIONAL | 2026-03-30 |
-| 02-data-schema.sql — 4 bugs corrigidos, SQL executado com sucesso no Supabase | FUNCIONAL | 2026-03-30 |
-| AGENT_CONTEXT.md — atualizado com Princípio 8, 11 agentes, Sparkle Brain section | FUNCIONAL | 2026-03-30 |
-| Plaka workflow 371QcYGrXmZ1n8bV — corrigido (model gpt-4.1-mini) + reativado | FUNCIONAL | 2026-03-31 |
-| Sprint 8 Runtime — onboarding autônomo (scrape → KB → Supabase → clone n8n) | FUNCIONAL | 2026-03-31 |
-| Gabriela — 2 campanhas + 4 ad sets criados via Meta API (PAUSED, aguardando saldo) | ARTEFATO | 2026-03-31 |
-| brain_query + brain_ingest (Runtime) | FUNCIONAL | 2026-04-01 |
-| S2-01 loja_integrada_query handler | FUNCIONAL (aguarda API key Julia) | 2026-04-01 |
-| S3-01/S3-02 crons daily/weekly briefing | FUNCIONAL | 2026-04-01 |
-| S3-03 /agent/invoke endpoint | FUNCIONAL | 2026-04-01 |
-| S4-01 Observer Pattern /zenya/learn | FUNCIONAL | 2026-04-01 |
-| S4-02 Gap Report cron segunda 8h | FUNCIONAL | 2026-04-01 |
-| scheduler.py bug fix — async/await corrigido (coroutine não era descartada) | FUNCIONAL | 2026-04-01 |
+### Sprint OPS + Core + Brain (2026-04-02)
+
+| Item | O que faz | Data |
+|------|-----------|------|
+| OPS-1 Registry Fix | 15 intents no dispatcher, 6 handlers órfãos registrados, db_execute() adicionado | 2026-04-02 |
+| OPS-2 Zenya Alexsandro | Go-live formalizado. 729 mensagens, 99.86% sucesso | 2026-04-02 |
+| OPS-4 Friday Proativa | 8 crons: billing_risk 08:45, risk_alert 09:30, upsell_opportunity seg 07:30. Anti-spam validado | 2026-04-02 |
+| CORE-1 Workflow Engine | Tabela workflow_runs + encadeamento automático via _steps em context JSONB | 2026-04-02 |
+| CORE-2 activate_agent | @analyst real com 4 tools (brain_query, supabase_read, web_search, calculate). Tool_use loop. 7 camadas segurança | 2026-04-02 |
+| BRAIN-1 Auto-ingestão | Brain aprende das conversas automaticamente. Score relevância > 0.6. Isolamento Friday/Zenya | 2026-04-02 |
+
+### Sprint 8 (2026-04-01)
+
+| Item | O que faz | Data |
+|------|-----------|------|
+| S8-P1 Brain Separation | 101 registros migrados, isolamento confirmado, pytest 10/10 | 2026-04-01 |
+| S8-P2 Friday Autônoma | 3 crons ativos, 6 alertas enviados, anti-spam validado | 2026-04-01 |
+| S8-P3 Embeddings Brain | OpenAI embeddings, threshold adaptativo 0.40, backfill 101 chunks | 2026-04-01 |
+| S8-P6 Mission Control | Portal com Realtime WebSocket, 5 estados visuais, Traefik config | 2026-04-01 |
+
+### Infraestrutura anterior
+
+| Item | Data |
+|------|------|
+| Plaka system prompt + KB 52 scripts + workflow rastrear pedido | 2026-03-27 |
+| Vitalis dados Meta Ads 77 dias + relatório Score 55/100 | 2026-03-27 |
+| Sparkle ZApi Router + Friday Brain + Friday Notifier + Gateway | 2026-03-29 |
+| sparkle-os-processes.md — 6 processos definidos | 2026-03-29 |
+| Landing pages nicho (confeitaria/escola/ecommerce/consorcio) | 2026-03-29 |
+| scripts/clone-zenya-client.py | 2026-03-30 |
+| SOUL.md v1.1 — alma universal Zenya | 2026-03-29 |
+| Bootstrap 8 agentes + Constitution v1.1 | 2026-03-30 |
+| Supabase schema completo (6 tabelas + RLS + pgvector) | 2026-03-30 |
+| brain_query + brain_ingest Runtime | 2026-04-01 |
+| loja_integrada_query handler | 2026-04-01 |
+| Observer Pattern /zenya/learn + Gap Report cron | 2026-04-01 |
+| scheduler.py async bug fix | 2026-04-01 |
+| Weekly Report V2 n8n | 2026-03-30 |

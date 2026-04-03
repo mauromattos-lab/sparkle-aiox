@@ -109,7 +109,7 @@ async def receive_audio_file(file: UploadFile = File(...), from_number: str = ""
         from runtime.tasks.worker import execute_task
         audio_bytes = await file.read()
         transcript = await asyncio.to_thread(transcribe_bytes, audio_bytes, file.filename or "audio.ogg")
-        task = await classify_and_dispatch(transcript, from_number=from_number)
+        task = await classify_and_dispatch(transcript, from_number=from_number, from_audio=True)
         task = hydrate_context(task)
         await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
@@ -129,7 +129,7 @@ async def receive_audio_url(req: AudioUrlRequest):
     try:
         from runtime.tasks.worker import execute_task
         transcript = await asyncio.to_thread(transcribe_url, req.audio_url)
-        task = await classify_and_dispatch(transcript, from_number=req.from_number)
+        task = await classify_and_dispatch(transcript, from_number=req.from_number, from_audio=True)
         task = hydrate_context(task)
         await execute_task(task)
         response_text = await _wait_for_task(task.get("id"))
@@ -268,7 +268,7 @@ async def _process_audio_url(audio_url: str, from_number: str) -> None:
     try:
         print(f"[friday] Áudio recebido de {from_number!r}, transcrevendo...")
         transcript = await asyncio.to_thread(transcribe_url, audio_url)
-        task = await classify_and_dispatch(transcript, from_number=from_number)
+        task = await classify_and_dispatch(transcript, from_number=from_number, from_audio=True)
         task = hydrate_context(task)
         await execute_task(task)
         response = await _wait_for_task(task.get("id"), timeout=30)

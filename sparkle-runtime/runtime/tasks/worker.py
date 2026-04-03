@@ -7,12 +7,16 @@ Two modes:
    the /tasks/poll endpoint processes one pending task synchronously.
 
 Both update runtime_tasks status in Supabase.
+
+S9: Brain Gate — todo task cognitivo busca contexto no Brain antes de executar.
+Task types em BRAIN_EXEMPT ficam fora do gate (operacionais, não cognitivos).
+Se Brain retornar erro: task vai para retry — nunca executa sem contexto.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter
 from arq import cron
@@ -24,16 +28,134 @@ from runtime.tasks.registry import get_handler
 
 router = APIRouter()
 
+# Task types que NÃO precisam de contexto Brain para executar
+# (operacionais, não cognitivos)
+BRAIN_EXEMPT_TASK_TYPES = frozenset({
+    "echo",
+    "health_alert",
+    "conversation_summary",
+    "loja_integrada_query",
+    "send_character_message",
+    "workflow_step",
+    "brain_ingest_pipeline",  # SYS-1.3: pipeline faz suas proprias operacoes Brain
+    "extract_dna",            # SYS-1.3: sub-task da pipeline, nao precisa de gate
+    "narrative_synthesis",    # SYS-1.3: sub-task da pipeline, nao precisa de gate
+})
+
+
+# ── Brain Gate ──────────────────────────────────────────────
+
+async def _fetch_brain_context(namespace: str, query: str) -> dict:
+    """
+    Busca contexto relevante no Brain para este task.
+    Lança exceção se Brain inacessível — worker coloca task em retry.
+    Retorna dict com chunks e context_id do chunk mais relevante.
+    """
+    try:
+        import httpx
+        api_key = os.getenv("OPENAI_API_KEY")
+        embedding = None
+
+        if api_key:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/embeddings",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={"model": "text-embedding-3-small", "input": query},
+                    timeout=8.0,
+                )
+                if resp.status_code == 200:
+                    embedding = resp.json()["data"][0]["embedding"]
+
+        if embedding:
+            result = await asyncio.to_thread(
+                lambda: supabase.rpc(
+                    "match_brain_chunks",
+                    {"query_embedding": embedding, "match_threshold": 0.50, "match_count": 5},
+                ).execute()
+            )
+            chunks = result.data or []
+        else:
+            # Fallback: text search se embedding não disponível
+            words = [w for w in query.split() if len(w) > 3][:3] or query.split()[:2]
+            first_word = words[0] if words else query[:20]
+            result = await asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id,raw_content,source_type,source_title")
+                .ilike("raw_content", f"%{first_word}%")
+                .limit(5)
+                .execute()
+            )
+            chunks = result.data or []
+
+        context_id = chunks[0]["id"] if chunks else None
+        score = chunks[0].get("similarity") if chunks else None
+        return {"chunks": chunks, "context_id": context_id, "score": score}
+
+    except Exception as e:
+        print(f"[worker] Brain Gate: falha ao buscar contexto — {e}")
+        raise
+
 
 # ── Core executor ──────────────────────────────────────────
 
 async def execute_task(task: dict) -> None:
     """
     Execute a single task asynchronously.
+    S9: injeta contexto Brain antes de executar (exceto tasks em BRAIN_EXEMPT).
     Updates Supabase status: running → done | failed.
     """
     task_id = task["id"]
     task_type = task.get("task_type", "")
+
+    # ── S9 Brain Gate ──
+    if task_type not in BRAIN_EXEMPT_TASK_TYPES:
+        namespace = task.get("client_id") or settings.sparkle_internal_client_id or "sparkle-internal"
+        query = (
+            task.get("payload", {}).get("summary")
+            or task.get("payload", {}).get("original_text", "")[:200]
+            or task_type
+        )
+        try:
+            brain_ctx = await _fetch_brain_context(namespace=namespace, query=query)
+            task["brain_context"] = brain_ctx.get("chunks", [])
+            # Persiste brain_context_id antes de executar
+            await _update_task(task_id, {
+                "brain_context_id": brain_ctx.get("context_id"),
+                "brain_context_score": brain_ctx.get("score"),
+            })
+        except Exception:
+            # Brain inacessível: task vai para retry — nunca executa sem contexto
+            retry_count = task.get("retry_count", 0)
+            max_retries = task.get("max_retries", 3)
+            if retry_count < max_retries:
+                await _update_task(task_id, {
+                    "status": "pending",
+                    "retry_count": retry_count + 1,
+                    "error": "brain_unavailable — retrying",
+                })
+            else:
+                await _update_task(task_id, {
+                    "status": "failed",
+                    "error": "brain_unavailable after max retries",
+                    "completed_at": _now(),
+                })
+            return
+    # ── fim Brain Gate ──
+
+    # ── Gate Enforcement ──────────────────────────────────────
+    required_gates: list = task.get("required_gates") or []
+    gates_cleared: list = task.get("gates_cleared") or []
+    if required_gates:
+        pending_gates = [g for g in required_gates if g not in gates_cleared]
+        if pending_gates:
+            await _update_task(task_id, {
+                "status": "awaiting_gate",
+                "error": f"Aguardando aprovação de: {', '.join(pending_gates)}",
+            })
+            print(f"[worker] Task {task_id} bloqueada em gate(s): {pending_gates}")
+            return
+    # ── fim Gate Enforcement ──
 
     await _update_task(task_id, {"status": "running", "started_at": _now()})
 
@@ -48,11 +170,53 @@ async def execute_task(task: dict) -> None:
 
     try:
         result = await handler(task)
-        await _update_task(task_id, {
+        update_data: dict = {
             "status": "done",
             "result": result,
+            "error": None,
             "completed_at": _now(),
-        })
+        }
+        # handoff_acknowledged: marca quando a task gerou handoff esperando próximo agente
+        if isinstance(result, dict) and result.get("handoff_to"):
+            update_data["handoff_acknowledged"] = None  # NULL = aguardando ack do próximo
+        await _update_task(task_id, update_data)
+
+        # ── Handoff Engine ─────────────────────────────────────────────────────
+        # Se o result indicar handoff_to, cria a próxima task automaticamente.
+        # Correntes (A→B→C) são intencionais e não formam loop pois cada
+        # handler tem responsabilidade distinta.
+        if isinstance(result, dict) and result.get("handoff_to"):
+            effective_client_id = task.get("client_id") or settings.sparkle_internal_client_id
+            await _create_handoff_task(
+                task_type=result["handoff_to"],
+                payload={
+                    **(result.get("handoff_payload") or {}),
+                    "parent_task_id": str(task_id),
+                    "parent_task_type": task_type,
+                },
+                client_id=effective_client_id,
+                priority=task.get("priority", 7),
+            )
+
+        # ── Auto-Brain-Ingest ──────────────────────────────────────────────────
+        # Se o result for brain_worthy, ingere o conteúdo no Brain automaticamente
+        # com baixa prioridade — sem bloquear o fluxo principal.
+        if isinstance(result, dict) and result.get("brain_worthy"):
+            content = result.get("brain_content") or result.get("message", "")
+            if content and len(content) > 50:
+                effective_client_id = task.get("client_id") or settings.sparkle_internal_client_id
+                await _create_handoff_task(
+                    task_type="brain_ingest",
+                    payload={
+                        "content": content[:4000],
+                        "source_agent": task.get("agent_id", "system"),
+                        "ingest_type": "agent_output",
+                        "source_title": f"auto:{task_type}",
+                        "parent_task_id": str(task_id),
+                    },
+                    client_id=effective_client_id,
+                    priority=3,  # baixa prioridade — não urgente
+                )
     except Exception as e:
         retry_count = task.get("retry_count", 0)
         max_retries = task.get("max_retries", 3)
@@ -77,8 +241,82 @@ async def _update_task(task_id: str, data: dict) -> None:
     )
 
 
+async def _create_handoff_task(task_type: str, payload: dict, client_id: str, priority: int = 7) -> str | None:
+    """Cria task de handoff automaticamente ao completar task pai."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "system",
+                "client_id": client_id,
+                "task_type": task_type,
+                "payload": payload,
+                "status": "pending",
+                "priority": priority,
+            }).execute()
+        )
+        handoff_id = result.data[0]["id"] if result.data else None
+        print(f"[worker] handoff criado: {task_type} → task_id={handoff_id}")
+        return handoff_id
+    except Exception as e:
+        print(f"[worker] falha ao criar handoff task {task_type}: {e}")
+        return None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ── Gate Approval endpoint ─────────────────────────────────
+
+@router.post("/{task_id}/gate/clear")
+async def clear_gate(task_id: str, gate: str, approved_by: str = "system"):
+    """
+    Aprova um gate específico em uma task awaiting_gate.
+    Quando todos os gates estiverem cleared, task volta para pending.
+
+    Exemplo: POST /tasks/{id}/gate/clear?gate=qa&approved_by=@qa
+    """
+    result = await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks")
+        .select("required_gates,gates_cleared,status")
+        .eq("id", task_id)
+        .single()
+        .execute()
+    )
+    task = result.data
+    if not task:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Task não encontrada")
+
+    required: list = task.get("required_gates") or []
+    cleared: list = task.get("gates_cleared") or []
+
+    if gate not in required:
+        return {"status": "ignored", "reason": f"gate '{gate}' não está em required_gates"}
+
+    if gate not in cleared:
+        cleared = cleared + [gate]
+
+    pending = [g for g in required if g not in cleared]
+    new_status = "pending" if not pending else "awaiting_gate"
+
+    await asyncio.to_thread(
+        lambda: supabase.table("runtime_tasks").update({
+            "gates_cleared": cleared,
+            "status": new_status,
+            "error": None if new_status == "pending" else f"Aguardando: {', '.join(pending)}",
+            "updated_at": _now(),
+        }).eq("id", task_id).execute()
+    )
+
+    print(f"[gate] Task {task_id}: gate '{gate}' cleared by {approved_by}. Pending: {pending}")
+    return {
+        "task_id": task_id,
+        "gate_cleared": gate,
+        "approved_by": approved_by,
+        "gates_pending": pending,
+        "task_status": new_status,
+    }
 
 
 # ── In-process polling endpoint (dev / no-Redis fallback) ──
@@ -125,10 +363,6 @@ async def process_pending_tasks(ctx: dict) -> None:
 
 
 async def trigger_daily_briefing(ctx: dict) -> None:
-    """
-    ARQ cron: dispara a task daily_briefing às 8h de Brasília (11h UTC).
-    Insere uma task na fila para ser executada pelo process_pending_tasks.
-    """
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({
             "agent_id": "friday",
@@ -144,10 +378,6 @@ async def trigger_daily_briefing(ctx: dict) -> None:
 
 
 async def trigger_weekly_briefing(ctx: dict) -> None:
-    """
-    ARQ cron: dispara a task weekly_briefing todo domingo às 8h de Brasília (11h UTC).
-    Insere uma task na fila para ser executada pelo process_pending_tasks.
-    """
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({
             "agent_id": "friday",
@@ -163,10 +393,6 @@ async def trigger_weekly_briefing(ctx: dict) -> None:
 
 
 async def trigger_gap_report(ctx: dict) -> None:
-    """
-    ARQ cron: dispara a task gap_report toda segunda-feira às 11h UTC (8h Brasília).
-    Insere uma task na fila para ser executada pelo process_pending_tasks.
-    """
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({
             "agent_id": "friday",
@@ -182,10 +408,6 @@ async def trigger_gap_report(ctx: dict) -> None:
 
 
 async def trigger_health_check(ctx: dict) -> None:
-    """
-    ARQ cron: dispara a task health_alert a cada 15 minutos.
-    Verifica saúde das Zenyas e alerta Mauro via WhatsApp se houver problema.
-    """
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({
             "agent_id": "friday",
@@ -200,15 +422,45 @@ async def trigger_health_check(ctx: dict) -> None:
     print(f"[worker] health_alert triggered — task_id={task_id}")
 
 
+async def trigger_weekly_content(ctx: dict) -> None:
+    """
+    Gera 3 conteúdos semanais automaticamente (sexta 9h Brasília = 12h UTC):
+    - post sobre atendimento automático (persona zenya)
+    - carrossel sobre crescimento digital (persona zenya)
+    - thread sobre IA para negócios (persona mauro)
+    """
+    topics = [
+        {"topic": "atendimento automático transforma o relacionamento com clientes", "format": "instagram_post", "persona": "zenya"},
+        {"topic": "como crescer com presença digital inteligente", "format": "carousel", "persona": "zenya"},
+        {"topic": "o papel da IA no crescimento de negócios em 2025", "format": "thread", "persona": "mauro"},
+    ]
+    task_ids = []
+    for t in topics:
+        result = await asyncio.to_thread(
+            lambda tt=t: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "generate_content",
+                "payload": {**tt, "source_type": "cron", "source_ref": "cron_friday_9h"},
+                "status": "pending",
+                "priority": 5,
+            }).execute()
+        )
+        tid = result.data[0]["id"] if result.data else None
+        task_ids.append(tid)
+    print(f"[worker] weekly_content triggered — {len(task_ids)} tasks: {task_ids}")
+
+
 class WorkerSettings:
-    functions = [process_pending_tasks, trigger_daily_briefing, trigger_weekly_briefing, trigger_gap_report, trigger_health_check]
+    functions = [process_pending_tasks, trigger_daily_briefing, trigger_weekly_briefing, trigger_gap_report, trigger_health_check, trigger_weekly_content]
     cron_jobs = [
-        cron(process_pending_tasks, second={0, 15, 30, 45}),                        # every 15 seconds
-        cron(trigger_daily_briefing, hour={11}, minute={0}),                         # 11h UTC = 8h Brasília
-        cron(trigger_weekly_briefing, weekday={6}, hour={11}, minute={0}),           # sunday 11h UTC = 8h Brasília
-        cron(trigger_gap_report, weekday={0}, hour={11}, minute={0}),               # monday 11h UTC = 8h Brasília
-        cron(trigger_health_check, second={0}, minute={0, 15, 30, 45}),             # every 15 min
+        cron(process_pending_tasks, second={0, 15, 30, 45}),
+        cron(trigger_daily_briefing, hour={11}, minute={0}),
+        cron(trigger_weekly_briefing, weekday={6}, hour={11}, minute={0}),
+        cron(trigger_gap_report, weekday={0}, hour={11}, minute={0}),
+        cron(trigger_health_check, second={0}, minute={0, 15, 30, 45}),
+        cron(trigger_weekly_content, weekday={4}, hour={12}, minute={0}),  # sexta 9h Brasília
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10
-    job_timeout = 120
+    job_timeout = 600  # 10 min — extract_dna/narrative_synthesis fazem chamadas Haiku por chunk

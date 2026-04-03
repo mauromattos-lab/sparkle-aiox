@@ -9,6 +9,7 @@ from typing import Callable
 from runtime.tasks.handlers.activate_agent import handle_activate_agent
 from runtime.tasks.handlers.conclave import handle_conclave
 from runtime.tasks.handlers.brain_ingest import handle_brain_ingest
+from runtime.tasks.handlers.brain_ingest_pipeline import handle_brain_ingest_pipeline
 from runtime.tasks.handlers.brain_query import handle_brain_query
 from runtime.tasks.handlers.chat import handle_chat
 from runtime.tasks.handlers.conversation_summary import handle_conversation_summary
@@ -26,17 +27,20 @@ from runtime.tasks.handlers.health_alert import handle_health_alert
 from runtime.tasks.handlers.learn_from_conversation import handle_learn_from_conversation
 from runtime.tasks.handlers.loja_integrada_query import handle_loja_integrada_query
 from runtime.tasks.handlers.narrative_synthesis import handle_narrative_synthesis
+from runtime.tasks.handlers.send_character_message import handle_send_character_message
 from runtime.tasks.handlers.onboard_client import handle_onboard_client
 from runtime.tasks.handlers.specialist_chat import handle_specialist_chat
 from runtime.tasks.handlers.status_mrr import handle_status_mrr
 from runtime.tasks.handlers.status_report import handle_status_report
 from runtime.tasks.handlers.weekly_briefing import handle_weekly_briefing
+from runtime.tasks.handlers.workflow_step import handle_workflow_step
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
     "activate_agent":           handle_activate_agent,
     "conclave":                 handle_conclave,
     "brain_ingest":             handle_brain_ingest,
+    "brain_ingest_pipeline":    handle_brain_ingest_pipeline,
     "brain_query":              handle_brain_query,
     "chat":                     handle_chat,
     "conversation_summary":     handle_conversation_summary,
@@ -54,11 +58,13 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "learn_from_conversation":  handle_learn_from_conversation,
     "loja_integrada_query":     handle_loja_integrada_query,
     "narrative_synthesis":      handle_narrative_synthesis,
+    "send_character_message":   handle_send_character_message,
     "onboard_client":           handle_onboard_client,
     "specialist_chat":          handle_specialist_chat,
     "status_mrr":               handle_status_mrr,
     "status_report":            handle_status_report,
     "weekly_briefing":          handle_weekly_briefing,
+    "workflow_step":             handle_workflow_step,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

@@ -1,20 +1,180 @@
 """
-Zenya router — endpoints para integração n8n → Runtime.
+Zenya router — Webhook multi-tenant por cliente + integração n8n → Runtime.
 
-POST /zenya/learn  — Recebe notificação do n8n ao final de uma conversa Zenya
-                     e enfileira task learn_from_conversation para extração de KB.
+POST /zenya/webhook/{client_id}  — Webhook Z-API por cliente (substitui n8n para novos clientes)
+POST /zenya/learn                — Recebe notificação do n8n ao final de uma conversa Zenya
+                                   e enfileira task learn_from_conversation para extração de KB.
+GET  /zenya/clients              — Lista clientes Zenya ativos no Runtime.
+
+Multi-tenant: cada client_id tem suas próprias credenciais Z-API no Supabase (tabela zenya_clients).
 """
 from __future__ import annotations
 
 import asyncio
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from runtime.db import supabase
+from runtime.friday.transcriber import transcribe_url
 
 router = APIRouter()
+
+
+# ── Zenya Webhook (multi-tenant) ───────────────────────────
+
+class ZAPIWebhookPayload(BaseModel):
+    phone: Optional[str] = None
+    fromMe: Optional[bool] = False
+    text: Optional[dict] = None
+    audio: Optional[dict] = None
+    type: Optional[str] = None
+
+
+async def _get_client_config(client_id: str) -> dict | None:
+    """Carrega configuração do cliente (credenciais Z-API, soul_prompt) do Supabase."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("*")
+            .eq("client_id", client_id)
+            .eq("active", True)
+            .single()
+            .execute()
+        )
+        return result.data
+    except Exception as e:
+        print(f"[zenya] cliente {client_id} não encontrado: {e}")
+        return None
+
+
+async def _send_zenya_message(client_config: dict, phone: str, message: str) -> None:
+    """Envia mensagem via Z-API com credenciais do cliente."""
+    zapi_instance = client_config.get("zapi_instance_id")
+    zapi_token = client_config.get("zapi_token")
+    zapi_client_token = client_config.get("zapi_client_token", "")
+
+    if not zapi_instance or not zapi_token:
+        print(f"[zenya] credenciais Z-API ausentes para cliente {client_config.get('client_id')}")
+        return
+
+    url = f"https://api.z-api.io/instances/{zapi_instance}/token/{zapi_token}/send-text"
+    headers = {"Client-Token": zapi_client_token} if zapi_client_token else {}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                url,
+                json={"phone": phone, "message": message},
+                headers=headers,
+                timeout=10.0,
+            )
+    except Exception as e:
+        print(f"[zenya] falha ao enviar mensagem: {e}")
+
+
+async def _process_zenya_message(
+    client_id: str, text: str, phone: str, client_config: dict
+) -> None:
+    """Processa mensagem via Character Runtime com contexto do cliente."""
+    try:
+        task_result = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "zenya",
+                "client_id": client_id,
+                "task_type": "send_character_message",
+                "payload": {
+                    "character": "zenya",
+                    "message": text,
+                    "phone": phone,
+                    "soul_prompt": client_config.get("soul_prompt", ""),
+                    "lore": client_config.get("lore", ""),
+                    "client_name": client_config.get("business_name", ""),
+                },
+                "status": "pending",
+                "priority": 8,
+            }).execute()
+        )
+        task = task_result.data[0] if task_result.data else {}
+        if not task:
+            return
+
+        from runtime.tasks.worker import execute_task
+        await execute_task(task)
+
+        # Busca resultado e envia via Z-API do cliente
+        result_data = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
+            .select("result,status")
+            .eq("id", task["id"])
+            .single()
+            .execute()
+        )
+        task_result_data = result_data.data or {}
+        if task_result_data.get("status") == "done":
+            result = task_result_data.get("result") or {}
+            response_text = result.get("message") or result.get("response", "")
+            if response_text and phone:
+                await _send_zenya_message(client_config, phone, response_text)
+    except Exception as e:
+        print(f"[zenya] falha ao processar mensagem de {phone}: {e}")
+
+
+@router.post("/webhook/{client_id}")
+async def zenya_webhook(
+    client_id: str,
+    payload: ZAPIWebhookPayload,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Webhook Z-API por cliente. Processa em background, responde 200 imediatamente.
+    Cada cliente aponta seu número Z-API para: POST /zenya/webhook/{client_id}
+    """
+    if payload.fromMe:
+        return {"status": "ignored", "reason": "fromMe"}
+
+    client_config = await _get_client_config(client_id)
+    if not client_config:
+        return {"status": "error", "reason": "client_not_found"}
+
+    phone = payload.phone or ""
+
+    if payload.audio and payload.audio.get("audioUrl"):
+        async def process_audio():
+            transcript = await asyncio.to_thread(transcribe_url, payload.audio["audioUrl"])
+            await _process_zenya_message(client_id, transcript, phone, client_config)
+
+        background_tasks.add_task(process_audio)
+        return {"status": "queued", "type": "audio", "client_id": client_id}
+
+    if payload.text and payload.text.get("message"):
+        background_tasks.add_task(
+            _process_zenya_message,
+            client_id,
+            payload.text["message"],
+            phone,
+            client_config,
+        )
+        return {"status": "queued", "type": "text", "client_id": client_id}
+
+    return {"status": "ignored", "reason": "no_content"}
+
+
+@router.get("/clients")
+async def list_zenya_clients():
+    """Lista clientes Zenya ativos no Runtime."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_id,business_name,active,created_at")
+            .eq("active", True)
+            .execute()
+        )
+        return {"clients": result.data or [], "count": len(result.data or [])}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ── Request models ─────────────────────────────────────────

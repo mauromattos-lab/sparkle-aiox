@@ -26,49 +26,85 @@ INTENTS = [
     "brain_ingest",          # "brain, aprende isso: X", "brain, salva: Y", "registra no brain"
     "loja_integrada_query",  # "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido" — Fun Personalize
     "gap_report",            # "gaps do brain", "o que o brain não sabe", "relatório de gaps"
+    "generate_content",      # "gera um post sobre X", "cria carrossel sobre Y", "escreve story"
+    "repurpose_audio",       # "transforma esse áudio em post", "usa meu áudio pra criar conteúdo"
+    "conclave",              # deliberação multi-agente — pergunta multi-domínio ou decisão complexa
     "echo",                  # teste — retorna o que foi dito
 ]
 
-_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, gap_report, echo
+# Domain enum — domínios de especialização para roteamento especializado
+DOMAINS = [
+    "trafego_pago",   # Meta Ads, Google Ads, campanhas, criativos, métricas de anúncios
+    "zenya_config",   # configuração de Zenya para cliente, atendimento, fluxo de conversa
+    "conteudo",       # Instagram, posts, carrosseis, legendas, stories
+    "estrategia",     # proposta comercial, pitch, estratégia de cliente, precificação
+    "brain_ops",      # queries ao brain, ingestão, gaps
+    "tech",           # código, deploy, infraestrutura, erros técnicos
+    "financeiro",     # MRR, faturamento, cobranças, clientes ativos
+    "geral",          # padrão quando não se encaixa em nenhum domínio
+]
 
-REGRAS DE CLASSIFICACAO:
+_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, gap_report, generate_content, repurpose_audio, conclave, echo
+
+REGRAS DE CLASSIFICACAO (intent):
 - status_mrr: menciona MRR, faturamento, quanto fatura, receita mensal
 - create_note: comeca ou contem "anota", "lembra que", "registra", "salva isso"
 - status_report: pergunta sobre agentes, status do sistema, tasks pendentes
 - chat: conversa livre, saudacoes, perguntas sobre clientes, duvidas, qualquer outra coisa
-- activate_agent: ativa @agente para fazer algo
+- activate_agent: ativa @agente para fazer algo — extrai params: agent (nome do agente com @, ex: "@analyst"), request (a tarefa solicitada, sem o nome do agente)
 - weekly_briefing: resumo da semana, o que rolou essa semana
 - onboard_client: "onborda", "onboard", "configura zenya para", "cria cliente", "novo cliente zenya" — extrai params: business_name, site_url, business_type, phone
 - brain_query: "brain", "o que voce sabe sobre", "consulta o brain", "o que o brain sabe", "brain me fala" — extrai param: query (o que quer saber)
 - brain_ingest: "brain, aprende", "brain, salva", "brain, registra", "ensina o brain", "adiciona ao brain", "aprende isso" — extrai param: content (o conteudo a salvar)
 - loja_integrada_query: "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido", "onde esta meu pedido", "situacao do pedido", "acompanhar pedido" — extrai params: cpf, email ou pedido_id conforme disponivel no texto
 - gap_report: "gaps do brain", "o que o brain nao sabe", "relatorio de gaps", "brain tem gaps", "quais gaps do brain", "o que falta no brain", "lacunas do brain"
+- generate_content: "gera um post", "cria um carrossel", "escreve uma legenda", "faz um story", "cria conteudo sobre", "gera conteudo para instagram" — extrai params: topic, format (instagram_post|carousel|story|thread), persona (zenya|finch|mauro)
+- repurpose_audio: "transforma em post", "usa esse audio", "faz um post desse audio", "repurpose", "transforma meu audio em conteudo" — para quando o audio foi transcrito e deve virar conteudo
+- conclave: pergunta que envolve multiplos dominios simultaneamente, decisao estrategica complexa, "o que devo fazer com X considerando Y e Z", analise completa de situacao, planejamento de proximos passos amplo, quando a pergunta cruzar trafego+conteudo, negocio+estrategia, financeiro+crescimento ou qualquer combinacao de 2+ dominios distintos
 - echo: apenas para testes com a palavra "echo"
 
+CLASSIFICACAO DE DOMINIO (domain) — classifique SEMPRE, mesmo quando intent != chat:
+- trafego_pago: Meta Ads, Google Ads, campanhas, criativos, metricas de anuncios, ROI, CPM, CTR, ROAS, trafego pago
+- zenya_config: configuracao de Zenya, atendimento automatizado, fluxo de conversa, bot de whatsapp para cliente
+- conteudo: Instagram, posts, carrosseis, legendas, stories, reels, criacao de conteudo para redes sociais
+- estrategia: proposta comercial, pitch, estrategia de cliente, precificacao, posicionamento, plano de acao
+- brain_ops: queries ao brain, ingestao, gaps, o que o brain sabe
+- tech: codigo, deploy, infraestrutura, erros tecnicos, API, banco de dados, servidor
+- financeiro: MRR, faturamento, cobrancas, clientes ativos, fluxo de caixa, mensalidade
+- geral: padrao quando nao se encaixa claramente em nenhum dominio acima (saudacoes, perguntas genéricas)
+
 IMPORTANTE: Responda APENAS com JSON valido, sem blocos de codigo, sem markdown.
-Formato: {"intent": "<intent>", "params": {}, "summary": "<1 linha resumindo o pedido>"}
+Formato: {"intent": "<intent>", "domain": "<domain>", "params": {}, "summary": "<1 linha resumindo o pedido>"}
 
 Para onboard_client, extraia params do texto:
-{"intent": "onboard_client", "params": {"business_name": "X", "site_url": "url", "business_type": "tipo", "phone": "55..."}, "summary": "Onboarding X"}
+{"intent": "onboard_client", "domain": "zenya_config", "params": {"business_name": "X", "site_url": "url", "business_type": "tipo", "phone": "55..."}, "summary": "Onboarding X"}
 
 Para brain_query, extraia params do texto:
-{"intent": "brain_query", "params": {"query": "o que o usuário quer saber"}, "summary": "Brain query: <tema>"}
+{"intent": "brain_query", "domain": "brain_ops", "params": {"query": "o que o usuário quer saber"}, "summary": "Brain query: <tema>"}
 
 Para brain_ingest, extraia params do texto:
-{"intent": "brain_ingest", "params": {"content": "o conteúdo a salvar"}, "summary": "Brain ingest: <tema>"}
+{"intent": "brain_ingest", "domain": "brain_ops", "params": {"content": "o conteúdo a salvar"}, "summary": "Brain ingest: <tema>"}
 
 Para loja_integrada_query, extraia params do texto (apenas os que estiverem presentes):
-{"intent": "loja_integrada_query", "params": {"cpf": "XXX.XXX.XXX-XX", "email": "x@x.com", "pedido_id": "12345"}, "summary": "Consulta pedido: <identificador>"}"""
+{"intent": "loja_integrada_query", "domain": "tech", "params": {"cpf": "XXX.XXX.XXX-XX", "email": "x@x.com", "pedido_id": "12345"}, "summary": "Consulta pedido: <identificador>"}
+
+Para generate_content, extraia params do texto:
+{"intent": "generate_content", "domain": "conteudo", "params": {"topic": "tema do conteudo", "format": "instagram_post", "persona": "zenya"}, "summary": "Gera post: <tema>"}
+
+Para activate_agent, extraia params do texto:
+{"intent": "activate_agent", "domain": "tech", "params": {"agent": "@analyst", "request": "analisar desempenho do cliente Vitalis"}, "summary": "Ativar @analyst: analise Vitalis"}"""
 
 
 async def classify_and_dispatch(
     text: str,
     from_number: str = "",
     task_id: Optional[str] = None,
+    from_audio: bool = False,
 ) -> dict:
     """
     Classify intent from text and insert a runtime_task.
     Returns the created task record.
+    from_audio=True: sinaliza que a mensagem veio de transcrição de voz.
     """
     raw = await call_claude(
         prompt=text,
@@ -92,19 +128,29 @@ async def classify_and_dispatch(
         parsed = {"intent": "chat", "params": {}, "summary": text[:200]}
 
     intent: str = parsed.get("intent", "chat")
+    domain: str = parsed.get("domain", "geral")
     params: dict = parsed.get("params", {})
     summary: str = parsed.get("summary", text[:200])
 
     if intent not in INTENTS:
         intent = "chat"
+    if domain not in DOMAINS:
+        domain = "geral"
 
     task_payload = {
         "original_text": text,
         "intent": intent,
+        "domain": domain,
         "params": params,
         "summary": summary,
         "from_number": from_number,
     }
+
+    if intent == "activate_agent" and params:
+        if params.get("agent"):
+            task_payload["agent"] = params["agent"]
+        if params.get("request"):
+            task_payload["request"] = params["request"]
 
     if intent == "onboard_client" and params:
         task_payload.update(params)
@@ -114,6 +160,9 @@ async def classify_and_dispatch(
 
     if intent == "brain_ingest" and params.get("content"):
         task_payload["content"] = params["content"]
+        if from_audio:
+            task_payload["ingest_type"] = "mauro_audio"
+            task_payload["source_agent"] = "mauro"
 
     if intent == "loja_integrada_query" and params:
         # Promover cpf / email / pedido_id para o topo do payload
@@ -121,11 +170,31 @@ async def classify_and_dispatch(
             if params.get(key):
                 task_payload[key] = params[key]
 
+    if intent == "generate_content" and params:
+        task_payload["topic"] = params.get("topic") or text[:300]
+        task_payload["format"] = params.get("format", "instagram_post")
+        task_payload["persona"] = params.get("persona", "zenya")
+        task_payload["source_type"] = "manual"
+
+    if intent == "repurpose_audio":
+        # Áudio transcrito → gerar post (source_type=repurpose_audio)
+        task_payload["topic"] = text[:300]
+        task_payload["format"] = params.get("format", "instagram_post")
+        task_payload["persona"] = params.get("persona", "mauro")
+        task_payload["source_type"] = "repurpose_audio"
+        # Redireciona para generate_content handler
+        intent = "generate_content"
+
+    # Roteamento especializado: chat + domínio específico → specialist_chat
+    task_type = intent
+    if intent == "chat" and domain not in ("geral", ""):
+        task_type = "specialist_chat"
+
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({
             "agent_id": "friday",
             "client_id": settings.sparkle_internal_client_id,
-            "task_type": intent,
+            "task_type": task_type,
             "payload": task_payload,
             "status": "pending",
             "priority": 7,

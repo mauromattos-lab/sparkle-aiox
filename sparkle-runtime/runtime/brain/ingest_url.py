@@ -1,0 +1,222 @@
+"""
+brain ingest-url — Ingere conteúdo de URL no Brain.
+
+Suporta:
+  - YouTube: extrai transcrição via youtube-transcript-api (sem baixar vídeo)
+  - URLs web: extrai texto via httpx + remoção de HTML básico
+  - Chunking automático para conteúdo longo (>1500 chars por chunk)
+
+Endpoint: POST /brain/ingest-url
+Body: {"url": "...", "title": "...", "source_agent": "mauro", "client_id": null}
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from typing import Optional
+
+import httpx
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from runtime.db import supabase
+
+router = APIRouter()
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
+    title: Optional[str] = ""
+    source_agent: Optional[str] = "mauro"
+    client_id: Optional[str] = None
+    persona: Optional[str] = "mauro"  # para qual persona vai o conhecimento
+
+
+def _is_youtube(url: str) -> bool:
+    return "youtube.com" in url or "youtu.be" in url
+
+
+def _extract_video_id(url: str) -> str | None:
+    patterns = [
+        r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})',
+        r'(?:embed/)([a-zA-Z0-9_-]{11})',
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+async def _get_youtube_transcript(url: str) -> tuple[str, str]:
+    """Extrai transcrição do YouTube. Retorna (texto, titulo).
+
+    Compatível com youtube-transcript-api >= 1.0 (API de instância com .fetch()).
+    """
+    video_id = _extract_video_id(url)
+    if not video_id:
+        raise ValueError(f"Não foi possível extrair video_id de: {url}")
+
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        def _fetch() -> str:
+            api = YouTubeTranscriptApi()
+            # Tenta PT primeiro, fallback para EN
+            for lang in (["pt", "pt-BR"], ["en"]):
+                try:
+                    fetched = api.fetch(video_id, languages=lang)
+                    return " ".join(s.text for s in fetched)
+                except Exception:
+                    continue
+            # Última tentativa sem filtro de idioma
+            fetched = api.fetch(video_id)
+            return " ".join(s.text for s in fetched)
+
+        text = await asyncio.to_thread(_fetch)
+        title = f"YouTube: {video_id}"
+        return text, title
+    except Exception as e:
+        raise ValueError(f"Transcrição não disponível para {video_id}: {e}")
+
+
+async def _get_url_content(url: str) -> tuple[str, str]:
+    """Extrai conteúdo de URL genérica."""
+    async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+        resp = await client.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type", "")
+
+        if "pdf" in content_type:
+            raise ValueError("PDFs binários não suportados via URL — converta para texto primeiro")
+
+        text = resp.text
+        # Remove HTML básico
+        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # Extrai título da página
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', resp.text, re.IGNORECASE | re.DOTALL)
+        title = title_match.group(1).strip() if title_match else url[:80]
+
+        return text, title
+
+
+def _chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> list[str]:
+    """Divide texto longo em chunks com overlap para preservar contexto."""
+    if len(text) <= chunk_size:
+        return [text]
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        # Tenta quebrar em fim de frase para não cortar no meio de uma ideia
+        last_period = chunk.rfind('. ')
+        if last_period > chunk_size * 0.7:
+            chunk = chunk[:last_period + 1]
+            end = start + last_period + 1
+        chunks.append(chunk)
+        start = end - overlap
+    return chunks
+
+
+async def _get_embedding(text: str) -> list[float] | None:
+    """Gera embedding via OpenAI text-embedding-3-small. Retorna None se sem API key."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": "text-embedding-3-small", "input": text[:8000]},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()["data"][0]["embedding"]
+    except Exception:
+        return None
+
+
+@router.post("/ingest-url")
+async def ingest_url(req: IngestUrlRequest):
+    """
+    Ingere conteúdo de URL no Brain.
+    Suporta YouTube (transcrição automática) e URLs web.
+    Realiza chunking automático e gera embeddings vetoriais quando OPENAI_API_KEY disponível.
+    """
+    try:
+        # 1. Extrair conteúdo conforme tipo de URL
+        if _is_youtube(req.url):
+            raw_text, auto_title = await _get_youtube_transcript(req.url)
+            source_type = "youtube"
+        else:
+            raw_text, auto_title = await _get_url_content(req.url)
+            source_type = "web_url"
+
+        title = req.title or auto_title
+        client_id = req.client_id  # None = sparkle-internal
+
+        if not raw_text or len(raw_text) < 50:
+            return {"status": "error", "message": "Conteúdo extraído muito curto ou vazio"}
+
+        # 2. Chunking
+        chunks = _chunk_text(raw_text)
+
+        # 3. Inserir cada chunk no Brain com embedding
+        inserted = 0
+        chunk_ids = []
+
+        for i, chunk in enumerate(chunks):
+            embedding = await _get_embedding(chunk)
+            chunk_title = (
+                f"{title} (chunk {i+1}/{len(chunks)})" if len(chunks) > 1 else title
+            )
+            row: dict = {
+                "raw_content": chunk,
+                "source_type": source_type,
+                "source_title": chunk_title,
+                "pipeline_type": "mauro",
+                "chunk_metadata": {
+                    "source_url": req.url,
+                    "source_agent": req.source_agent,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                },
+            }
+            if client_id:
+                row["client_id"] = client_id
+            if embedding:
+                row["embedding"] = embedding
+
+            try:
+                result = await asyncio.to_thread(
+                    lambda r=row: supabase.table("brain_chunks").insert(r).execute()
+                )
+                if result.data:
+                    chunk_ids.append(result.data[0]["id"])
+                    inserted += 1
+            except Exception as e:
+                print(f"[brain/ingest-url] falha chunk {i}: {e}")
+
+        return {
+            "status": "ok",
+            "url": req.url,
+            "title": title,
+            "source_type": source_type,
+            "chunks_total": len(chunks),
+            "chunks_inserted": inserted,
+            "chunk_ids": chunk_ids,
+            "text_length": len(raw_text),
+            "message": f"'{title}' ingerido no Brain — {inserted} chunks com embedding vetorial",
+        }
+
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        return {"status": "error", "message": f"Erro inesperado: {str(e)[:200]}"}
