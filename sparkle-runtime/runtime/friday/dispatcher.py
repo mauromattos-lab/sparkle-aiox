@@ -262,6 +262,53 @@ async def classify_and_dispatch(
     Returns the created task record.
     from_audio=True: sinaliza que a mensagem veio de transcrição de voz.
     """
+    # Brain ingest detection: frases explicitas de ingestao
+    _BRAIN_INGEST_TRIGGERS = (
+        "brain, aprende", "brain, salva", "brain, registra",
+        "ensina o brain", "adiciona ao brain", "aprende isso",
+        "precisamos aprender isso", "coloca no brain", "joga no brain",
+        "joga isso no brain", "ingere isso", "absorve isso",
+        "brain aprende", "salva no brain", "registra no brain",
+    )
+    text_lower = text.lower().strip()
+    for trigger in _BRAIN_INGEST_TRIGGERS:
+        if text_lower.startswith(trigger):
+            # Remove o trigger do inicio pra pegar so o conteudo
+            content = text[len(trigger):].lstrip(":").strip()
+            if content and len(content) > 30:
+                # Texto longo → pipeline completa com insights
+                task_type = "brain_ingest_pipeline" if len(content) > 200 else "brain_ingest"
+                payload: dict = {
+                    "original_text": text,
+                    "from_number": from_number,
+                }
+                if task_type == "brain_ingest_pipeline":
+                    payload["raw_content"] = content
+                    payload["source_type"] = "direct_input"
+                    payload["title"] = f"Friday ingest: {content[:60]}"
+                    payload["persona"] = "especialista"
+                    payload["run_dna"] = False
+                    payload["run_insights"] = True
+                    payload["run_narrative"] = False
+                    payload["run_synthesis"] = True
+                else:
+                    payload["content"] = content
+                    payload["ingest_type"] = "manual"
+                    payload["source_agent"] = "mauro"
+
+                task = await asyncio.to_thread(
+                    lambda: supabase.table("runtime_tasks").insert({
+                        "agent_id": "friday",
+                        "client_id": settings.sparkle_internal_client_id,
+                        "task_type": task_type,
+                        "payload": payload,
+                        "status": "pending",
+                        "priority": 7,
+                    }).execute()
+                )
+                return task.data[0] if task.data else {}
+            break
+
     # URL detection: se a mensagem contem URL, roteia para brain_ingest_pipeline
     detected_url = _detect_url(text)
     if detected_url:
