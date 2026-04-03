@@ -71,7 +71,7 @@ async def _fetch_brain_context(namespace: str, query: str) -> dict:
             result = await asyncio.to_thread(
                 lambda: supabase.rpc(
                     "match_brain_chunks",
-                    {"query_embedding": embedding, "match_threshold": 0.50, "match_count": 5},
+                    {"query_embedding": embedding, "pipeline_type_in": "mauro", "client_id_in": None, "match_count": 5},
                 ).execute()
             )
             chunks = result.data or []

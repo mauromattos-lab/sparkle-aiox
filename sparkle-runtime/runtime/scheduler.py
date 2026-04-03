@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (8 total):
+Jobs (9 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
@@ -11,6 +11,7 @@ Jobs (8 total):
 - billing_risk            : todo dia às 8h45 de Brasília (OPS-4)
 - risk_alert              : todo dia às 9h30 de Brasília (OPS-4)
 - upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
+- brain_weekly_digest     : todo domingo às 23h de Brasília (SYS-1.6)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -94,6 +95,95 @@ async def _run_upsell_opportunity() -> None:
     await _run_and_execute("friday_initiative_upsell", priority=5)
 
 
+# ── SYS-1.6: Brain Weekly Digest ────────────────────────────
+
+async def _run_brain_weekly_digest() -> None:
+    """
+    Busca conversas do Mauro com a Friday dos últimos 7 dias,
+    agrupa por dia e dispara brain_ingest_pipeline para cada grupo.
+    Se não encontrar conversas, loga e retorna sem erro.
+    """
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+    from runtime.tasks.worker import execute_task
+
+    try:
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+        # Busca conversas recentes do Mauro com a Friday
+        res = await asyncio.to_thread(
+            lambda: supabase.table("conversation_history")
+            .select("id,role,content,created_at")
+            .gte("created_at", seven_days_ago)
+            .order("created_at")
+            .limit(500)
+            .execute()
+        )
+
+        conversations = res.data or []
+        if not conversations:
+            print("[scheduler] brain_weekly_digest: nenhuma conversa nos últimos 7 dias — skip")
+            return
+
+        # Agrupa por dia (YYYY-MM-DD)
+        by_day: dict[str, list[str]] = {}
+        for conv in conversations:
+            content = conv.get("content", "")
+            if not content or len(content.strip()) < 10:
+                continue
+            day = (conv.get("created_at") or "")[:10]  # YYYY-MM-DD
+            if day not in by_day:
+                by_day[day] = []
+            role = conv.get("role", "unknown")
+            by_day[day].append(f"[{role}] {content}")
+
+        if not by_day:
+            print("[scheduler] brain_weekly_digest: conversas encontradas mas sem conteúdo relevante — skip")
+            return
+
+        print(f"[scheduler] brain_weekly_digest: {len(conversations)} conversas em {len(by_day)} dias — ingerindo")
+
+        # Dispara brain_ingest_pipeline para o conteúdo agrupado
+        all_content_parts = []
+        for day in sorted(by_day.keys()):
+            day_content = "\n".join(by_day[day])
+            all_content_parts.append(f"=== {day} ===\n{day_content}")
+
+        digest_text = "\n\n".join(all_content_parts)
+
+        # Cria task brain_ingest_pipeline com o conteúdo consolidado
+        task_res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "brain_ingest_pipeline",
+                "payload": {
+                    "triggered_by": "scheduler",
+                    "raw_content": digest_text,
+                    "title": f"weekly_digest_{sorted(by_day.keys())[0]}_to_{sorted(by_day.keys())[-1]}",
+                    "source_type": "weekly_digest",
+                    "persona": "mauro",
+                    "run_dna": True,
+                    "run_narrative": False,
+                },
+                "status": "pending",
+                "priority": 4,
+            }).execute()
+        )
+
+        if not task_res.data:
+            print("[scheduler] brain_weekly_digest: falha ao criar task de ingestão")
+            return
+
+        task = task_res.data[0]
+        print(f"[scheduler] brain_weekly_digest: task criada — id={task['id']}, ingerindo {len(digest_text)} chars")
+        await execute_task(task)
+        print(f"[scheduler] brain_weekly_digest: ingestão concluída")
+
+    except Exception as e:
+        print(f"[scheduler] brain_weekly_digest: erro — {e}")
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -157,6 +247,14 @@ def start_scheduler() -> None:
         _run_upsell_opportunity,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=30, timezone=_TZ),
         id="upsell_opportunity",
+        replace_existing=True,
+    )
+
+    # SYS-1.6: brain_weekly_digest todo domingo às 23h de Brasília
+    _scheduler.add_job(
+        _run_brain_weekly_digest,
+        trigger=CronTrigger(day_of_week="sun", hour=23, minute=0, timezone=_TZ),
+        id="brain_weekly_digest",
         replace_existing=True,
     )
 

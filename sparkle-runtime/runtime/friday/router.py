@@ -8,6 +8,7 @@ POST /friday/webhook  — Z-API webhook payload (auto-detects text vs audio)
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File
@@ -55,6 +56,75 @@ class OnboardRequest(BaseModel):
     client_id: Optional[str] = None
 
 
+# ── SYS-3.5: Workflow command detection ───────────────────
+
+_WORKFLOW_PATTERNS: list[tuple[re.Pattern, str, str]] = [
+    # (pattern, template_slug, context_key_for_extracted_value)
+    (
+        re.compile(r"\b(?:onborda|onboarding)\s+(.+)", re.IGNORECASE),
+        "onboarding_zenya",
+        "business_name",
+    ),
+    (
+        re.compile(r"\b(?:cria\s+landing|landing\s+page)\s+(.+)", re.IGNORECASE),
+        "landing_page_nicho",
+        "nicho",
+    ),
+    (
+        re.compile(r"\b(?:conte[uú]do|produz\s+conte[uú]do)\s+(.+)", re.IGNORECASE),
+        "content_production",
+        "persona",
+    ),
+]
+
+
+async def _detect_workflow(text: str) -> Optional[dict]:
+    """
+    Verifica se o texto corresponde a um comando de workflow.
+    Retorna dict com info do workflow ou None se não bater.
+    """
+    text_clean = text.strip()
+    for pattern, template_slug, context_key in _WORKFLOW_PATTERNS:
+        match = pattern.search(text_clean)
+        if match:
+            extracted = match.group(1).strip()
+            return {
+                "template_slug": template_slug,
+                "context_key": context_key,
+                "extracted_value": extracted,
+            }
+    return None
+
+
+async def _trigger_workflow(template_slug: str, name: str, context: dict) -> dict:
+    """
+    Faz POST interno para /workflow/start via chamada direta (mesmo processo).
+    Retorna o resultado ou erro graceful.
+    """
+    import httpx
+
+    try:
+        # Chamada interna ao próprio servidor (localhost)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"http://127.0.0.1:8000/workflow/start",
+                json={
+                    "template_slug": template_slug,
+                    "name": name,
+                    "context": context,
+                },
+                timeout=15.0,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                print(f"[friday] workflow trigger falhou: {resp.status_code} — {resp.text[:200]}")
+                return {"error": resp.text[:200]}
+    except Exception as e:
+        print(f"[friday] workflow trigger erro: {e}")
+        return {"error": str(e)}
+
+
 # ── Endpoints ──────────────────────────────────────────────
 
 @router.get("/tts-info")
@@ -92,6 +162,25 @@ async def tts_info():
 async def receive_message(req: TextMessageRequest, background_tasks: BackgroundTasks):
     """Accept plain text from Mauro and process intent."""
     try:
+        # SYS-3.5: Detectar comandos de workflow antes de classificar
+        wf = await _detect_workflow(req.text)
+        if wf:
+            wf_name = f"{wf['template_slug']}_{wf['extracted_value'][:30]}"
+            wf_context = {wf["context_key"]: wf["extracted_value"]}
+            result = await _trigger_workflow(wf["template_slug"], wf_name, wf_context)
+            if "error" not in result:
+                return {
+                    "status": "ok",
+                    "workflow": True,
+                    "response": (
+                        f"Workflow {wf['template_slug']} iniciado. "
+                        f"Vou acompanhar e te atualizar."
+                    ),
+                    "workflow_result": result,
+                }
+            # Se workflow falhou (template não existe, etc.), cai no fluxo normal
+            print(f"[friday] workflow fallback para chat: {result.get('error', '')[:100]}")
+
         from runtime.tasks.worker import execute_task
         task = await classify_and_dispatch(req.text, from_number=req.from_number)
         task = hydrate_context(task)
@@ -247,6 +336,23 @@ async def _process_text(text: str, from_number: str) -> None:
     from runtime.integrations.zapi import send_text
     from runtime.tasks.worker import execute_task
     try:
+        # SYS-3.5: Detectar comandos de workflow antes de classificar
+        wf = await _detect_workflow(text)
+        if wf:
+            wf_name = f"{wf['template_slug']}_{wf['extracted_value'][:30]}"
+            wf_context = {wf["context_key"]: wf["extracted_value"]}
+            result = await _trigger_workflow(wf["template_slug"], wf_name, wf_context)
+            if "error" not in result:
+                response = (
+                    f"Workflow {wf['template_slug']} iniciado. "
+                    f"Vou acompanhar e te atualizar."
+                )
+                if from_number:
+                    await asyncio.to_thread(send_text, from_number, response)
+                return
+            # Se workflow falhou, cai no fluxo normal
+            print(f"[friday] workflow fallback para chat: {result.get('error', '')[:100]}")
+
         task = await classify_and_dispatch(text, from_number=from_number)
         task = hydrate_context(task)
         await execute_task(task)

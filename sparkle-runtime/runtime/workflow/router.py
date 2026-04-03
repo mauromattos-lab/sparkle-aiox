@@ -21,7 +21,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from runtime.db import supabase
-from runtime.config import settings
 
 router = APIRouter()
 
@@ -72,20 +71,22 @@ async def start_workflow(req: WorkflowStartRequest):
         )
 
     # 2. Create workflow instance
-    effective_client_id = req.client_id or settings.sparkle_internal_client_id
+    insert_data = {
+        "template_id": template["id"],
+        "template_slug": req.template_slug,
+        "name": req.name,
+        "current_step": 0,
+        "status": "running",
+        "context": req.context,
+        "started_by": "api",
+    }
+    # Only include client_id if a valid UUID was provided (column is nullable)
+    if req.client_id:
+        insert_data["client_id"] = req.client_id
 
     instance_result = await asyncio.to_thread(
         lambda: supabase.table("workflow_instances")
-        .insert({
-            "template_id": template["id"],
-            "template_slug": req.template_slug,
-            "name": req.name,
-            "client_id": effective_client_id,
-            "current_step": 0,
-            "status": "running",
-            "context": req.context,
-            "started_by": "api",
-        })
+        .insert(insert_data)
         .execute()
     )
 
@@ -96,19 +97,22 @@ async def start_workflow(req: WorkflowStartRequest):
     instance_id = instance["id"]
 
     # 3. Create first task (workflow_step with step_index=0)
+    task_insert = {
+        "agent_id": "system",
+        "task_type": "workflow_step",
+        "payload": {
+            "workflow_instance_id": instance_id,
+            "step_index": 0,
+        },
+        "status": "pending",
+        "priority": template.get("default_priority", 7),
+    }
+    if req.client_id:
+        task_insert["client_id"] = req.client_id
+
     task_result = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks")
-        .insert({
-            "agent_id": "system",
-            "client_id": effective_client_id,
-            "task_type": "workflow_step",
-            "payload": {
-                "workflow_instance_id": instance_id,
-                "step_index": 0,
-            },
-            "status": "pending",
-            "priority": template.get("default_priority", 7),
-        })
+        .insert(task_insert)
         .execute()
     )
 
@@ -252,22 +256,24 @@ async def resume_instance(instance_id: str):
     )
 
     # Create task for current_step
-    effective_client_id = instance.get("client_id") or settings.sparkle_internal_client_id
     current_step = instance.get("current_step", 0)
+
+    resume_task_insert = {
+        "agent_id": "system",
+        "task_type": "workflow_step",
+        "payload": {
+            "workflow_instance_id": instance_id,
+            "step_index": current_step,
+        },
+        "status": "pending",
+        "priority": 7,
+    }
+    if instance.get("client_id"):
+        resume_task_insert["client_id"] = instance["client_id"]
 
     task_result = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks")
-        .insert({
-            "agent_id": "system",
-            "client_id": effective_client_id,
-            "task_type": "workflow_step",
-            "payload": {
-                "workflow_instance_id": instance_id,
-                "step_index": current_step,
-            },
-            "status": "pending",
-            "priority": 7,
-        })
+        .insert(resume_task_insert)
         .execute()
     )
 

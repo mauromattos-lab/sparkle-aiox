@@ -112,7 +112,7 @@ async def _query_brain(topic: str, client_id: str, limit: int = 8) -> list[dict]
         result = await asyncio.to_thread(
             lambda: supabase.rpc(
                 "match_brain_chunks",
-                {"query_embedding": embedding, "match_threshold": 0.45, "match_count": limit},
+                {"query_embedding": embedding, "pipeline_type_in": "especialista", "client_id_in": None, "match_count": limit},
             ).execute()
         )
         return result.data or []

@@ -94,7 +94,8 @@ async def _search_knowledge_base(query: str) -> list[dict]:
                     "match_brain_chunks",
                     {
                         "query_embedding": embedding,
-                        "match_threshold": 0.6,
+                        "pipeline_type_in": "mauro",
+                        "client_id_in": None,
                         "match_count": 6,
                     },
                 ).execute()
