@@ -55,7 +55,7 @@ REGRAS DE CLASSIFICACAO (intent):
 - weekly_briefing: resumo da semana, o que rolou essa semana
 - onboard_client: "onborda", "onboard", "configura zenya para", "cria cliente", "novo cliente zenya" — extrai params: business_name, site_url, business_type, phone
 - brain_query: "brain", "o que voce sabe sobre", "consulta o brain", "o que o brain sabe", "brain me fala" — extrai param: query (o que quer saber)
-- brain_ingest: "brain, aprende", "brain, salva", "brain, registra", "ensina o brain", "adiciona ao brain", "aprende isso" — extrai param: content (o conteudo a salvar)
+- brain_ingest: "brain, aprende", "brain, salva", "brain, registra", "ensina o brain", "adiciona ao brain", "aprende isso", "precisamos aprender isso", "coloca no brain", "joga no brain", "ingere isso", "absorve isso" — extrai param: content (o conteudo a salvar)
 - loja_integrada_query: "consulta pedido", "status do pedido", "meu pedido", "rastrear pedido", "onde esta meu pedido", "situacao do pedido", "acompanhar pedido" — extrai params: cpf, email ou pedido_id conforme disponivel no texto
 - gap_report: "gaps do brain", "o que o brain nao sabe", "relatorio de gaps", "brain tem gaps", "quais gaps do brain", "o que falta no brain", "lacunas do brain"
 - generate_content: "gera um post", "cria um carrossel", "escreve uma legenda", "faz um story", "cria conteudo sobre", "gera conteudo para instagram" — extrai params: topic, format (instagram_post|carousel|story|thread), persona (zenya|finch|mauro)
@@ -328,7 +328,7 @@ async def classify_and_dispatch(
     params: dict = parsed.get("params", {})
     summary: str = parsed.get("summary", text[:200])
 
-    if intent not in INTENTS:
+    if intent not in INTENTS and intent != "brain_ingest_pipeline":
         intent = "chat"
     if domain not in DOMAINS:
         domain = "geral"
@@ -355,10 +355,21 @@ async def classify_and_dispatch(
         task_payload["query"] = params["query"]
 
     if intent == "brain_ingest" and params.get("content"):
-        task_payload["content"] = params["content"]
+        content = params["content"]
+        task_payload["content"] = content
         if from_audio:
             task_payload["ingest_type"] = "mauro_audio"
             task_payload["source_agent"] = "mauro"
+        # Textos longos (200+ chars) vao pela pipeline completa com insight extraction
+        if len(content) > 200:
+            intent = "brain_ingest_pipeline"
+            task_payload["raw_content"] = content
+            task_payload["source_type"] = "direct_input"
+            task_payload["persona"] = "especialista"
+            task_payload["run_dna"] = False
+            task_payload["run_insights"] = True
+            task_payload["run_narrative"] = False
+            task_payload["run_synthesis"] = True
 
     if intent == "loja_integrada_query" and params:
         # Promover cpf / email / pedido_id para o topo do payload
