@@ -7,7 +7,7 @@ Jobs (9 total):
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
 - weekly_briefing         : todo domingo às 8h de Brasília
-- gap_report              : toda segunda às 8h de Brasília
+- observer_gap_analysis   : toda segunda às 8h de Brasília (SYS-5, substitui gap_report)
 - billing_risk            : todo dia às 8h45 de Brasília (OPS-4)
 - risk_alert              : todo dia às 9h30 de Brasília (OPS-4)
 - upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
@@ -75,6 +75,10 @@ async def _run_weekly_briefing() -> None:
 
 async def _run_gap_report() -> None:
     await _run_and_execute("gap_report", priority=7)
+
+
+async def _run_observer_gap_analysis() -> None:
+    await _run_and_execute("observer_gap_analysis", priority=7)
 
 
 async def _run_daily_decision_moment() -> None:
@@ -210,11 +214,11 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Gap report toda segunda-feira às 8h de Brasília (11h UTC)
+    # Observer gap analysis toda segunda-feira às 8h de Brasília (substitui gap_report)
     _scheduler.add_job(
-        _run_gap_report,
+        _run_observer_gap_analysis,
         trigger=CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=_TZ),
-        id="gap_report",
+        id="observer_gap_analysis",
         replace_existing=True,
     )
 

@@ -23,6 +23,22 @@ from runtime.friday.transcriber import transcribe_url
 router = APIRouter()
 
 
+# ── Soul Prompt Resolution (SYS-4) ────────────────────────
+
+_FALLBACK_SOUL_PROMPT = "Voce e a Zenya, assistente de atendimento. Responda de forma acolhedora e profissional."
+
+
+def _resolve_soul_prompt(client_config: dict) -> str:
+    """Prioridade: soul_prompt manual > soul_prompt_generated > fallback generico."""
+    manual = (client_config.get("soul_prompt") or "").strip()
+    generated = (client_config.get("soul_prompt_generated") or "").strip()
+    if manual:
+        return manual
+    if generated:
+        return generated
+    return _FALLBACK_SOUL_PROMPT
+
+
 # ── Zenya Webhook (multi-tenant) ───────────────────────────
 
 class ZAPIWebhookPayload(BaseModel):
@@ -89,7 +105,7 @@ async def _process_zenya_message(
                     "character": "zenya",
                     "message": text,
                     "phone": phone,
-                    "soul_prompt": client_config.get("soul_prompt", ""),
+                    "soul_prompt": _resolve_soul_prompt(client_config),
                     "lore": client_config.get("lore", ""),
                     "client_name": client_config.get("business_name", ""),
                 },
@@ -173,6 +189,106 @@ async def list_zenya_clients():
             .execute()
         )
         return {"clients": result.data or [], "count": len(result.data or [])}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ── SYS-4: DNA Endpoints ──────────────────────────────────
+
+
+class DnaUpdateRequest(BaseModel):
+    """Campos parciais do DNA para atualizar."""
+    identidade: Optional[dict] = None
+    tom_voz: Optional[dict] = None
+    regras_negocio: Optional[list] = None
+    diferenciais: Optional[list] = None
+    publico_alvo: Optional[dict] = None
+    anti_patterns: Optional[list] = None
+
+
+@router.get("/clients/{client_id}/dna")
+async def get_client_dna(client_id: str):
+    """Retorna client_dna atual do cliente."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_id,business_name,client_dna,soul_prompt_generated,dna_updated_at")
+            .eq("client_id", client_id)
+            .single()
+            .execute()
+        )
+        return result.data or {"error": "cliente nao encontrado"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.put("/clients/{client_id}/dna")
+async def update_client_dna(client_id: str, body: DnaUpdateRequest):
+    """Atualiza campos especificos do client_dna JSONB."""
+    try:
+        current = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_dna")
+            .eq("client_id", client_id)
+            .single()
+            .execute()
+        )
+        dna = current.data.get("client_dna") or {} if current.data else {}
+
+        updates = body.model_dump(exclude_none=True)
+        dna.update(updates)
+
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .update({"client_dna": dna})
+            .eq("client_id", client_id)
+            .execute()
+        )
+        return {"message": f"DNA atualizado: {list(updates.keys())}", "client_id": client_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/clients/{client_id}/dna/extract")
+async def extract_client_dna(client_id: str):
+    """Dispara re-extracao de DNA do cliente via task."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "system",
+                "client_id": client_id,
+                "task_type": "extract_client_dna",
+                "payload": {"client_id": client_id, "regenerate_prompt": True},
+                "status": "pending",
+                "priority": 6,
+            }).execute()
+        )
+        task = result.data[0] if result.data else {}
+        return {"message": "Extracao de DNA agendada", "task_id": task.get("id")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/clients/{client_id}/dna/preview-prompt")
+async def preview_soul_prompt(client_id: str):
+    """Preview do soul_prompt que seria gerado a partir do DNA atual."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_dna,soul_prompt,soul_prompt_generated")
+            .eq("client_id", client_id)
+            .single()
+            .execute()
+        )
+        data = result.data or {}
+        dna = data.get("client_dna") or {}
+        return {
+            "client_id": client_id,
+            "dna_layers_filled": sum(1 for k in ("identidade", "tom_voz", "regras_negocio", "diferenciais", "publico_alvo", "anti_patterns") if dna.get(k)),
+            "current_soul_prompt_manual": (data.get("soul_prompt") or "")[:200],
+            "current_soul_prompt_generated": (data.get("soul_prompt_generated") or "")[:200],
+            "active_prompt_source": "manual" if data.get("soul_prompt") else ("generated" if data.get("soul_prompt_generated") else "fallback"),
+        }
     except Exception as e:
         return {"error": str(e)}
 

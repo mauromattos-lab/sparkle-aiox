@@ -40,6 +40,9 @@ BRAIN_EXEMPT_TASK_TYPES = frozenset({
     "brain_ingest_pipeline",  # SYS-1.3: pipeline faz suas proprias operacoes Brain
     "extract_dna",            # SYS-1.3: sub-task da pipeline, nao precisa de gate
     "narrative_synthesis",    # SYS-1.3: sub-task da pipeline, nao precisa de gate
+    "extract_client_dna",     # SYS-4: extracao de DNA do cliente
+    "observer_gap_analysis",  # SYS-5: analise de gaps do sistema
+    "auto_implement_gap",     # SYS-5: implementacao automatica de gaps
 })
 
 

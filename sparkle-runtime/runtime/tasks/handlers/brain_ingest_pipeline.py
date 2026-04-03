@@ -259,7 +259,7 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
             client_id=client_id,
         )
 
-    return {
+    result = {
         "message": (
             f"Pipeline Mega Brain completa: {len(chunk_ids)} chunks ingeridos de '{title}'"
         ),
@@ -275,3 +275,13 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
             f"{len(chunk_ids)} chunks, source={payload.get('source_type', 'document')}"
         ),
     }
+
+    # SYS-4: quando persona=cliente + client_id, handoff para extract_client_dna
+    if client_id and payload.get("persona") == "cliente":
+        result["handoff_to"] = "extract_client_dna"
+        result["handoff_payload"] = {
+            "client_id": client_id,
+            "regenerate_prompt": True,
+        }
+
+    return result

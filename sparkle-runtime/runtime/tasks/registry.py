@@ -34,6 +34,9 @@ from runtime.tasks.handlers.status_mrr import handle_status_mrr
 from runtime.tasks.handlers.status_report import handle_status_report
 from runtime.tasks.handlers.weekly_briefing import handle_weekly_briefing
 from runtime.tasks.handlers.workflow_step import handle_workflow_step
+from runtime.tasks.handlers.extract_client_dna import handle_extract_client_dna
+from runtime.tasks.handlers.observer_gap_analysis import handle_observer_gap_analysis
+from runtime.tasks.handlers.auto_implement_gap import handle_auto_implement_gap
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -65,6 +68,9 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "status_report":            handle_status_report,
     "weekly_briefing":          handle_weekly_briefing,
     "workflow_step":             handle_workflow_step,
+    "extract_client_dna":       handle_extract_client_dna,
+    "observer_gap_analysis":    handle_observer_gap_analysis,
+    "auto_implement_gap":       handle_auto_implement_gap,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

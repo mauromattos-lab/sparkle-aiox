@@ -95,6 +95,116 @@ Para activate_agent, extraia params do texto:
 {"intent": "activate_agent", "domain": "tech", "params": {"agent": "@analyst", "request": "analisar desempenho do cliente Vitalis"}, "summary": "Ativar @analyst: analise Vitalis"}"""
 
 
+import re as _re
+
+
+async def _handle_gap_approval(text: str) -> dict | None:
+    """
+    Detecta se Mauro esta aprovando/rejeitando gaps do Observer.
+    Retorna None se nao eh uma resposta de gap.
+    """
+    text_lower = text.lower().strip()
+
+    if "aprova todos" in text_lower or "approve all" in text_lower:
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.table("gap_reports")
+                .select("id")
+                .eq("status", "pending")
+                .execute()
+            )
+            gaps = result.data or []
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            for gap in gaps:
+                await asyncio.to_thread(
+                    lambda gid=gap["id"]: supabase.table("gap_reports")
+                    .update({"status": "approved", "approved_by": "mauro", "approved_at": now, "updated_at": now})
+                    .eq("id", gid)
+                    .execute()
+                )
+                await asyncio.to_thread(
+                    lambda gid=gap["id"]: supabase.table("runtime_tasks").insert({
+                        "agent_id": "system",
+                        "client_id": settings.sparkle_internal_client_id,
+                        "task_type": "auto_implement_gap",
+                        "payload": {"gap_id": gid},
+                        "status": "pending",
+                        "priority": 6,
+                    }).execute()
+                )
+            return {"message": f"{len(gaps)} gaps aprovados e agendados para implementacao"}
+        except Exception as e:
+            return {"error": f"Falha ao aprovar gaps: {e}"}
+
+    match = _re.search(r"aprova\s+([\d,\s]+)", text_lower)
+    if match:
+        indices = [int(x.strip()) for x in match.group(1).split(",") if x.strip().isdigit()]
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.table("gap_reports")
+                .select("id")
+                .eq("status", "pending")
+                .order("created_at")
+                .execute()
+            )
+            gaps = result.data or []
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            approved = 0
+            for idx in indices:
+                if 1 <= idx <= len(gaps):
+                    gid = gaps[idx - 1]["id"]
+                    await asyncio.to_thread(
+                        lambda g=gid: supabase.table("gap_reports")
+                        .update({"status": "approved", "approved_by": "mauro", "approved_at": now, "updated_at": now})
+                        .eq("id", g)
+                        .execute()
+                    )
+                    await asyncio.to_thread(
+                        lambda g=gid: supabase.table("runtime_tasks").insert({
+                            "agent_id": "system",
+                            "client_id": settings.sparkle_internal_client_id,
+                            "task_type": "auto_implement_gap",
+                            "payload": {"gap_id": g},
+                            "status": "pending",
+                            "priority": 6,
+                        }).execute()
+                    )
+                    approved += 1
+            return {"message": f"{approved} gaps aprovados"}
+        except Exception as e:
+            return {"error": f"Falha ao aprovar gaps: {e}"}
+
+    match = _re.search(r"rejeita\s+([\d,\s]+)", text_lower)
+    if match:
+        indices = [int(x.strip()) for x in match.group(1).split(",") if x.strip().isdigit()]
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.table("gap_reports")
+                .select("id")
+                .eq("status", "pending")
+                .order("created_at")
+                .execute()
+            )
+            gaps = result.data or []
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            rejected = 0
+            for idx in indices:
+                if 1 <= idx <= len(gaps):
+                    gid = gaps[idx - 1]["id"]
+                    await asyncio.to_thread(
+                        lambda g=gid: supabase.table("gap_reports")
+                        .update({"status": "rejected", "updated_at": now})
+                        .eq("id", g)
+                        .execute()
+                    )
+                    rejected += 1
+            return {"message": f"{rejected} gaps rejeitados"}
+        except Exception as e:
+            return {"error": f"Falha ao rejeitar gaps: {e}"}
+
+    return None
+
+
 async def classify_and_dispatch(
     text: str,
     from_number: str = "",
@@ -106,6 +216,23 @@ async def classify_and_dispatch(
     Returns the created task record.
     from_audio=True: sinaliza que a mensagem veio de transcrição de voz.
     """
+    # SYS-5: check gap approval before normal classification
+    gap_result = await _handle_gap_approval(text)
+    if gap_result is not None:
+        # Create a task record for the gap approval response
+        task = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "chat",
+                "payload": {"original_text": text, "gap_approval": gap_result},
+                "status": "done",
+                "result": gap_result,
+                "priority": 7,
+            }).execute()
+        )
+        return task.data[0] if task.data else gap_result
+
     raw = await call_claude(
         prompt=text,
         system=_CLASSIFY_SYSTEM,

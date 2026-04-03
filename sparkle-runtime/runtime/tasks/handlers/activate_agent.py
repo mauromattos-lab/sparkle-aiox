@@ -275,6 +275,7 @@ _TOOL_DEFINITIONS = [
 _SUPABASE_TABLE_WHITELIST = {
     "clients", "runtime_tasks", "llm_cost_log",
     "knowledge_base", "conversation_history", "agent_work_items",
+    "zenya_clients", "gap_reports",
 }
 
 _CALCULATE_PATTERN = re.compile(r"^[\d\s+\-*/().,%]+$")
