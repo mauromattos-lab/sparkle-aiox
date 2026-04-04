@@ -50,6 +50,19 @@
 | 31 | B2-06 Observer Quality auto-avaliacao Haiku + quality log + gaps | FUNCIONAL | 04/04 |
 | 32 | B2-07 Crons 24/7 (keep-alive, backup, log rotation) | FUNCIONAL | 04/04 |
 | 33 | B2-08 Runbook incidentes (775 linhas, 7 cenarios) | FUNCIONAL | 04/04 |
+| 34 | B2-03 Character Runtime 6-phase pipeline (tone directives 32 combos) | FUNCIONAL | 04/04 |
+| 35 | B2-05 Hierarquia 3 niveis handoff (local/layer/global + handoff_log) | FUNCIONAL | 04/04 |
+| 36 | B2-P1 Identidade cliente portal (ClientHeader, initials avatar, plan badge) | FUNCIONAL | 04/04 |
+| 37 | B2-P2 Narrativa valor acumulado (ValueNarrative, 3 storytelling cards) | FUNCIONAL | 04/04 |
+| 38 | B2-P3 Footer/header premium (glassmorphism, heartbeat, cockpit aesthetic) | FUNCIONAL | 04/04 |
+| 39 | B2-P4 Login diferenciado (ambient glow, glassmorphism, WhatsApp fallback) | FUNCIONAL | 04/04 |
+| 40 | B3-01 Brain curadoria (approve/reject chunks + portal UI + stats) | FUNCIONAL | 04/04 |
+| 41 | B3-02 Friday presenca Lei 3 (6 triggers, anti-spam, quiet hours) | FUNCIONAL | 04/04 |
+| 42 | B3-03 SOP onboarding automatizado (6-step pipeline, draft status) | FUNCIONAL | 04/04 |
+| 43 | B3-04 UI jogo avancada (GamificationPanel, Brain XP, Zenya Level, 12 achievements) | FUNCIONAL | 04/04 |
+| 44 | B3-05 Brain avancado (namespaces, TTL/archival, usage metrics) | FUNCIONAL | 04/04 |
+| 45 | B3-06 Cobertura testes 50%->70% (170 novos testes, 307 total, 21 arquivos) | FUNCIONAL | 04/04 |
+| 46 | B1-05 Regressao CI gate (35 testes regressao + deploy bloqueado se falhar) | FUNCIONAL | 04/04 |
 
 ---
 
