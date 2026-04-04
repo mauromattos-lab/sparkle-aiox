@@ -63,6 +63,11 @@
 | 44 | B3-05 Brain avancado (namespaces, TTL/archival, usage metrics) | FUNCIONAL | 04/04 |
 | 45 | B3-06 Cobertura testes 50%->70% (170 novos testes, 307 total, 21 arquivos) | FUNCIONAL | 04/04 |
 | 46 | B1-05 Regressao CI gate (35 testes regressao + deploy bloqueado se falhar) | FUNCIONAL | 04/04 |
+| 47 | B4-01 Juno segundo personagem (soul prompt + 36 tones + character state + lore) | FUNCIONAL | 04/04 |
+| 48 | B4-02 Content Engine v2 (3 plataformas, 6 templates, batch generation, preview) | FUNCIONAL | 04/04 |
+| 49 | B4-03 Zenya self-serve spec (9 features, 4 fases migracao, pricing tiers) | FUNCIONAL | 04/04 |
+| 50 | B4-05 Member State Engine (10-level XP, events, leaderboard, community) | FUNCIONAL | 04/04 |
+| 51 | 386 testes totais (unit + regression + integration) | FUNCIONAL | 04/04 |
 
 ---
 
