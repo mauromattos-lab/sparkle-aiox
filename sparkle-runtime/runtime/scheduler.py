@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (9 total):
+Jobs (10 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
@@ -12,6 +12,7 @@ Jobs (9 total):
 - risk_alert              : todo dia às 9h30 de Brasília (OPS-4)
 - upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
 - brain_weekly_digest     : todo domingo às 23h de Brasília (SYS-1.6)
+- content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -188,6 +189,93 @@ async def _run_brain_weekly_digest() -> None:
         print(f"[scheduler] brain_weekly_digest: erro — {e}")
 
 
+# ── F2-P1: Content Weekly Batch ────────────────────────────
+
+async def _run_content_weekly_batch() -> None:
+    """
+    Gera 5 posts variados para a semana, baseando-se nos domínios
+    mais recentes do brain_insights para diversificar temas.
+    """
+    import asyncio
+    from runtime.tasks.worker import execute_task
+
+    try:
+        # Busca domínios trending dos últimos 14 dias no brain_insights
+        from datetime import datetime, timedelta, timezone
+
+        fourteen_days_ago = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+
+        res = await asyncio.to_thread(
+            lambda: supabase.table("brain_insights")
+            .select("domain, title")
+            .gte("created_at", fourteen_days_ago)
+            .order("created_at", desc=True)
+            .limit(30)
+            .execute()
+        )
+
+        insights = res.data or []
+
+        # Extrair domínios únicos, preservando ordem (mais recentes primeiro)
+        seen: set[str] = set()
+        domains: list[str] = []
+        for ins in insights:
+            d = ins.get("domain", "")
+            if d and d not in seen:
+                seen.add(d)
+                domains.append(d)
+
+        # Fallback: temas genéricos se não houver insights
+        if len(domains) < 5:
+            fallback = [
+                "inteligência artificial para pequenos negócios",
+                "automação de atendimento via WhatsApp",
+                "marketing digital com IA",
+                "produtividade para empreendedores",
+                "tendências de tecnologia 2026",
+            ]
+            for fb in fallback:
+                if fb not in seen:
+                    domains.append(fb)
+                    seen.add(fb)
+
+        # Gerar 5 posts com temas variados
+        formats = ["instagram_post", "carousel", "instagram_post", "carousel", "story"]
+        personas = ["zenya", "mauro", "zenya", "finch", "zenya"]
+
+        for i in range(5):
+            topic = domains[i % len(domains)]
+            fmt = formats[i]
+            persona = personas[i]
+
+            task_res = await asyncio.to_thread(
+                lambda t=topic, f=fmt, p=persona: supabase.table("runtime_tasks").insert({
+                    "agent_id": "content-engine",
+                    "client_id": settings.sparkle_internal_client_id,
+                    "task_type": "generate_content",
+                    "payload": {
+                        "triggered_by": "scheduler",
+                        "topic": t,
+                        "format": f,
+                        "persona": p,
+                        "source_type": "cron",
+                    },
+                    "status": "pending",
+                    "priority": 4,
+                }).execute()
+            )
+
+            if task_res.data:
+                task = task_res.data[0]
+                print(f"[scheduler] content_weekly_batch: post {i+1}/5 — {fmt}/{persona} topic='{topic[:40]}' — id={task['id']}")
+                await execute_task(task)
+
+        print("[scheduler] content_weekly_batch: 5 posts gerados para a semana")
+
+    except Exception as e:
+        print(f"[scheduler] content_weekly_batch: erro — {e}")
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -259,6 +347,14 @@ def start_scheduler() -> None:
         _run_brain_weekly_digest,
         trigger=CronTrigger(day_of_week="sun", hour=23, minute=0, timezone=_TZ),
         id="brain_weekly_digest",
+        replace_existing=True,
+    )
+
+    # F2-P1: content_weekly_batch toda segunda às 7h de Brasília
+    _scheduler.add_job(
+        _run_content_weekly_batch,
+        trigger=CronTrigger(day_of_week="mon", hour=7, minute=0, timezone=_TZ),
+        id="content_weekly_batch",
         replace_existing=True,
     )
 
