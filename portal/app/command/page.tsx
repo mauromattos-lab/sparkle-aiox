@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useCommandPanel, AgentPulse, FeedEvent } from '@/hooks/useCommandPanel'
+import BrainActivity from '@/components/BrainActivity'
 
 // ── Agent display config ──────────────────────────────────────
 
@@ -362,7 +363,7 @@ export default function CommandPage() {
           )}
         </div>
 
-        {/* Live Feed (center, fills remaining space) */}
+        {/* Live Feed (center) */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="h-1.5 w-1.5 rounded-full bg-[#00ff87] animate-pulse" />
@@ -392,6 +393,11 @@ export default function CommandPage() {
               <FeedItem key={event.id} event={event} />
             ))}
           </div>
+        </div>
+
+        {/* Brain Activity (right panel) */}
+        <div className="w-[340px] flex-shrink-0 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+          <BrainActivity />
         </div>
       </div>
 

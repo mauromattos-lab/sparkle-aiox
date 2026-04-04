@@ -4,6 +4,7 @@ Brain Pipeline router — SYS-1.4 + SYS-1.5: endpoints de ingestao pipeline e co
 POST /brain/ingest-pipeline   — dispara pipeline completa de 6 fases
 GET  /brain/ingestions        — lista ingestoes recentes com stats
 GET  /brain/ingestions/{id}   — detalhe de uma ingestao com chunks gerados
+GET  /brain/activity          — dashboard consolidado Brain Activity (Mission Control)
 """
 from __future__ import annotations
 
@@ -182,3 +183,164 @@ async def get_ingestion(ingestion_id: str):
         raise
     except Exception as e:
         return {"status": "error", "error": f"Falha ao buscar ingestao: {str(e)[:200]}"}
+
+
+# ── GET /brain/activity ──────────────────────────────────────
+
+@router.get("/activity")
+async def brain_activity():
+    """
+    Dashboard consolidado de atividade do Brain para o Mission Control.
+
+    Retorna processing queue, ingestoes recentes, insights, sinteses e stats.
+    """
+    try:
+        # Run all queries in parallel
+        (
+            processing_result,
+            recent_result,
+            insights_recent_result,
+            insights_count_result,
+            syntheses_result,
+            chunks_count_result,
+        ) = await asyncio.gather(
+            # Tasks brain_ingest_pipeline pending/running
+            asyncio.to_thread(
+                lambda: supabase.table("runtime_tasks")
+                .select("id,task_type,status,payload,created_at,updated_at")
+                .eq("task_type", "brain_ingest_pipeline")
+                .in_("status", ["pending", "running"])
+                .order("created_at", desc=True)
+                .limit(20)
+                .execute()
+            ),
+            # Recent completed brain tasks
+            asyncio.to_thread(
+                lambda: supabase.table("runtime_tasks")
+                .select("id,task_type,status,payload,result,created_at,completed_at")
+                .eq("task_type", "brain_ingest_pipeline")
+                .eq("status", "done")
+                .order("completed_at", desc=True)
+                .limit(10)
+                .execute()
+            ),
+            # Recent insights
+            asyncio.to_thread(
+                lambda: supabase.table("brain_insights")
+                .select("id,domain,insight_type,content,source_chunk_ids,created_at")
+                .order("created_at", desc=True)
+                .limit(10)
+                .execute()
+            ),
+            # Total insights count
+            asyncio.to_thread(
+                lambda: supabase.table("brain_insights")
+                .select("id,domain", count="exact")
+                .limit(1)
+                .execute()
+            ),
+            # Active domain syntheses
+            asyncio.to_thread(
+                lambda: supabase.table("brain_domain_syntheses")
+                .select("id,domain,version,source_count,synthesis,created_at,updated_at")
+                .eq("active", True)
+                .order("updated_at", desc=True)
+                .limit(20)
+                .execute()
+            ),
+            # Total chunks count
+            asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id", count="exact")
+                .limit(1)
+                .execute()
+            ),
+        )
+
+        # Build insights by_domain from recent insights
+        insights_by_domain: dict[str, int] = {}
+        for insight in (insights_recent_result.data or []):
+            domain = insight.get("domain", "unknown")
+            insights_by_domain[domain] = insights_by_domain.get(domain, 0) + 1
+
+        # Also try a dedicated domain count query (best effort)
+        try:
+            all_insights_for_domain = await asyncio.to_thread(
+                lambda: supabase.table("brain_insights")
+                .select("domain")
+                .limit(500)
+                .execute()
+            )
+            domain_counts: dict[str, int] = {}
+            for row in (all_insights_for_domain.data or []):
+                d = row.get("domain", "unknown")
+                domain_counts[d] = domain_counts.get(d, 0) + 1
+            insights_by_domain = domain_counts
+        except Exception:
+            pass  # fallback to the limited count above
+
+        insights_total = insights_count_result.count if insights_count_result.count is not None else len(insights_count_result.data or [])
+        chunks_total = chunks_count_result.count if chunks_count_result.count is not None else len(chunks_count_result.data or [])
+
+        # Extract title/URL from payload for processing tasks
+        processing_items = []
+        for task in (processing_result.data or []):
+            payload = task.get("payload") or {}
+            processing_items.append({
+                "id": task.get("id"),
+                "title": payload.get("title", ""),
+                "source_ref": payload.get("source_ref", ""),
+                "source_type": payload.get("source_type", ""),
+                "status": task.get("status"),
+                "created_at": task.get("created_at"),
+                "updated_at": task.get("updated_at"),
+            })
+
+        # Extract info from recent completed tasks
+        recent_items = []
+        for task in (recent_result.data or []):
+            payload = task.get("payload") or {}
+            result = task.get("result") or {}
+            recent_items.append({
+                "id": task.get("id"),
+                "title": payload.get("title", ""),
+                "source_ref": payload.get("source_ref", ""),
+                "source_type": payload.get("source_type", ""),
+                "chunks_inserted": result.get("chunks_inserted", 0),
+                "insights_extracted": result.get("insights_extracted", 0),
+                "completed_at": task.get("completed_at"),
+                "created_at": task.get("created_at"),
+            })
+
+        # Syntheses — trim the full synthesis text for the dashboard
+        syntheses_items = []
+        for syn in (syntheses_result.data or []):
+            synthesis_text = syn.get("synthesis", "")
+            syntheses_items.append({
+                "id": syn.get("id"),
+                "domain": syn.get("domain"),
+                "version": syn.get("version"),
+                "source_count": syn.get("source_count"),
+                "synthesis_preview": synthesis_text[:200] if synthesis_text else "",
+                "created_at": syn.get("created_at"),
+                "updated_at": syn.get("updated_at"),
+            })
+
+        return {
+            "processing": processing_items,
+            "recent": recent_items,
+            "insights": {
+                "total": insights_total,
+                "recent": insights_recent_result.data or [],
+                "by_domain": insights_by_domain,
+            },
+            "syntheses": syntheses_items,
+            "stats": {
+                "chunks_total": chunks_total,
+                "insights_total": insights_total,
+                "domains_with_synthesis": len(syntheses_result.data or []),
+            },
+        }
+
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao buscar brain activity: {str(e)[:300]}"}
