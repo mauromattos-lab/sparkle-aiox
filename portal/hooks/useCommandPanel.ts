@@ -31,6 +31,17 @@ export interface SystemStats {
   uptime: string | null
 }
 
+export interface BrainSearchResult {
+  id?: string
+  title?: string
+  content: string
+  domain?: string
+  confidence?: number
+  source?: string
+  type?: 'synthesis' | 'insight' | 'chunk'
+  similarity?: number
+}
+
 export interface PulseData {
   agents: AgentPulse[]
   brain: {
@@ -165,9 +176,120 @@ export function useCommandPanel() {
     }
   }, [])
 
+  // Brain search
+  const searchBrain = useCallback(async (query: string, limit = 10): Promise<BrainSearchResult[]> => {
+    try {
+      const resp = await fetch(`${RUNTIME_URL}/brain/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, limit }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      return data.results || data.items || []
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Erro ao buscar no Brain')
+    }
+  }, [])
+
   // Send command
   const sendCommand = useCallback(async (text: string): Promise<string> => {
-    // Check for known workflow patterns
+    const trimmed = text.trim()
+    const lower = trimmed.toLowerCase()
+
+    // ── /brain <query> — Brain semantic search ──────────────
+    if (lower.startsWith('/brain ')) {
+      const query = trimmed.slice(7).trim()
+      if (!query) return 'Uso: /brain <texto de busca>'
+      try {
+        const results = await searchBrain(query)
+        addFeedEvent({
+          id: `cmd-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          agent: 'brain',
+          description: `Busca: "${query}" -- ${results.length} resultados`,
+          type: 'brain',
+          status: 'completed',
+        })
+        if (results.length === 0) return `Brain: nenhum resultado para "${query}"`
+        return results
+          .slice(0, 5)
+          .map((r, i) => `[${i + 1}] ${r.title || r.domain || '---'}: ${(r.content || '').slice(0, 120)}...`)
+          .join('\n')
+      } catch (err) {
+        return `Erro Brain: ${err instanceof Error ? err.message : 'unknown'}`
+      }
+    }
+
+    // ── /task <description> — Create task in Runtime ────────
+    if (lower.startsWith('/task ')) {
+      const description = trimmed.slice(6).trim()
+      if (!description) return 'Uso: /task <descricao da tarefa>'
+      try {
+        const resp = await fetch(`${RUNTIME_URL}/tasks/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task_type: 'manual',
+            payload: { description, source: 'command_panel' },
+          }),
+        })
+        const data = await resp.json()
+        if (!resp.ok) return `Erro: ${data.detail || 'falha ao criar task'}`
+        addFeedEvent({
+          id: `cmd-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          agent: 'system',
+          description: `Task criada: ${description}`,
+          type: 'task',
+          status: 'pending',
+        })
+        return `Task criada (${data.task_id || data.id || 'ok'}): ${description}`
+      } catch (err) {
+        return `Erro: ${err instanceof Error ? err.message : 'unknown'}`
+      }
+    }
+
+    // ── /status — System status (health + capabilities) ─────
+    if (lower === '/status' || lower.startsWith('/status')) {
+      try {
+        const [healthResp, capsResp] = await Promise.allSettled([
+          fetch(`${RUNTIME_URL}/health`),
+          fetch(`${RUNTIME_URL}/system/capabilities`),
+        ])
+
+        const parts: string[] = []
+
+        if (healthResp.status === 'fulfilled' && healthResp.value.ok) {
+          const h = await healthResp.value.json()
+          parts.push(`Runtime: ${h.status || 'ok'} | Uptime: ${h.uptime || '---'}`)
+        } else {
+          parts.push('Runtime: OFFLINE')
+        }
+
+        if (capsResp.status === 'fulfilled' && capsResp.value.ok) {
+          const c = await capsResp.value.json()
+          const handlers = c.handlers || c.capabilities || []
+          const handlerList = Array.isArray(handlers) ? handlers : Object.keys(handlers)
+          parts.push(`Handlers: ${handlerList.length} (${handlerList.slice(0, 8).join(', ')}${handlerList.length > 8 ? '...' : ''})`)
+        }
+
+        addFeedEvent({
+          id: `cmd-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          agent: 'system',
+          description: 'Status check executado',
+          type: 'command',
+          status: 'completed',
+        })
+
+        return parts.join('\n')
+      } catch (err) {
+        return `Erro: ${err instanceof Error ? err.message : 'unknown'}`
+      }
+    }
+
+    // ── Workflow patterns ────────────────────────────────────
     const workflowPatterns: Record<string, string> = {
       'onborda': 'onboarding',
       'onboard': 'onboarding',
@@ -176,13 +298,12 @@ export function useCommandPanel() {
       'conteúdo': 'content-generation',
     }
 
-    const lower = text.toLowerCase().trim()
     let matched = false
 
     for (const [pattern, slug] of Object.entries(workflowPatterns)) {
       if (lower.startsWith(pattern)) {
         matched = true
-        const name = text.slice(pattern.length).trim() || text
+        const name = trimmed.slice(pattern.length).trim() || trimmed
         try {
           const resp = await fetch(`${RUNTIME_URL}/workflow/start`, {
             method: 'POST',
@@ -236,7 +357,7 @@ export function useCommandPanel() {
     }
 
     return 'Comando nao reconhecido'
-  }, [addFeedEvent])
+  }, [addFeedEvent, searchBrain])
 
   // Setup Supabase Realtime + initial fetch
   useEffect(() => {
@@ -396,5 +517,5 @@ export function useCommandPanel() {
     }
   }, [fetchPulse, fetchStats, addFeedEvent, addToast])
 
-  return { pulse, feed, isConnected, isLoading, error, sendCommand, stats, toasts, dismissToast }
+  return { pulse, feed, isConnected, isLoading, error, sendCommand, searchBrain, stats, toasts, dismissToast }
 }

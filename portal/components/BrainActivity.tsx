@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, KeyboardEvent } from 'react'
+import type { BrainSearchResult } from '@/hooks/useCommandPanel'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -346,6 +347,196 @@ function StatsBar({ stats }: { stats: BrainActivityData['stats'] }) {
   )
 }
 
+// ── Brain Search Icons ─────────────────────────────────────
+
+function IconSearch() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  )
+}
+
+function IconSend() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  )
+}
+
+// ── Type Badge ─────────────────────────────────────────────
+
+function TypeBadge({ type }: { type?: string }) {
+  const config: Record<string, { label: string; color: string }> = {
+    synthesis: { label: 'SYN', color: 'bg-[#00ff87]/15 text-[#00ff87]/80 border-[#00ff87]/20' },
+    insight:   { label: 'INS', color: 'bg-[#eab308]/15 text-[#eab308]/80 border-[#eab308]/20' },
+    chunk:     { label: 'CHK', color: 'bg-[#3b82f6]/15 text-[#3b82f6]/80 border-[#3b82f6]/20' },
+  }
+
+  const c = config[type || 'chunk'] || config.chunk
+  return (
+    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${c.color}`}>
+      {c.label}
+    </span>
+  )
+}
+
+// ── Confidence Bar ─────────────────────────────────────────
+
+function ConfidenceBar({ value }: { value?: number }) {
+  if (value == null) return null
+  const pct = Math.round(value * 100)
+  const color = pct >= 80 ? 'bg-[#00ff87]' : pct >= 50 ? 'bg-[#eab308]' : 'bg-[#ef4444]'
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-12 h-1 rounded-full bg-white/10 overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[9px] font-mono text-white/30">{pct}%</span>
+    </div>
+  )
+}
+
+// ── Brain Search Component ─────────────────────────────────
+
+function BrainSearch() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<BrainSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleSearch = async () => {
+    const q = query.trim()
+    if (!q || searching) return
+    setSearching(true)
+    setSearchError(null)
+    setHasSearched(true)
+    try {
+      const resp = await fetch(`${RUNTIME_URL}/brain/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, limit: 10 }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setResults(data.results || data.items || [])
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Erro ao buscar')
+      setResults([])
+    } finally {
+      setSearching(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSearch()
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="text-[#3b82f6]"><IconSearch /></span>
+        <h3 className="text-[10px] text-white/30 font-mono uppercase tracking-widest">
+          Brain Search
+        </h3>
+      </div>
+
+      {/* Search input */}
+      <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 focus-within:border-[#3b82f6]/40 transition-colors">
+        <span className="text-[#3b82f6]/60"><IconSearch /></span>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Pesquisar no Brain..."
+          className="flex-1 bg-transparent text-xs font-mono text-white/80 placeholder:text-white/20 outline-none"
+          disabled={searching}
+        />
+        <button
+          onClick={handleSearch}
+          disabled={searching || !query.trim()}
+          className="text-white/30 hover:text-[#3b82f6] transition-colors disabled:opacity-30"
+        >
+          {searching ? (
+            <span className="h-3.5 w-3.5 block rounded-full border-2 border-white/20 border-t-[#3b82f6] animate-spin" />
+          ) : (
+            <IconSend />
+          )}
+        </button>
+      </div>
+
+      {/* Error */}
+      {searchError && (
+        <div className="rounded border border-[#ef4444]/30 bg-[#ef4444]/5 px-3 py-1.5 text-[10px] text-[#ef4444]/80 font-mono">
+          {searchError}
+        </div>
+      )}
+
+      {/* Results */}
+      {hasSearched && !searching && results.length === 0 && !searchError && (
+        <div className="rounded-lg border border-white/[0.04] bg-white/[0.01] px-3 py-4 text-center">
+          <p className="text-xs text-white/25 font-mono">Nenhum resultado encontrado</p>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] text-white/20 font-mono">
+            {results.length} resultado{results.length !== 1 ? 's' : ''}
+          </span>
+          {results.map((r, idx) => (
+            <div
+              key={r.id || `res-${idx}`}
+              className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 hover:border-[#3b82f6]/20 transition-colors"
+            >
+              {/* Top row: type badge + title + confidence */}
+              <div className="flex items-center gap-2 mb-1.5">
+                <TypeBadge type={r.type} />
+                <span className="text-xs font-mono font-semibold text-white/80 truncate flex-1">
+                  {r.title || r.domain || 'Brain chunk'}
+                </span>
+                <ConfidenceBar value={r.confidence ?? r.similarity} />
+              </div>
+
+              {/* Content preview */}
+              <p className="text-[11px] text-white/50 leading-relaxed line-clamp-3 mb-1.5">
+                {r.content}
+              </p>
+
+              {/* Footer: domain + source */}
+              <div className="flex items-center gap-3 text-[9px] font-mono text-white/25">
+                {r.domain && (
+                  <span className="bg-white/5 px-1.5 py-0.5 rounded">
+                    {r.domain}
+                  </span>
+                )}
+                {r.source && (
+                  <span className="truncate max-w-[140px]">
+                    {r.source}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Component ──────────────────────────────────────────
 
 export default function BrainActivity() {
@@ -401,6 +592,12 @@ export default function BrainActivity() {
           Brain: {error}
         </div>
       )}
+
+      {/* Brain Search */}
+      <BrainSearch />
+
+      {/* Separator */}
+      <div className="border-t border-white/[0.04]" />
 
       {/* Content */}
       {data && (
