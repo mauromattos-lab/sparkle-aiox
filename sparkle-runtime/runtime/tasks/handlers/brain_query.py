@@ -130,6 +130,12 @@ async def _search_knowledge_base(
                     or r.get("brain_owner") is None  # legacy rows without brain_owner
                 ]
 
+            # B3-01: exclude rejected chunks from brain queries
+            results = [
+                r for r in results
+                if r.get("curation_status", "pending") != "rejected"
+            ]
+
             if results:
                 return results
     except Exception as e:

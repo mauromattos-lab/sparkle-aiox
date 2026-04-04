@@ -171,6 +171,12 @@ async def retrieve_knowledge(
                     or c.get("brain_owner") is None
                 ]
 
+            # B3-01: exclude rejected chunks from knowledge retrieval
+            chunks = [
+                c for c in chunks
+                if c.get("curation_status", "pending") != "rejected"
+            ]
+
             result["chunks"] = chunks
 
             # So inclui chunks se nao achou sintese nem insights
