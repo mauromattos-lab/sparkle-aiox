@@ -242,7 +242,7 @@ async def brain_activity():
             # Active domain syntheses
             asyncio.to_thread(
                 lambda: supabase.table("brain_domain_syntheses")
-                .select("id,domain,version,source_count,synthesis,created_at,updated_at")
+                .select("id,domain,version,source_count,summary,created_at,updated_at")
                 .eq("active", True)
                 .order("updated_at", desc=True)
                 .limit(20)
@@ -315,13 +315,13 @@ async def brain_activity():
         # Syntheses — trim the full synthesis text for the dashboard
         syntheses_items = []
         for syn in (syntheses_result.data or []):
-            synthesis_text = syn.get("synthesis", "")
+            summary_text = syn.get("summary", "")
             syntheses_items.append({
                 "id": syn.get("id"),
                 "domain": syn.get("domain"),
                 "version": syn.get("version"),
                 "source_count": syn.get("source_count"),
-                "synthesis_preview": synthesis_text[:200] if synthesis_text else "",
+                "synthesis_preview": summary_text[:200] if summary_text else "",
                 "created_at": syn.get("created_at"),
                 "updated_at": syn.get("updated_at"),
             })
