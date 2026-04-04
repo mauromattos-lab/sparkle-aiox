@@ -140,7 +140,8 @@ def _extract_hashtags(text: str) -> tuple[str, list[str]]:
 
 async def handle_generate_content(task: dict) -> dict:
     """
-    Gera conteúdo de Instagram a partir do Brain e salva em generated_content.
+    Gera conteudo multi-plataforma a partir do Brain e salva em generated_content.
+    Suporta Instagram, YouTube e TikTok (v2).
     """
     payload = task.get("payload", {})
     task_id = task.get("id")
@@ -148,6 +149,7 @@ async def handle_generate_content(task: dict) -> dict:
 
     persona: str = payload.get("persona", "zenya")
     fmt: str = payload.get("format", "instagram_post")
+    platform: str = payload.get("platform", "instagram")
     topic: str = payload.get("topic") or payload.get("content") or ""
     source_type: str = payload.get("source_type", "manual")
     source_ref: str = payload.get("source_ref", "")
@@ -169,9 +171,10 @@ async def handle_generate_content(task: dict) -> dict:
     brain_context_ids = [i["id"] for i in knowledge.get("insights", []) if i.get("id")]
     brain_context_ids += [c["id"] for c in knowledge.get("chunks", []) if c.get("id")]
 
-    # 2. Montar prompt
+    # 2. Montar prompt (v2: usa templates por plataforma quando disponivel)
+    from runtime.content.templates import get_prompt_instructions
     persona_prompt = _PERSONA_PROMPTS.get(persona, _PERSONA_PROMPTS["zenya"])
-    format_instruction = _FORMAT_INSTRUCTIONS.get(fmt, _FORMAT_INSTRUCTIONS["instagram_post"])
+    format_instruction = get_prompt_instructions(fmt, platform)
 
     system = (
         f"{persona_prompt}\n\n"
@@ -206,6 +209,7 @@ async def handle_generate_content(task: dict) -> dict:
             "client_id": client_id,
             "persona": persona,
             "format": fmt,
+            "platform": platform,
             "topic": topic[:500],
             "raw_prompt": user_prompt[:2000],
             "content": clean_content,
@@ -228,11 +232,12 @@ async def handle_generate_content(task: dict) -> dict:
 
     return {
         "message": (
-            f"✍️ Conteúdo gerado ({fmt} • {persona})\n\n"
+            f"Conteudo gerado ({fmt} • {platform} • {persona})\n\n"
             f"{preview}{tags_info}"
         ),
         "content_id": content_id,
         "format": fmt,
+        "platform": platform,
         "persona": persona,
         "brain_insights_used": len(knowledge.get("insights", [])),
         "brain_chunks_used": len(knowledge.get("chunks", [])),

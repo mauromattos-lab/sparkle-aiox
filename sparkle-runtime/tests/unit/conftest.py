@@ -192,6 +192,6 @@ def test_app():
         mock_create.return_value = mock_sb
 
         from fastapi.testclient import TestClient
-        from runtime.main import app
+        from main import app
         with TestClient(app) as client:
             yield client, mock_sb
