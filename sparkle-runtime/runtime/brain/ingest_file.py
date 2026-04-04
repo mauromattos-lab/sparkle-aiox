@@ -21,6 +21,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from runtime.brain.ingest_url import _chunk_text, _get_embedding
 from runtime.brain.isolation import get_brain_owner_for_ingest
+from runtime.brain.namespace import resolve_namespace
 from runtime.db import supabase
 
 router = APIRouter()
@@ -169,20 +170,28 @@ async def ingest_file(
             brain_owner = get_brain_owner_for_ingest(
                 source_agent or "mauro", client_id,
             )
+            # B3-05: resolve namespace from file metadata
+            chunk_meta = {
+                "filename": file.filename,
+                "file_extension": ext,
+                "file_size_bytes": len(content),
+                "source_agent": source_agent,
+                "source_type": "file_upload",
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+            }
+            namespace = resolve_namespace(
+                file_type=ext,
+                metadata=chunk_meta,
+            )
             row: dict = {
                 "raw_content": chunk,
                 "source_type": "file_upload",
                 "source_title": chunk_title,
                 "pipeline_type": persona or "mauro",
                 "brain_owner": brain_owner,
-                "chunk_metadata": {
-                    "filename": file.filename,
-                    "file_extension": ext,
-                    "file_size_bytes": len(content),
-                    "source_agent": source_agent,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                },
+                "namespace": namespace,
+                "chunk_metadata": chunk_meta,
             }
             if client_id:
                 row["client_id"] = client_id

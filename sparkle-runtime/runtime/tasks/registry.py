@@ -38,8 +38,8 @@ from runtime.tasks.handlers.extract_client_dna import handle_extract_client_dna
 from runtime.tasks.handlers.observer_gap_analysis import handle_observer_gap_analysis
 from runtime.tasks.handlers.auto_implement_gap import handle_auto_implement_gap
 from runtime.tasks.handlers.extract_insights import handle_extract_insights
+from runtime.tasks.handlers.brain_archival import handle_brain_archival
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
-from runtime.onboarding.handler import handle_onboarding
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -47,6 +47,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "conclave":                 handle_conclave,
     "brain_ingest":             handle_brain_ingest,
     "brain_ingest_pipeline":    handle_brain_ingest_pipeline,
+    "brain_archival":            handle_brain_archival,
     "brain_query":              handle_brain_query,
     "chat":                     handle_chat,
     "conversation_summary":     handle_conversation_summary,
@@ -76,7 +77,6 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "auto_implement_gap":       handle_auto_implement_gap,
     "extract_insights":         handle_extract_insights,
     "cross_source_synthesis":   handle_cross_source_synthesis,
-    "onboarding_start":         handle_onboarding,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

@@ -53,12 +53,12 @@ from runtime.brain.ingest_file import router as brain_ingest_file_router
 from runtime.brain.dna_router import router as brain_dna_router
 from runtime.brain.pipeline_router import router as brain_pipeline_router
 from runtime.brain.curation import router as brain_curation_router
+from runtime.brain.metrics_router import router as brain_metrics_router
 from runtime.context.router import router as context_router
 from runtime.workflow.router import router as workflow_router
 from runtime.gaps.router import router as gaps_router
 from runtime.content.router import router as content_router
 from runtime.observer.router import router as observer_router
-from runtime.onboarding.router import router as onboarding_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
@@ -72,12 +72,12 @@ app.include_router(brain_ingest_file_router, prefix="/brain", tags=["brain"])
 app.include_router(brain_dna_router, prefix="/brain", tags=["brain"])
 app.include_router(brain_pipeline_router, prefix="/brain", tags=["brain"])
 app.include_router(brain_curation_router, prefix="/brain", tags=["brain"])
+app.include_router(brain_metrics_router, prefix="/brain", tags=["brain"])
 app.include_router(context_router, prefix="/context", tags=["context"])
 app.include_router(workflow_router, prefix="/workflow", tags=["workflow"])
 app.include_router(gaps_router, prefix="/system/gaps", tags=["gaps"])
 app.include_router(content_router, prefix="/content", tags=["content"])
 app.include_router(observer_router, prefix="/observer", tags=["observer"])
-app.include_router(onboarding_router, prefix="/onboarding", tags=["onboarding"])
 
 
 # ── Health ─────────────────────────────────────────────────

@@ -21,6 +21,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from runtime.brain.isolation import get_brain_owner_for_ingest
+from runtime.brain.namespace import resolve_namespace
 from runtime.db import supabase
 
 router = APIRouter()
@@ -238,18 +239,27 @@ async def ingest_url(req: IngestUrlRequest):
             brain_owner = get_brain_owner_for_ingest(
                 req.source_agent or "mauro", client_id,
             )
+            # B3-05: resolve namespace from source
+            chunk_meta = {
+                "source_url": req.url,
+                "source_agent": req.source_agent,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "source_type": source_type,
+            }
+            namespace = resolve_namespace(
+                source_url=req.url,
+                file_type=source_type,
+                metadata=chunk_meta,
+            )
             row: dict = {
                 "raw_content": chunk,
                 "source_type": source_type,
                 "source_title": chunk_title,
                 "pipeline_type": "mauro",
                 "brain_owner": brain_owner,
-                "chunk_metadata": {
-                    "source_url": req.url,
-                    "source_agent": req.source_agent,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                },
+                "namespace": namespace,
+                "chunk_metadata": chunk_meta,
             }
             if client_id:
                 row["client_id"] = client_id

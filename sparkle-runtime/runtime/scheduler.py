@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (11 total):
+Jobs (12 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
@@ -14,6 +14,7 @@ Jobs (11 total):
 - brain_weekly_digest     : todo domingo às 23h de Brasília (SYS-1.6)
 - content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
 - friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
+- brain_archival          : todo dia às 3h de Brasília (B3-05)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -99,6 +100,12 @@ async def _run_risk_alert() -> None:
 
 async def _run_upsell_opportunity() -> None:
     await _run_and_execute("friday_initiative_upsell", priority=5)
+
+
+# ── B3-05: Brain Archival (daily) ──────────────────────────
+
+async def _run_brain_archival() -> None:
+    await _run_and_execute("brain_archival", priority=4)
 
 
 # ── SYS-1.6: Brain Weekly Digest ────────────────────────────
@@ -340,6 +347,14 @@ def start_scheduler() -> None:
         _run_upsell_opportunity,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=30, timezone=_TZ),
         id="upsell_opportunity",
+        replace_existing=True,
+    )
+
+    # B3-05: brain_archival todo dia às 3h de Brasília (off-peak)
+    _scheduler.add_job(
+        _run_brain_archival,
+        trigger=CronTrigger(hour=3, minute=0, timezone=_TZ),
+        id="brain_archival",
         replace_existing=True,
     )
 

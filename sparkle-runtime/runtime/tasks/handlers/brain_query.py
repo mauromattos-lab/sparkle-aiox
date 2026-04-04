@@ -19,6 +19,7 @@ import os
 import httpx
 
 from runtime.brain.isolation import get_brain_owner_filter
+from runtime.brain.usage import track_chunk_usage
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -54,6 +55,12 @@ async def handle_brain_query(task: dict) -> dict:
     brain_owner = get_brain_owner_filter(agent_slug, client_id)
 
     chunks = await _search_knowledge_base(query, brain_owner=brain_owner)
+
+    # B3-05: Track usage for returned chunks (fire-and-forget)
+    if chunks:
+        chunk_ids = [c.get("id") for c in chunks if c.get("id")]
+        if chunk_ids:
+            asyncio.ensure_future(track_chunk_usage(chunk_ids))
 
     if not chunks:
         return {
