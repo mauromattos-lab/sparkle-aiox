@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from runtime.config import settings
 from runtime.db import supabase
+from runtime.middleware.auth import APIKeyMiddleware
+from runtime.middleware.rate_limit import RateLimitMiddleware, start_cleanup_task
 from runtime.scheduler import start_scheduler, stop_scheduler
 
 
@@ -20,6 +22,7 @@ from runtime.scheduler import start_scheduler, stop_scheduler
 async def lifespan(app: FastAPI):
     # Startup
     start_scheduler()
+    start_cleanup_task()
     yield
     # Shutdown
     stop_scheduler()
@@ -39,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(APIKeyMiddleware)
+# Rate limiting runs before auth — added last so it wraps outermost
+app.add_middleware(RateLimitMiddleware)
 
 # ── Routers ────────────────────────────────────────────────
 from runtime.friday.router import router as friday_router
@@ -92,6 +98,7 @@ async def health():
         "zapi_configured": bool(settings.zapi_base_url and settings.zapi_instance_id),
         "groq_configured": bool(settings.groq_api_key),
         "anthropic_configured": bool(settings.anthropic_api_key),
+        "openai_configured": bool(settings.openai_api_key),
     }
     overall = "ok" if checks["supabase"] and checks["anthropic_configured"] else "degraded"
     return {

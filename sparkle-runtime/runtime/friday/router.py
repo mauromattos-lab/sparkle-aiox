@@ -107,7 +107,7 @@ async def _trigger_workflow(template_slug: str, name: str, context: dict) -> dic
         # Chamada interna ao próprio servidor (localhost)
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"http://127.0.0.1:8000/workflow/start",
+                f"http://127.0.0.1:8001/workflow/start",
                 json={
                     "template_slug": template_slug,
                     "name": name,

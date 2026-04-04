@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
 
+    # OpenAI (embeddings)
+    openai_api_key: str = os.environ.get("OPENAI_API_KEY", "")
+
     # Groq (Whisper transcription)
     groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
 
@@ -30,6 +33,9 @@ class Settings(BaseSettings):
 
     # Redis (ARQ)
     redis_url: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
+
+    # Auth
+    runtime_api_key: str | None = os.environ.get("RUNTIME_API_KEY") or None
 
     # Brain — S8-P3 Embeddings
     # BRAIN_EMBEDDINGS_ENABLED=false por padrão. Orion habilita após validar custo e comportamento.
