@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { useCommandPanel, AgentPulse, FeedEvent } from '@/hooks/useCommandPanel'
+import { useCommandPanel, AgentPulse, FeedEvent, SystemStats } from '@/hooks/useCommandPanel'
 import BrainActivity from '@/components/BrainActivity'
 import ContentManager from '@/components/ContentManager'
 
@@ -46,12 +46,83 @@ function statusColor(status: string): string {
 
 function feedTypeColor(type: string): string {
   switch (type) {
-    case 'task':     return 'text-[#0ea5e9]'
-    case 'workflow': return 'text-[#00ff87]'
-    case 'brain':    return 'text-[#eab308]'
+    case 'task':     return 'text-white/60'
+    case 'brain':    return 'text-[#3b82f6]'
+    case 'content':  return 'text-[#22c55e]'
+    case 'error':    return 'text-[#ef4444]'
+    case 'friday':   return 'text-purple-400'
+    case 'workflow': return 'text-[#eab308]'
     case 'command':  return 'text-purple-400'
     default:         return 'text-white/40'
   }
+}
+
+function feedTypeBg(type: string): string {
+  switch (type) {
+    case 'brain':    return 'border-l-[#3b82f6]/30'
+    case 'content':  return 'border-l-[#22c55e]/30'
+    case 'error':    return 'border-l-[#ef4444]/30'
+    case 'friday':   return 'border-l-purple-400/30'
+    case 'workflow': return 'border-l-[#eab308]/30'
+    default:         return 'border-l-transparent'
+  }
+}
+
+// ── Toast color mapping ────────────────────────────────────────
+
+function toastColor(type: 'brain' | 'content' | 'error'): string {
+  switch (type) {
+    case 'brain':   return 'border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6]'
+    case 'content': return 'border-[#22c55e]/40 bg-[#22c55e]/10 text-[#22c55e]'
+    case 'error':   return 'border-[#ef4444]/40 bg-[#ef4444]/10 text-[#ef4444]'
+  }
+}
+
+// ── Stats Bar ──────────────────────────────────────────────────
+
+function StatsBar({ stats, pulse }: { stats: SystemStats | null; pulse: { workflows: { active_count: number } } | null }) {
+  if (!stats) return null
+
+  const items = [
+    { label: 'Brain', value: `${stats.chunks_total} chunks, ${stats.insights_total} insights`, color: 'text-[#3b82f6]' },
+    { label: 'Content', value: `${stats.content_total} items`, color: 'text-[#22c55e]' },
+    { label: 'Workflows', value: `${pulse?.workflows.active_count ?? stats.workflows_active} ativos`, color: 'text-[#eab308]' },
+    ...(stats.uptime ? [{ label: 'Uptime', value: stats.uptime, color: 'text-white/50' }] : []),
+  ]
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10">
+      {items.map((item, i) => (
+        <div key={item.label} className="flex items-center gap-2">
+          {i > 0 && <span className="hidden sm:inline text-white/10">|</span>}
+          <span className="text-[10px] font-mono text-white/30 uppercase tracking-wider">{item.label}</span>
+          <span className={`text-xs font-mono font-medium ${item.color}`}>{item.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Toast Container ────────────────────────────────────────────
+
+function ToastContainer({ toasts, onDismiss }: { toasts: { id: string; message: string; type: 'brain' | 'content' | 'error' }[]; onDismiss: (id: string) => void }) {
+  if (toasts.length === 0) return null
+
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map(toast => (
+        <div
+          key={toast.id}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-xs backdrop-blur-md animate-slide-in ${toastColor(toast.type)}`}
+          onClick={() => onDismiss(toast.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          <span className="flex-1">{toast.message}</span>
+          <span className="text-white/20 hover:text-white/40 text-[10px]">x</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ── Inline SVG icons (no emoji) ────────────────────────────────
@@ -154,7 +225,7 @@ function FeedItem({ event }: { event: FeedEvent }) {
   const ss = String(time.getSeconds()).padStart(2, '0')
 
   return (
-    <div className="flex gap-3 py-2 border-b border-white/[0.03] last:border-b-0">
+    <div className={`flex gap-3 py-2 border-b border-white/[0.03] last:border-b-0 border-l-2 pl-2 ${feedTypeBg(event.type)}`}>
       {/* Timestamp */}
       <span className="text-[10px] font-mono text-white/25 flex-shrink-0 pt-0.5 w-14 text-right">
         {hh}:{mm}:{ss}
@@ -248,7 +319,7 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function CommandPage() {
-  const { pulse, feed, isConnected, isLoading, error, sendCommand } = useCommandPanel()
+  const { pulse, feed, isConnected, isLoading, error, sendCommand, stats, toasts, dismissToast } = useCommandPanel()
   const feedContainerRef = useRef<HTMLDivElement>(null)
   const [rightPanel, setRightPanel] = useState<'brain' | 'content'>('brain')
 
@@ -259,6 +330,9 @@ export default function CommandPage() {
       className="min-h-screen px-4 py-4 flex flex-col gap-3"
       style={{ backgroundColor: '#0a0a0f' }}
     >
+      {/* ── Toast Notifications ───────────────────────────── */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -273,7 +347,7 @@ export default function CommandPage() {
         <div className="flex items-center gap-3">
           {/* Brain stats mini */}
           {pulse && (
-            <div className="flex items-center gap-1.5 text-[10px] text-white/25 font-mono">
+            <div className="hidden md:flex items-center gap-1.5 text-[10px] text-white/25 font-mono">
               <IconBrain />
               <span>{pulse.brain.chunks_total} chunks</span>
               <span className="text-white/10">|</span>
@@ -296,6 +370,9 @@ export default function CommandPage() {
         </div>
       </div>
 
+      {/* ── Stats Bar ──────────────────────────────────────── */}
+      <StatsBar stats={stats} pulse={pulse} />
+
       {/* ── Command Bar (full width top) ────────────────────── */}
       <CommandBar onSend={sendCommand} />
 
@@ -307,10 +384,10 @@ export default function CommandPage() {
       )}
 
       {/* ── Main grid: Team Panel + Live Feed ───────────────── */}
-      <div className="flex-1 flex gap-3 min-h-0" style={{ height: 'calc(100vh - 160px)' }}>
+      <div className="flex-1 flex flex-col md:flex-row gap-3 min-h-0 md:h-[calc(100vh-200px)]">
 
         {/* Team Panel (left) */}
-        <div className="w-[250px] flex-shrink-0 flex flex-col gap-2 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+        <div className="w-full md:w-[250px] flex-shrink-0 flex flex-col gap-2 overflow-y-auto pr-1 max-h-[300px] md:max-h-none" style={{ scrollbarWidth: 'thin' }}>
           <div className="flex items-center gap-1.5 mb-1">
             <IconPulse />
             <h2 className="text-[10px] text-white/30 font-mono uppercase tracking-widest">
@@ -398,7 +475,7 @@ export default function CommandPage() {
         </div>
 
         {/* Right panel (Brain Activity / Content Manager) */}
-        <div className="w-[340px] flex-shrink-0 flex flex-col min-h-0">
+        <div className="w-full md:w-[340px] flex-shrink-0 flex flex-col min-h-0">
           {/* Tab toggle */}
           <div className="flex items-center gap-1 mb-2">
             <button
