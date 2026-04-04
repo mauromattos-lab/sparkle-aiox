@@ -6,8 +6,10 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { supabaseServer } from '@/lib/supabase-server'
 import { randomUUID } from 'crypto'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,24 +22,26 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Autenticar via Supabase Auth (anon key é suficiente para signInWithPassword)
-    const supabaseAuth = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    // Autenticar via Supabase Auth (anon key)
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
     const { data: authData, error: authError } =
       await supabaseAuth.auth.signInWithPassword({ email, password })
 
-    if (authError || !authData.user) {
+    if (authError || !authData.session) {
       return NextResponse.json(
         { error: 'Email ou senha incorretos.' },
         { status: 401 }
       )
     }
 
+    // Client autenticado com token do usuário (respeita RLS)
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${authData.session.access_token}` } },
+    })
+
     // Buscar client vinculado ao email autenticado
-    const { data: client, error: clientError } = await supabaseServer
+    const { data: client, error: clientError } = await supabaseUser
       .from('clients')
       .select('id')
       .eq('email', email.toLowerCase().trim())
@@ -54,7 +58,7 @@ export async function POST(req: NextRequest) {
     const token = randomUUID()
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 min
 
-    const { error: insertError } = await supabaseServer
+    const { error: insertError } = await supabaseUser
       .from('client_sessions')
       .insert({
         client_id: client.id,
