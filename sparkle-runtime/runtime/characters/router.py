@@ -1,19 +1,27 @@
 """
-Character router — S5-01.
+Character router — S5-01 + B1-02 (Character State).
 
-POST /character/message  — envia mensagem para um personagem (com TTS opcional)
-GET  /character/{slug}   — retorna perfil público do personagem (sem soul_prompt / lore secreto)
+POST /character/message            — envia mensagem para um personagem (com TTS opcional)
+GET  /character/{slug}             — retorna perfil público do personagem
+GET  /character/{slug}/state       — retorna estado canônico (mood, energy, arc, etc.)
+PATCH /character/{slug}/state      — atualiza campos do estado
+POST /character/{slug}/event       — registra evento com efeitos em mood/energy
 """
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from runtime.db import supabase
 from runtime.characters.handler import send_character_message
+from runtime.characters.state import (
+    get_character_state,
+    update_character_state,
+    record_character_event,
+)
 
 router = APIRouter()
 
@@ -111,3 +119,81 @@ async def get_character_profile(slug: str):
         active_channels=character.get("active_channels") or [],
         lore_status=character["lore_status"],
     )
+
+
+# ── Character State models ────────────────────────────────────────────────
+
+class CharacterStateUpdate(BaseModel):
+    mood: Optional[str] = None
+    energy: Optional[float] = None
+    arc_position: Optional[dict] = None
+    personality_traits: Optional[dict] = None
+    session_context: Optional[dict] = None
+
+
+class CharacterEventRequest(BaseModel):
+    event: str
+    mood_effect: Optional[str] = None
+    energy_delta: float = 0.0
+
+
+# ── Character State endpoints (B1-02) ────────────────────────────────────
+
+@router.get("/{slug}/state")
+async def get_state(slug: str):
+    """
+    Returns the canonical state of a character (mood, energy, arc, traits, etc.).
+    Auto-creates a default state row if none exists.
+    """
+    try:
+        state = await get_character_state(slug)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao buscar estado do personagem '{slug}': {exc}",
+        ) from exc
+    return state
+
+
+@router.patch("/{slug}/state")
+async def patch_state(slug: str, body: CharacterStateUpdate):
+    """
+    Partial update of character state fields.
+    Only provided (non-null) fields are updated.
+    """
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        return await get_character_state(slug)
+
+    try:
+        state = await update_character_state(slug, updates)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao atualizar estado do personagem '{slug}': {exc}",
+        ) from exc
+    return state
+
+
+@router.post("/{slug}/event")
+async def post_event(slug: str, body: CharacterEventRequest):
+    """
+    Record an event for a character, optionally changing mood and energy.
+
+    - event: what happened (free text)
+    - mood_effect: new mood string (optional)
+    - energy_delta: value to add/subtract from energy, clamped to [0.00, 0.99]
+    """
+    try:
+        state = await record_character_event(
+            slug=slug,
+            event=body.event,
+            mood_effect=body.mood_effect,
+            energy_delta=body.energy_delta,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao registrar evento para '{slug}': {exc}",
+        ) from exc
+    return state
