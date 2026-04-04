@@ -37,6 +37,7 @@ def test_settings_defaults(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "k")
     monkeypatch.setenv("BRAIN_EMBEDDINGS_ENABLED", "false")
+    monkeypatch.delenv("BRAIN_SIMILARITY_THRESHOLD", raising=False)
 
     from runtime.config import get_settings
     get_settings.cache_clear()

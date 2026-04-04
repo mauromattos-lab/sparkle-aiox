@@ -33,12 +33,23 @@
 | 19 | Brain auto-ingestao (conversas, score > 0.6, isolamento) | FUNCIONAL | 04/02 |
 | 20 | Registry fix (15 intents, 6 handlers orfaos) | FUNCIONAL | 04/02 |
 
-### EM ANDAMENTO (agentes rodando agora)
+### CONCLUIDOS SESSAO 04/04 (alem do inventario inicial)
 
-| Item | Responsavel | ETA |
-|------|------------|-----|
-| Schema agente em DB (tabela `agents` Supabase + loader) | @dev | 04/04 |
-| Deduplicacao semantica Brain (RPC pgvector + confirmation_count) | @dev | 04/04 |
+| # | Entrega | Status | Data |
+|---|---------|--------|------|
+| 21 | Schema agente em DB (tabela `agents` Supabase + loader) | FUNCIONAL | 04/04 |
+| 22 | Deduplicacao semantica Brain (RPC pgvector + confirmation_count) | FUNCIONAL | 04/04 |
+| 23 | B1-01 Suite testes unitarios (88 testes, 11 arquivos) | FUNCIONAL | 04/04 |
+| 24 | B1-02 Character State canonico (Supabase + cache 60s + API) | FUNCIONAL | 04/04 |
+| 25 | B1-03 Brain isolation per-agent (brain_owner filter + 31 testes) | FUNCIONAL | 04/04 |
+| 26 | B1-04 Testes persona Friday/Zenya (58 testes comportamentais) | FUNCIONAL | 04/04 |
+| 27 | B1-06 VPS path audit + CI health check fix (porta 8000->8001) | FUNCIONAL | 04/04 |
+| 28 | B2-01 Taxonomia 5 tipos agente + routing rules + priority | FUNCIONAL | 04/04 |
+| 29 | B2-02 Character Orchestrator (mood engine, reveal moments, 30min scheduler) | FUNCIONAL | 04/04 |
+| 30 | B2-04 DNA Schema 8 categorias + extrator Haiku + API | FUNCIONAL | 04/04 |
+| 31 | B2-06 Observer Quality auto-avaliacao Haiku + quality log + gaps | FUNCIONAL | 04/04 |
+| 32 | B2-07 Crons 24/7 (keep-alive, backup, log rotation) | FUNCIONAL | 04/04 |
+| 33 | B2-08 Runbook incidentes (775 linhas, 7 cenarios) | FUNCIONAL | 04/04 |
 
 ---
 
