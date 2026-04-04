@@ -23,13 +23,17 @@ _last_alert_hash: str = ""
 _last_alert_time: datetime | None = None
 _ANTI_SPAM_MINUTES = 60
 
+# Consecutive failure tracking — alerta Mauro se health check falha 3x seguidas
+_consecutive_failures: int = 0
+_FAILURE_THRESHOLD = 3
+
 
 async def handle_health_alert(task: dict) -> dict:
     """
     Verifica saúde do runtime e envia alertas via WhatsApp se necessário.
     Auto-resolve tasks travadas. Anti-spam de 60 min para alertas repetidos.
     """
-    global _last_alert_hash, _last_alert_time
+    global _last_alert_hash, _last_alert_time, _consecutive_failures
 
     alerts: list[str] = []
 
@@ -120,6 +124,14 @@ async def handle_health_alert(task: dict) -> dict:
         top = sorted(by_type.items(), key=lambda x: -x[1])[:3]
         top_str = ", ".join(f"{tt}:{n}" for tt, n in top)
         alerts.append(f"🔴 *{len(recent_failures)} falhas na última hora:* {top_str}")
+
+    # Track consecutive failures — escalate on 3x in a row
+    if alerts:
+        _consecutive_failures += 1
+        if _consecutive_failures >= _FAILURE_THRESHOLD:
+            alerts.insert(0, f"🚨 *ALERTA CRÍTICO:* health check falhou {_consecutive_failures}x consecutivas!")
+    else:
+        _consecutive_failures = 0
 
     # Envia alerta se houver problemas (com anti-spam)
     if alerts:

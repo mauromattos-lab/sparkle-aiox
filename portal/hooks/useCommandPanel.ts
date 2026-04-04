@@ -19,8 +19,16 @@ export interface FeedEvent {
   timestamp: string
   agent: string
   description: string
-  type: 'task' | 'workflow' | 'brain' | 'command'
+  type: 'task' | 'workflow' | 'brain' | 'command' | 'content' | 'error' | 'friday'
   status: string
+}
+
+export interface SystemStats {
+  chunks_total: number
+  insights_total: number
+  content_total: number
+  workflows_active: number
+  uptime: string | null
 }
 
 export interface PulseData {
@@ -68,6 +76,8 @@ export function useCommandPanel() {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [stats, setStats] = useState<SystemStats | null>(null)
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'brain' | 'content' | 'error' }[]>([])
   const feedRef = useRef<FeedEvent[]>([])
 
   // Keep ref in sync
@@ -83,6 +93,60 @@ export function useCommandPanel() {
     })
   }, [])
 
+  // Add toast notification (auto-dismiss after 4s)
+  const addToast = useCallback((message: string, type: 'brain' | 'content' | 'error') => {
+    const id = `toast-${Date.now()}`
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id))
+    }, 4000)
+  }, [])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
+
+  // Fetch aggregated stats from multiple endpoints
+  const fetchStats = useCallback(async () => {
+    try {
+      const [brainResp, contentResp, healthResp] = await Promise.allSettled([
+        fetch(`${RUNTIME_URL}/brain/activity`),
+        fetch(`${RUNTIME_URL}/content/list?limit=1`),
+        fetch(`${RUNTIME_URL}/health`),
+      ])
+
+      const newStats: SystemStats = {
+        chunks_total: 0,
+        insights_total: 0,
+        content_total: 0,
+        workflows_active: 0,
+        uptime: null,
+      }
+
+      if (brainResp.status === 'fulfilled' && brainResp.value.ok) {
+        const brain = await brainResp.value.json()
+        if (brain.stats) {
+          newStats.chunks_total = brain.stats.chunks_total || 0
+          newStats.insights_total = brain.stats.insights_total || 0
+        }
+      }
+
+      if (contentResp.status === 'fulfilled' && contentResp.value.ok) {
+        const content = await contentResp.value.json()
+        newStats.content_total = content.total || content.items?.length || 0
+      }
+
+      if (healthResp.status === 'fulfilled' && healthResp.value.ok) {
+        const health = await healthResp.value.json()
+        newStats.uptime = health.uptime || null
+      }
+
+      setStats(newStats)
+    } catch {
+      // stats are non-critical, fail silently
+    }
+  }, [])
+
   // Fetch pulse data from Runtime
   const fetchPulse = useCallback(async () => {
     try {
@@ -90,6 +154,7 @@ export function useCommandPanel() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const data: PulseData = await resp.json()
       setPulse(data)
+      setStats(prev => prev ? { ...prev, workflows_active: data.workflows.active_count } : prev)
       setError(null)
       return data
     } catch (err) {
@@ -180,9 +245,11 @@ export function useCommandPanel() {
 
     // Initial load
     fetchPulse()
+    fetchStats()
 
-    // Poll pulse every 30s
+    // Poll pulse every 30s, stats every 60s
     pollInterval = setInterval(fetchPulse, 30_000)
+    const statsInterval = setInterval(fetchStats, 60_000)
 
     // Channel: runtime_tasks (agent activity)
     const tasksChannel = supabase
@@ -209,14 +276,20 @@ export function useCommandPanel() {
             description = `${agentId}: ${taskType} → ${status}`
           }
 
+          const eventType: FeedEvent['type'] = status === 'failed' ? 'error' : 'task'
+
           addFeedEvent({
             id: `task-${row.id || Date.now()}`,
             timestamp: (row.created_at as string) || new Date().toISOString(),
             agent: agentId,
             description,
-            type: 'task',
+            type: eventType,
             status,
           })
+
+          if (status === 'failed') {
+            addToast(`Error: ${agentId} failed ${taskType}`, 'error')
+          }
 
           // Refresh pulse on task changes
           fetchPulse()
@@ -278,17 +351,50 @@ export function useCommandPanel() {
             status: 'completed',
           })
 
+          addToast(`Brain ingest: "${title}" (${chunks} chunks)`, 'brain')
           fetchPulse()
+          fetchStats()
         }
       )
       .subscribe()
     channels.push(brainChannel)
 
+    // Channel: generated_content
+    const contentChannel = supabase
+      .channel('cmd_content_live')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'generated_content' },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | undefined
+          if (!row) return
+
+          const topic = (row.topic as string) || 'conteudo'
+          const persona = (row.persona as string) || ''
+          const format = (row.format as string) || ''
+
+          addFeedEvent({
+            id: `content-${row.id || Date.now()}`,
+            timestamp: (row.created_at as string) || new Date().toISOString(),
+            agent: persona || 'content',
+            description: `Gerou ${format}: "${topic}"`,
+            type: 'content',
+            status: 'completed',
+          })
+
+          addToast(`Content: ${format} "${topic}"`, 'content')
+          fetchStats()
+        }
+      )
+      .subscribe()
+    channels.push(contentChannel)
+
     return () => {
       channels.forEach(ch => ch.unsubscribe())
       if (pollInterval) clearInterval(pollInterval)
+      clearInterval(statsInterval)
     }
-  }, [fetchPulse, addFeedEvent])
+  }, [fetchPulse, fetchStats, addFeedEvent, addToast])
 
-  return { pulse, feed, isConnected, isLoading, error, sendCommand }
+  return { pulse, feed, isConnected, isLoading, error, sendCommand, stats, toasts, dismissToast }
 }
