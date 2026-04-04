@@ -65,7 +65,6 @@ export async function POST(req: NextRequest) {
         token,
         expires_at: expiresAt,
         used: false,
-        source: 'login_form',
       })
 
     if (insertError) {
