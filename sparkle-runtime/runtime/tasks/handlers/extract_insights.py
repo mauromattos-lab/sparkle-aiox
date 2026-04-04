@@ -25,27 +25,51 @@ from runtime.db import supabase
 from runtime.utils.llm import call_claude
 
 
-_INSIGHT_EXTRACT_SYSTEM = """Voce e um extrator de conhecimento acionavel.
+_CANONICAL_DOMAINS = [
+    "content_strategy",       # criacao de conteudo, estrategia editorial, copywriting, storytelling
+    "video_production",       # edicao de video, motion graphics, animacao, design visual
+    "prompt_engineering",     # engenharia de prompt, contexto de LLM, otimizacao de output IA
+    "dev_tools",              # ferramentas de desenvolvimento, CLI, setup, DevOps, infraestrutura
+    "product_strategy",       # posicionamento de produto, SaaS, pricing, go-to-market
+    "ai_tools",               # ferramentas de IA, automacao, workflows com IA, selecao de ferramentas
+    "ux_design",              # design de interface, experiencia do usuario, usabilidade
+    "onboarding_education",   # tutoriais, documentacao tecnica, educacao, onboarding de usuario
+    "ai_development",         # arquitetura de sistemas IA, integracao de modelos, engenharia de IA
+    "marketing_sales",        # marketing digital, vendas, conversao, comunidade, growth
+    "project_management",     # gestao de projetos, produtividade, metodologias, organizacao
+    "narrative_storytelling",  # estrutura narrativa, roteiro, arco dramatico
+    "mindset",                # mentalidade, psicologia, motivacao, tomada de decisao
+    "geral",                  # fallback — quando nenhum outro dominio se aplica
+]
+
+_DOMAIN_LIST_STR = ", ".join(_CANONICAL_DOMAINS)
+
+_INSIGHT_EXTRACT_SYSTEM = f"""Voce e um extrator de conhecimento acionavel.
 
 Dado um trecho de conteudo educacional, tecnico ou estrategico, extraia INSIGHTS ACIONAVEIS.
 
 Para cada insight encontrado, retorne:
-{
+{{
   "insights": [
-    {
-      "domain": "<dominio do conhecimento>",
+    {{
+      "domain": "<dominio canonico — veja lista abaixo>",
       "insight_type": "framework | tecnica | principio | metrica | processo | heuristica",
       "title": "<nome curto e memoravel, com atribuicao de fonte se possivel>",
       "content": "<descricao objetiva do insight em 2-5 frases>",
       "application": "<COMO usar na pratica — situacao concreta onde aplicar>",
       "tags": ["tag1", "tag2"],
       "confidence": 0.0-1.0
-    }
+    }}
   ]
-}
+}}
+
+DOMINIOS CANONICOS — use APENAS um destes valores para "domain":
+{_DOMAIN_LIST_STR}
+
+Se nenhum se encaixa perfeitamente, use "geral".
 
 REGRAS:
-- Se o trecho nao contem insight acionavel (e apenas contexto, intro, transicao), retorne {"insights": []}
+- Se o trecho nao contem insight acionavel (e apenas contexto, intro, transicao), retorne {{"insights": []}}
 - "content" deve ser instrucao, nao descricao. NAO: "Hannah fala sobre CTAs". SIM: "Nunca coloque CTA como comando direto — embuta no fluxo narrativo"
 - "application" e a parte mais importante: diz QUANDO e COMO usar
 - Maximo 3 insights por trecho. Menos e melhor se forem mais densos.
@@ -170,7 +194,10 @@ async def handle_extract_insights(task: dict) -> dict:
             if insight.get("confidence", 0) < min_confidence:
                 continue
 
-            domain = (insight.get("domain") or "geral").lower().strip()
+            domain = (insight.get("domain") or "geral").lower().strip().replace(" ", "_")
+            # Enforce canonical domain — fallback to 'geral' if LLM hallucinated a new one
+            if domain not in _CANONICAL_DOMAINS:
+                domain = "geral"
             domain_distribution[domain] = domain_distribution.get(domain, 0) + 1
 
             if dry_run:
