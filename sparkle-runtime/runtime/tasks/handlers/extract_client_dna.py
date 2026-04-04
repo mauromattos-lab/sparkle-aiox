@@ -74,7 +74,7 @@ def _count_layers(dna: dict) -> int:
 async def _get_client_chunks(client_id: str, limit: int = 50) -> list[dict]:
     result = await asyncio.to_thread(
         lambda: supabase.table("brain_chunks")
-        .select("raw_content,source_type,source_title,chunk_metadata")
+        .select("id,raw_content,source_type,source_title,chunk_metadata")
         .eq("client_id", client_id)
         .order("created_at", desc=True)
         .limit(limit)
@@ -127,6 +127,101 @@ async def _generate_soul_prompt_from_dna(
     except Exception as e:
         print(f"[extract_client_dna] falha ao gerar soul_prompt: {e}")
         return None
+
+
+async def _persist_dna_layers(client_id: str, dna: dict, chunks: list[dict]) -> int:
+    """Persist each DNA layer as a row in client_dna table."""
+    confidence_map = {"high": 0.9, "medium": 0.6, "low": 0.3}
+    meta = dna.get("extraction_meta", {})
+    confidence_val = confidence_map.get(meta.get("confidence", "low"), 0.3)
+    chunk_ids = [c.get("id") for c in chunks if c.get("id")]
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Delete old DNA rows for this client before inserting fresh ones
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("client_dna")
+            .delete()
+            .eq("client_id", client_id)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[extract_client_dna] falha ao limpar DNA anterior: {e}")
+
+    rows = []
+    for layer in _DNA_LAYERS:
+        value = dna.get(layer)
+        if value is None:
+            continue
+
+        # Serialize complex values to JSON string for content
+        if isinstance(value, (dict, list)):
+            content = json.dumps(value, ensure_ascii=False)
+        else:
+            content = str(value)
+
+        # Build a readable title
+        title_map = {
+            "identidade": "Identidade do Negocio",
+            "tom_voz": "Tom de Voz",
+            "regras_negocio": "Regras de Negocio",
+            "diferenciais": "Diferenciais",
+            "publico_alvo": "Publico-Alvo",
+            "anti_patterns": "Anti-Patterns",
+        }
+
+        rows.append({
+            "client_id": client_id,
+            "dna_type": layer,
+            "title": title_map.get(layer, layer),
+            "content": content,
+            "confidence": confidence_val,
+            "source_chunk_ids": chunk_ids[:50],  # limit array size
+            "tags": meta.get("sources_used", []),
+            "created_at": now,
+            "updated_at": now,
+        })
+
+    if not rows:
+        return 0
+
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("client_dna").insert(rows).execute()
+        )
+        return len(rows)
+    except Exception as e:
+        print(f"[extract_client_dna] falha ao persistir DNA layers: {e}")
+        return 0
+
+
+async def _mark_chunks_processed(client_id: str, chunks: list[dict]) -> None:
+    """Mark chunks as having gone through dna_extraction stage."""
+    for chunk in chunks:
+        chunk_id = chunk.get("id")
+        if not chunk_id:
+            continue
+        try:
+            # Fetch current processed_stages, append dna_extraction
+            result = await asyncio.to_thread(
+                lambda cid=chunk_id: supabase.table("brain_chunks")
+                .select("processed_stages")
+                .eq("id", cid)
+                .single()
+                .execute()
+            )
+            current = result.data.get("processed_stages") or [] if result.data else []
+            if "dna_extraction" not in current:
+                current.append("dna_extraction")
+                await asyncio.to_thread(
+                    lambda cid=chunk_id, stages=current: supabase.table("brain_chunks")
+                    .update({"processed_stages": stages})
+                    .eq("id", cid)
+                    .execute()
+                )
+        except Exception:
+            # Non-critical — column may not exist yet
+            pass
 
 
 async def handle_extract_client_dna(task: dict) -> dict:
@@ -188,10 +283,17 @@ async def handle_extract_client_dna(task: dict) -> dict:
 
     await _update_zenya_client(client_id, update_data)
 
+    # Persist individual DNA layers to client_dna table
+    rows_inserted = await _persist_dna_layers(client_id, dna, chunks)
+
+    # Mark processed chunks with dna_extraction stage
+    await _mark_chunks_processed(client_id, chunks)
+
     return {
         "message": f"DNA extraido: {len(chunks)} chunks analisados, {_count_layers(dna)} camadas preenchidas",
         "client_id": client_id,
         "layers_filled": _count_layers(dna),
+        "rows_inserted": rows_inserted,
         "confidence": dna["extraction_meta"]["confidence"],
         "soul_prompt_generated": soul_prompt is not None,
     }

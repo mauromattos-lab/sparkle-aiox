@@ -2,7 +2,7 @@
 name: agent-queue
 description: Kanban textual de handoff entre agentes — estado atual, bloqueios, responsável por item. Leia antes de qualquer sessão para saber ONDE estamos e quem tem a bola.
 type: project
-updated: 2026-04-02
+updated: 2026-04-04
 ---
 
 # Agent Queue — Sparkle AIOX
@@ -29,10 +29,11 @@ updated: 2026-04-02
 
 ```
 AIOS (sistema nervoso)  +  Mega Brain (cérebro)  +  Runtime (corpo)  =  SISTEMA
-     ✅ documentado            ✅ analisado            ✅ rodando
-     ⚠️ vive em sessões       ⚠️ não implementado     ✅ produção
+     ✅ documentado            ✅ pipeline no Runtime   ✅ rodando
+     ⚠️ vive em sessões       ✅ SYS-1 ingestão        ✅ produção
+                               ⚠️ SYS-4 DNA pendente
      
-PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
+PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloqueados
 ```
 
 ---
@@ -43,12 +44,12 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | — (pode começar) |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
 | **Impacto** | Brain aprende de qualquer fonte (PDFs, transcrições, cursos, vídeos). Fecha o ciclo Brain como cérebro coletivo. |
 | **Referências** | `docs/brain/dna-finch-mechanism.md`, `docs/architecture/mega-brain-analysis.md`, `docs/strategy/mega-brain-evaluation.md` |
-| **Nota** | Pipeline em 6 fases: raw → chunking → canonicalização → insight extraction → narrative synthesis → vetorização. Implementar como handler no Runtime, não como CLI. |
+| **Implementação** | Pipeline 6 fases: raw → chunking → canonicalização → insight extraction → narrative synthesis → vetorização. YouTube + URL + direct input funcionando. Apify fallback para transcrições YouTube. |
+| **Arquivos** | `runtime/tasks/handlers/brain_ingest_pipeline.py`, `extract_insights.py`, `cross_source_synthesis.py`, `narrative_synthesis.py` |
 
 ---
 
@@ -56,11 +57,11 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | — (pode começar) |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
 | **Impacto** | Todo agente ativado pelo Runtime já nasce sabendo: ferramentas, outros agentes, recursos, processos. Não depende de sessão Claude Code. |
-| **Nota** | Hoje isso vive em `AGENT_CONTEXT.md` e `agent-toolkit-standard.md` — funciona em sessões mas morre quando fecha. Precisa virar contexto injetado automaticamente pelo Runtime no activate_agent. |
+| **Implementação** | 16 blocos de contexto populados (5 global system + 5 process + 6 agent bootstraps). Assembler com 4 camadas e budget de 4000 tokens. |
+| **Arquivos** | `runtime/context/assembler.py`, `runtime/context/seed_blocks.py` |
 
 ---
 
@@ -68,11 +69,11 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | CORE-1 (workflow engine) ✅ já implementado |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
 | **Impacto** | Agente A termina → dispara agente B automaticamente via workflow engine. Sem Orion no meio. Sem Mauro no meio. |
-| **Nota** | Workflow engine (CORE-1) já suporta encadeamento. Falta: templates de workflow para processos reais (onboarding, landing page, conteúdo). |
+| **Implementação** | Workflow engine com 3 templates (onboarding_zenya, content_production, brain_learning). Encadeamento automático via _steps em context JSONB. |
+| **Arquivos** | `runtime/workflows/templates.py`, `runtime/workflow/router.py` |
 
 ---
 
@@ -82,7 +83,7 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 |-------|-------|
 | **Status** | `PENDENTE` |
 | **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | SYS-1 (pipeline de ingestão) |
+| **Bloqueante** | SYS-1 ✅ FUNCIONAL — pode começar |
 | **Impacto** | Cada cliente tem DNA extraído automaticamente (tom, persona, regras, diferenciais). Zenya nasce mais inteligente. Onboarding semi-autônomo. |
 | **Referências** | `docs/archive/reviews/architect-megabrain-review.md` (schema `zenya_config` proposto) |
 
@@ -92,11 +93,11 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | SYS-1, SYS-2 |
-| **Impacto** | Agentes detectam lacunas e reportam. Mauro aprova. Novo agente criado do template. Sistema cresce. |
-| **Nota** | Cron de gap_report já existe (S4-02, segunda 8h). Falta: template de agente para criação automática, fluxo de aprovação Mauro, registro no Brain. |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
+| **Impacto** | Agentes detectam lacunas e reportam. Sistema auto-implementa gaps aprovados. |
+| **Implementação** | auto_implement_gap completo (4 tipos: knowledge, capability, handler, agent). API: /observer/gaps, /observer/summary. 33 E2E tests validados. |
+| **Arquivos** | `runtime/tasks/handlers/auto_implement_gap.py`, `runtime/observer/router.py` |
 
 ---
 
@@ -106,7 +107,7 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 |-------|-------|
 | **Status** | `PENDENTE` |
 | **Responsável** | @architect (design) → @ux + @dev (implementação) |
-| **Bloqueante** | SYS-1/2/3 (design da arquitetura define quais dados o painel consome) |
+| **Bloqueante** | SYS-1/2/3 ✅ todos FUNCIONAL — pode começar |
 | **Impacto** | Mauro pilota o sistema visualmente. Não é dashboard — é experiência de comando. |
 | **Stack** | Next.js (portal/ já existe), Supabase Realtime WebSocket, portal.sparkleai.tech |
 | **Lei 15** | "Se parece com Notion ou Trello, está errado. Se parece com Overwatch ou Final Fantasy, está no caminho certo." |
@@ -210,9 +211,10 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect |
-| **Nota** | QA identificou 502s em 7+ chamadas paralelas. Precisa fix antes de carga real de clientes. |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
+| **Implementação** | Thread-local Supabase client proxy. Fix para 502s em chamadas paralelas. |
+| **Arquivos** | `runtime/db.py` |
 
 ---
 
@@ -231,6 +233,16 @@ PRÓXIMO PASSO: colocar AIOS + Mega Brain DENTRO do Runtime
 ---
 
 ## Itens FUNCIONAIS — Concluídos (referência)
+
+### Sprint SYSTEM + Infra (2026-04-04)
+
+| Item | O que faz | Data |
+|------|-----------|------|
+| SYS-1 Brain Pipeline | Pipeline 6 fases (raw→chunking→canonicalização→insights→narrative→vetorização). YouTube + URL + direct input | 2026-04-04 |
+| SYS-2 Agent Context | 16 blocos de contexto, assembler 4 camadas, budget 4000 tokens | 2026-04-04 |
+| SYS-3 Handoff Workflows | 3 templates (onboarding_zenya, content_production, brain_learning) | 2026-04-04 |
+| SYS-5 Observer | auto_implement_gap (4 tipos), /observer/gaps, /observer/summary, 33 E2E tests | 2026-04-04 |
+| BLOCK-08 Connection Pool | Thread-local Supabase proxy, fix 502s paralelas | 2026-04-04 |
 
 ### Sprint OPS + Core + Brain (2026-04-02)
 

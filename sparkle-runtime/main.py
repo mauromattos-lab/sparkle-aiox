@@ -50,6 +50,7 @@ from runtime.members.router import router as members_router
 from runtime.system_router import router as system_router
 from runtime.brain.ingest_url import router as brain_ingest_url_router
 from runtime.brain.ingest_file import router as brain_ingest_file_router
+from runtime.brain.dna_router import router as brain_dna_router
 from runtime.brain.pipeline_router import router as brain_pipeline_router
 from runtime.context.router import router as context_router
 from runtime.workflow.router import router as workflow_router
@@ -66,6 +67,7 @@ app.include_router(members_router, prefix="/member", tags=["members"])
 app.include_router(system_router)
 app.include_router(brain_ingest_url_router, prefix="/brain", tags=["brain"])
 app.include_router(brain_ingest_file_router, prefix="/brain", tags=["brain"])
+app.include_router(brain_dna_router, prefix="/brain", tags=["brain"])
 app.include_router(brain_pipeline_router, prefix="/brain", tags=["brain"])
 app.include_router(context_router, prefix="/context", tags=["context"])
 app.include_router(workflow_router, prefix="/workflow", tags=["workflow"])
