@@ -91,6 +91,7 @@ MOOD_DECAY_MAP: dict[str, str] = {
     "excited": "happy",
     "happy": "content",
     "content": "neutral",
+    "curious": "content",      # Juno's default — decays gently
     "concerned": "neutral",
     "melancholic": "neutral",
     "mysterious": "neutral",
@@ -98,7 +99,7 @@ MOOD_DECAY_MAP: dict[str, str] = {
 }
 
 # Moods that count as "positive" for context decisions
-POSITIVE_MOODS = {"happy", "excited", "content", "grateful", "celebratory"}
+POSITIVE_MOODS = {"happy", "excited", "content", "curious", "grateful", "celebratory"}
 NEGATIVE_MOODS = {"concerned", "melancholic", "angry", "frustrated"}
 
 # Energy baseline: time_passage pushes energy toward this value

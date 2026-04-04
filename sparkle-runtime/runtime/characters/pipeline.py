@@ -97,6 +97,23 @@ TONE_DIRECTIVES: dict[str, dict[str, str]] = {
 # Fallback for unknown moods
 _DEFAULT_TONE = "Responda de forma natural e autêntica."
 
+# ── Per-character tone directive overrides ──────────────────────────────
+# Characters with custom tone directives register here.
+# Key: character_slug -> dict[mood -> dict[energy_band -> directive]]
+_CHARACTER_TONE_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {}
+
+
+def _load_character_tone_overrides() -> None:
+    """Lazily load character-specific tone directives."""
+    if _CHARACTER_TONE_OVERRIDES:
+        return  # already loaded
+
+    try:
+        from runtime.characters.juno_tones import JUNO_TONE_DIRECTIVES
+        _CHARACTER_TONE_OVERRIDES["juno"] = JUNO_TONE_DIRECTIVES
+    except ImportError:
+        pass  # Juno tones not available — use generic
+
 
 # ── Public API ───────────────────────────────────────────────────────────
 
@@ -165,7 +182,7 @@ async def character_response_pipeline(
     )
 
     # ── Phase 3: Select Voice/Tone ────────────────────────────────────────
-    tone_directive = phase_3_select_tone(effective_mood, energy_band)
+    tone_directive = phase_3_select_tone(effective_mood, energy_band, character_slug)
 
     # ── Phase 4: Generate Response ────────────────────────────────────────
     # Load lore + history in parallel
@@ -284,11 +301,35 @@ async def phase_2_apply_context(
         }
 
 
-def phase_3_select_tone(mood: str, energy_band: str) -> str:
-    """Phase 3: Select tone directive based on mood and energy band."""
+def phase_3_select_tone(
+    mood: str,
+    energy_band: str,
+    character_slug: str | None = None,
+) -> str:
+    """Phase 3: Select tone directive based on mood and energy band.
+
+    If *character_slug* is provided and the character has custom tone
+    directives, those are used.  Otherwise falls back to the generic
+    TONE_DIRECTIVES table.
+    """
+    _load_character_tone_overrides()
+
+    # Try character-specific tones first
+    if character_slug and character_slug in _CHARACTER_TONE_OVERRIDES:
+        char_tones = _CHARACTER_TONE_OVERRIDES[character_slug]
+        mood_tones = char_tones.get(mood, char_tones.get("neutral", {}))
+        directive = mood_tones.get(energy_band)
+        if directive:
+            logger.info(
+                "Phase 3: mood=%s energy_band=%s slug=%s -> character tone selected",
+                mood, energy_band, character_slug,
+            )
+            return directive
+
+    # Generic fallback
     mood_tones = TONE_DIRECTIVES.get(mood, TONE_DIRECTIVES.get("neutral", {}))
     directive = mood_tones.get(energy_band, _DEFAULT_TONE)
-    logger.info("Phase 3: mood=%s energy_band=%s -> tone selected", mood, energy_band)
+    logger.info("Phase 3: mood=%s energy_band=%s -> generic tone selected", mood, energy_band)
     return directive
 
 
