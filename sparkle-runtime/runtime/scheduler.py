@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (10 total):
+Jobs (11 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
@@ -13,6 +13,7 @@ Jobs (10 total):
 - upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
 - brain_weekly_digest     : todo domingo às 23h de Brasília (SYS-1.6)
 - content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
+- friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -361,6 +362,10 @@ def start_scheduler() -> None:
     # ── B2-02: Character Orchestrator periodic jobs ──────────
     from runtime.characters.scheduler import register_character_jobs
     register_character_jobs(_scheduler)
+
+    # ── B3-02: Friday Proactive Outreach jobs ─────────────────
+    from runtime.friday.proactive_scheduler import register_proactive_jobs
+    register_proactive_jobs(_scheduler)
 
     _scheduler.start()
     jobs = _scheduler.get_jobs()
