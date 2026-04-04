@@ -186,11 +186,23 @@ async def execute_task(task: dict) -> None:
             update_data["handoff_acknowledged"] = None  # NULL = aguardando ack do próximo
         await _update_task(task_id, update_data)
 
-        # ── Handoff Engine ─────────────────────────────────────────────────────
-        # Se o result indicar handoff_to, cria a próxima task automaticamente.
-        # Correntes (A→B→C) são intencionais e não formam loop pois cada
-        # handler tem responsabilidade distinta.
-        if isinstance(result, dict) and result.get("handoff_to"):
+        # ── B2-05 Hierarchical Handoff Engine ─────────────────────────────────
+        # Supports two patterns:
+        #   1. Legacy flat: result has "handoff_to" -> creates next task (backwards compatible)
+        #   2. New 3-level: result has "handoff" dict with target/intent/level
+        if isinstance(result, dict) and result.get("handoff"):
+            # New 3-level handoff system
+            from runtime.workflow.handoff import process_handoff_directive
+            handoff_directive = result["handoff"]
+            handoff_result = await process_handoff_directive(
+                directive=handoff_directive,
+                source_task=task,
+            )
+            print(f"[worker] B2-05 handoff processed: level={handoff_directive.get('level')} "
+                  f"target={handoff_directive.get('target')} "
+                  f"status={handoff_result.get('handoff_status')}")
+        elif isinstance(result, dict) and result.get("handoff_to"):
+            # Legacy flat handoff — backwards compatible
             effective_client_id = task.get("client_id") or settings.sparkle_internal_client_id
             await _create_handoff_task(
                 task_type=result["handoff_to"],

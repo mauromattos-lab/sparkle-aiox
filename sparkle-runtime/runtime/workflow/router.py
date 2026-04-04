@@ -10,6 +10,8 @@ Endpoints:
   POST /workflow/instances/:id/cancel     — cancela workflow
   GET  /workflow/templates                — lista templates ativos
   GET  /workflow/templates/:slug          — detalhe de um template
+  GET  /workflow/handoffs                 — query handoff log (B2-05)
+  GET  /workflow/handoffs/summary         — handoff stats per agent/level (B2-05)
 """
 from __future__ import annotations
 
@@ -389,4 +391,79 @@ async def get_template(slug: str):
     return {
         **template,
         "total_steps": len(steps),
+    }
+
+
+# ── B2-05: Handoff Observability Endpoints ─────────────────────────────
+
+@router.get("/handoffs")
+async def list_handoffs(
+    level: Optional[str] = None,
+    agent: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+):
+    """
+    Query handoff log with optional filters.
+    Filters: level (local/layer/global), agent (source or target), status.
+    """
+    query = supabase.table("handoff_log").select("*")
+
+    if level:
+        query = query.eq("handoff_level", level)
+    if agent:
+        # Match either source or target — use OR via postgrest
+        query = query.or_(f"source_agent.eq.{agent},target_agent.eq.{agent}")
+    if status:
+        query = query.eq("status", status)
+
+    query = query.order("created_at", desc=True).limit(limit)
+
+    result = await asyncio.to_thread(lambda: query.execute())
+    rows = result.data or []
+    return {"handoffs": rows, "count": len(rows)}
+
+
+@router.get("/handoffs/summary")
+async def handoff_summary():
+    """
+    Handoff stats: counts per level, per status, and per agent (top sources/targets).
+    """
+    # Fetch recent handoffs (last 500 for summary)
+    result = await asyncio.to_thread(
+        lambda: supabase.table("handoff_log")
+        .select("source_agent,target_agent,handoff_level,status")
+        .order("created_at", desc=True)
+        .limit(500)
+        .execute()
+    )
+    rows = result.data or []
+
+    # Aggregate
+    by_level: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    by_target: dict[str, int] = {}
+
+    for row in rows:
+        lvl = row.get("handoff_level", "unknown")
+        st = row.get("status", "unknown")
+        src = row.get("source_agent", "unknown")
+        tgt = row.get("target_agent", "unknown")
+
+        by_level[lvl] = by_level.get(lvl, 0) + 1
+        by_status[st] = by_status.get(st, 0) + 1
+        by_source[src] = by_source.get(src, 0) + 1
+        by_target[tgt] = by_target.get(tgt, 0) + 1
+
+    # Sort agents by count descending
+    top_sources = sorted(by_source.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_targets = sorted(by_target.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "total": len(rows),
+        "by_level": by_level,
+        "by_status": by_status,
+        "top_sources": [{"agent": a, "count": c} for a, c in top_sources],
+        "top_targets": [{"agent": a, "count": c} for a, c in top_targets],
     }
