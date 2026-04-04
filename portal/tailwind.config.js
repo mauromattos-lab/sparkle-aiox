@@ -45,6 +45,10 @@ module.exports = {
           '0%, 100%': { borderColor: 'rgba(124, 58, 237, 0.2)' },
           '50%': { borderColor: 'rgba(124, 58, 237, 0.5)' },
         },
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(200%)' },
+        },
       },
       animation: {
         'slide-in': 'slideIn 0.3s ease-out',
@@ -52,6 +56,7 @@ module.exports = {
         'gradient-shift': 'gradient_shift 6s ease infinite',
         'heartbeat': 'heartbeat 1.4s ease-in-out infinite',
         'border-glow': 'border_glow 3s ease-in-out infinite',
+        'shimmer': 'shimmer 2.5s ease-in-out infinite',
       },
     },
   },

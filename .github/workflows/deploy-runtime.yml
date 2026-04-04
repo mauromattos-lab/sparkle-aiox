@@ -1,6 +1,7 @@
 # Deploy Sparkle Runtime to VPS
 # Triggers on push to main when sparkle-runtime/ files change.
-# Uses SSH to pull, restart, verify health, and rollback on failure.
+# 1. Runs regression + unit tests (CI gate — blocks deploy on failure).
+# 2. Uses SSH to pull, restart, verify health, and rollback on failure.
 #
 # Required GitHub Secrets:
 #   VPS_SSH_KEY       - Private SSH key for root@VPS (content of ~/.ssh/sparkle_vps)
@@ -20,8 +21,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Run regression & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        working-directory: sparkle-runtime
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: sparkle-runtime/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install httpx  # needed for smoke/integration tests if not in requirements
+
+      - name: Run tests (regression + unit)
+        env:
+          SUPABASE_URL: https://fake.supabase.co
+          SUPABASE_KEY: fake-key
+          ANTHROPIC_API_KEY: fake-anthropic-key
+          GROQ_API_KEY: fake-groq-key
+          REDIS_URL: redis://localhost:6379
+          MAURO_WHATSAPP: "5512999999999"
+          OPENAI_API_KEY: fake-openai-key
+        run: |
+          python -m pytest tests/regression/ tests/unit/ -v --tb=short
+
   deploy:
     name: Deploy sparkle-runtime to VPS
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

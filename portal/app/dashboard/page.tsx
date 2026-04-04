@@ -7,6 +7,7 @@ import { useClientIdentity, planLabel } from '@/hooks/useClientIdentity'
 import DashboardZenya from '@/components/DashboardZenya'
 import DashboardTrafego from '@/components/DashboardTrafego'
 import ValueNarrative from '@/components/ValueNarrative'
+import GamificationPanel from '@/components/GamificationPanel'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -158,6 +159,11 @@ export default function DashboardPage() {
         {/* Value Narrative — accumulated value storytelling */}
         <div className="mb-8">
           <ValueNarrative />
+        </div>
+
+        {/* Gamification — Brain XP, Zenya Level, Achievements, Timeline */}
+        <div className="mb-8">
+          <GamificationPanel />
         </div>
 
         {/* No services warning */}
