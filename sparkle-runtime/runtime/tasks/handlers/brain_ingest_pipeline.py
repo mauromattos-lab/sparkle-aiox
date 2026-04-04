@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
+from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.brain.ingest_url import (
@@ -272,6 +273,11 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
                     duplicates_confirmed += 1
                     continue
 
+            # B1-03: resolve brain_owner for this pipeline ingest
+            brain_owner = get_brain_owner_for_ingest(
+                "brain_pipeline", client_id,
+            )
+
             # Insere em brain_chunks
             row: dict = {
                 "raw_content": chunk_text,
@@ -283,6 +289,7 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
                     else title
                 ),
                 "pipeline_type": payload.get("persona", "mauro"),
+                "brain_owner": brain_owner,
                 "chunk_metadata": {
                     "source_ref": payload.get("source_ref"),
                     "source_agent": "brain_pipeline",

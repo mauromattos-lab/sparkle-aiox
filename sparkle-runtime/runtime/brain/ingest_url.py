@@ -20,6 +20,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.db import supabase
 
 router = APIRouter()
@@ -233,11 +234,16 @@ async def ingest_url(req: IngestUrlRequest):
             chunk_title = (
                 f"{title} (chunk {i+1}/{len(chunks)})" if len(chunks) > 1 else title
             )
+            # B1-03: set brain_owner based on source_agent + client_id
+            brain_owner = get_brain_owner_for_ingest(
+                req.source_agent or "mauro", client_id,
+            )
             row: dict = {
                 "raw_content": chunk,
                 "source_type": source_type,
                 "source_title": chunk_title,
                 "pipeline_type": "mauro",
+                "brain_owner": brain_owner,
                 "chunk_metadata": {
                     "source_url": req.url,
                     "source_agent": req.source_agent,

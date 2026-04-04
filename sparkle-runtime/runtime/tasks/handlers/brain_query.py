@@ -18,6 +18,7 @@ import os
 
 import httpx
 
+from runtime.brain.isolation import get_brain_owner_filter
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -46,7 +47,13 @@ async def handle_brain_query(task: dict) -> dict:
         return {"message": "Brain: nenhuma query recebida. Como posso ajudar?"}
 
     task_id = task.get("id")
-    chunks = await _search_knowledge_base(query)
+
+    # B1-03: Brain isolation — resolve brain_owner filter for this agent
+    agent_slug = task.get("agent_id") or payload.get("agent_slug", "friday")
+    client_id = task.get("client_id") or payload.get("client_id")
+    brain_owner = get_brain_owner_filter(agent_slug, client_id)
+
+    chunks = await _search_knowledge_base(query, brain_owner=brain_owner)
 
     if not chunks:
         return {
@@ -80,37 +87,67 @@ async def handle_brain_query(task: dict) -> dict:
 
 # ── Busca ──────────────────────────────────────────────────────────────────────
 
-async def _search_knowledge_base(query: str) -> list[dict]:
+async def _search_knowledge_base(
+    query: str,
+    brain_owner: str | None = None,
+) -> list[dict]:
     """
     Tenta busca vetorial (match_brain_chunks RPC) primeiro.
     Faz fallback para full-text search se RPC falhar ou não retornar resultados.
+
+    Args:
+        brain_owner: If set, only return chunks with this brain_owner.
+                     None means no filter (unrestricted access).
     """
     # Tenta vector search via pgvector RPC
     try:
         embedding = await _get_embedding(query)
         if embedding:
+            rpc_params: dict = {
+                "query_embedding": embedding,
+                "pipeline_type_in": "mauro",
+                "client_id_in": None,
+                "match_count": 6,
+            }
+            # B1-03: pass brain_owner to RPC if the function supports it
+            if brain_owner is not None:
+                rpc_params["brain_owner_in"] = brain_owner
+
             rpc_result = await asyncio.to_thread(
                 lambda: supabase.rpc(
                     "match_brain_chunks",
-                    {
-                        "query_embedding": embedding,
-                        "pipeline_type_in": "mauro",
-                        "client_id_in": None,
-                        "match_count": 6,
-                    },
+                    rpc_params,
                 ).execute()
             )  # type: ignore
-            if rpc_result.data:
-                return rpc_result.data
+
+            results = rpc_result.data or []
+
+            # B1-03: client-side filter as safety net (in case RPC ignores the param)
+            if brain_owner is not None and results:
+                results = [
+                    r for r in results
+                    if r.get("brain_owner") == brain_owner
+                    or r.get("brain_owner") is None  # legacy rows without brain_owner
+                ]
+
+            if results:
+                return results
     except Exception as e:
         print(f"[brain_query] vector search failed (using text fallback): {e}")
 
     # Fallback: full-text search por palavras-chave
-    return await _text_search(query)
+    return await _text_search(query, brain_owner=brain_owner)
 
 
-async def _text_search(query: str) -> list[dict]:
-    """Full-text search simples na tabela knowledge_base."""
+async def _text_search(
+    query: str,
+    brain_owner: str | None = None,
+) -> list[dict]:
+    """Full-text search simples na tabela knowledge_base.
+
+    Args:
+        brain_owner: If set, only return rows with this brain_owner.
+    """
     # Usa as primeiras 3 palavras significativas para busca
     words = [w for w in query.split() if len(w) > 3][:3]
     if not words:
@@ -118,11 +155,19 @@ async def _text_search(query: str) -> list[dict]:
 
     search_term = " | ".join(words)  # OR entre termos
 
+    def _apply_owner_filter(q):
+        """B1-03: apply brain_owner filter if set."""
+        if brain_owner is not None:
+            return q.eq("brain_owner", brain_owner)
+        return q
+
     try:
         result = await asyncio.to_thread(
-            lambda: supabase.table("knowledge_base")
-            .select("id,type,content,source,client_id")
-            .text_search("content", search_term)
+            lambda: _apply_owner_filter(
+                supabase.table("knowledge_base")
+                .select("id,type,content,source,client_id")
+                .text_search("content", search_term)
+            )
             .limit(6)
             .execute()
         )
@@ -132,9 +177,11 @@ async def _text_search(query: str) -> list[dict]:
         try:
             first_word = words[0] if words else query[:20]
             result = await asyncio.to_thread(
-                lambda: supabase.table("knowledge_base")
-                .select("id,type,content,source,client_id")
-                .ilike("content", f"%{first_word}%")
+                lambda: _apply_owner_filter(
+                    supabase.table("knowledge_base")
+                    .select("id,type,content,source,client_id")
+                    .ilike("content", f"%{first_word}%")
+                )
                 .limit(6)
                 .execute()
             )

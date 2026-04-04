@@ -46,6 +46,7 @@ async def retrieve_knowledge(
     max_insights: int = 6,
     max_chunks: int = 4,
     include_synthesis: bool = True,
+    brain_owner: str | None = None,
 ) -> dict:
     """
     Busca conhecimento estruturado do Brain em 3 niveis.
@@ -144,18 +145,32 @@ async def retrieve_knowledge(
     # ── Nivel 3: Chunks crus (complemento) ──
     if embedding:
         try:
+            rpc_params: dict = {
+                "query_embedding": embedding,
+                "pipeline_type_in": "especialista",
+                "client_id_in": None,
+                "match_count": max_chunks,
+            }
+            # B1-03: pass brain_owner to RPC if set
+            if brain_owner is not None:
+                rpc_params["brain_owner_in"] = brain_owner
+
             chunks_result = await asyncio.to_thread(
                 lambda: supabase.rpc(
                     "match_brain_chunks",
-                    {
-                        "query_embedding": embedding,
-                        "pipeline_type_in": "especialista",
-                        "client_id_in": None,
-                        "match_count": max_chunks,
-                    },
+                    rpc_params,
                 ).execute()
             )
             chunks = chunks_result.data or []
+
+            # B1-03: client-side filter as safety net
+            if brain_owner is not None and chunks:
+                chunks = [
+                    c for c in chunks
+                    if c.get("brain_owner") == brain_owner
+                    or c.get("brain_owner") is None
+                ]
+
             result["chunks"] = chunks
 
             # So inclui chunks se nao achou sintese nem insights

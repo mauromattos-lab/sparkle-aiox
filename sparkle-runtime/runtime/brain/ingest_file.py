@@ -20,6 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from runtime.brain.ingest_url import _chunk_text, _get_embedding
+from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.db import supabase
 
 router = APIRouter()
@@ -164,11 +165,16 @@ async def ingest_file(
                 if len(chunks) > 1
                 else file_title
             )
+            # B1-03: set brain_owner based on source_agent + client_id
+            brain_owner = get_brain_owner_for_ingest(
+                source_agent or "mauro", client_id,
+            )
             row: dict = {
                 "raw_content": chunk,
                 "source_type": "file_upload",
                 "source_title": chunk_title,
                 "pipeline_type": persona or "mauro",
+                "brain_owner": brain_owner,
                 "chunk_metadata": {
                     "filename": file.filename,
                     "file_extension": ext,

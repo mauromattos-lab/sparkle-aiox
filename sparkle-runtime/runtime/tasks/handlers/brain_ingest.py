@@ -25,6 +25,7 @@ import re
 
 import httpx
 
+from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.config import settings
 from runtime.db import supabase
 
@@ -146,6 +147,9 @@ async def handle_brain_ingest(task: dict) -> dict:
     if payload.get("source_title"):
         metadata["source_title"] = payload["source_title"]
 
+    # B1-03: resolve brain_owner for this ingest based on agent + client
+    brain_owner = get_brain_owner_for_ingest(source_agent, client_id)
+
     # Insere em brain_chunks (schema produção: raw_content, chunk_metadata, sem entity_tags)
     try:
         row: dict = {
@@ -154,6 +158,7 @@ async def handle_brain_ingest(task: dict) -> dict:
             "source_type": ingest_type,
             "source_title": metadata.get("source_title") or f"friday_{source_agent}",
             "pipeline_type": "mauro",  # allowed: especialista|cliente|mauro
+            "brain_owner": brain_owner,
             "chunk_metadata": {
                 **metadata,
                 "entity_tags": entity_tags,
