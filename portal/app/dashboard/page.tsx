@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Client } from '@/lib/supabase'
+import { useClientIdentity, planLabel } from '@/hooks/useClientIdentity'
 import DashboardZenya from '@/components/DashboardZenya'
 import DashboardTrafego from '@/components/DashboardTrafego'
 
@@ -10,6 +11,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [client, setClient] = useState<Client | null>(null)
   const [mounted, setMounted] = useState(false)
+  const clientIdentity = useClientIdentity()
 
   useEffect(() => {
     setMounted(true)
@@ -65,14 +67,32 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="relative z-10 border-b border-white/6 bg-background/80 backdrop-blur-md sticky top-0">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
+          {/* Logo + Business Identity */}
+          <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent-light flex items-center justify-center glow-accent">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <span className="text-sm font-semibold text-white tracking-tight">Sparkle AI</span>
+            {clientIdentity.plan && (
+              <span className="hidden sm:inline text-[10px] font-mono px-2 py-0.5 rounded-full border bg-accent/15 text-accent-light border-accent/25">
+                {planLabel(clientIdentity.plan)}
+              </span>
+            )}
+            {clientIdentity.identity?.zenya && (
+              <div className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0ea5e9]/10 border border-[#0ea5e9]/15">
+                <span className="w-3 h-3 rounded-full bg-[#0ea5e9]/30 flex items-center justify-center">
+                  <svg width="6" height="6" viewBox="0 0 24 24" fill="none"
+                    stroke="#0ea5e9" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                  </svg>
+                </span>
+                <span className="text-[10px] font-mono text-[#0ea5e9]/70">
+                  {clientIdentity.identity.zenya.name}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* User + logout */}
@@ -80,9 +100,9 @@ export default function DashboardPage() {
             <div className="flex flex-col items-end">
               <span className="text-sm font-medium text-white leading-none">
                 <span className="sm:hidden">{client.name.split(' ')[0]}</span>
-                <span className="hidden sm:inline">{client.name}</span>
+                <span className="hidden sm:inline">{client.company}</span>
               </span>
-              <span className="text-xs text-slate-500 mt-0.5 hidden sm:block">{client.company}</span>
+              <span className="text-xs text-slate-500 mt-0.5 hidden sm:block">{client.name}</span>
             </div>
             <button
               onClick={handleLogout}
@@ -106,11 +126,32 @@ export default function DashboardPage() {
         {/* Welcome */}
         <div className="mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">
-            Olá, <span className="text-gradient-accent">{client.name.split(' ')[0]}</span>
+            {clientIdentity.greeting || `Olá, ${client.name.split(' ')[0]}`}
           </h1>
           <p className="text-slate-400 text-sm">
-            Bem-vindo ao seu painel {client.company} &mdash; tudo num só lugar.
+            Seu painel <span className="text-white/70">{client.company}</span> &mdash; tudo num so lugar.
           </p>
+          {/* Quick stats from identity */}
+          {clientIdentity.identity?.stats && (clientIdentity.identity.stats.conversationsToday > 0 || clientIdentity.identity.stats.brainChunks > 0) && (
+            <div className="flex flex-wrap gap-3 mt-3">
+              {clientIdentity.identity.stats.conversationsToday > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#0ea5e9]" />
+                  <span>
+                    Zenya resolveu <span className="text-[#0ea5e9] font-medium">{clientIdentity.identity.stats.resolvedToday}</span> de {clientIdentity.identity.stats.conversationsToday} conversas hoje
+                  </span>
+                </div>
+              )}
+              {clientIdentity.identity.stats.brainChunks > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#3b82f6]" />
+                  <span>
+                    Brain tem <span className="text-[#3b82f6] font-medium">{clientIdentity.identity.stats.brainChunks}</span> chunks
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* No services warning */}

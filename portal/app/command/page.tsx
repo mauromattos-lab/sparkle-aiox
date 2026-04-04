@@ -2,8 +2,11 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useCommandPanel, AgentPulse, FeedEvent, SystemStats } from '@/hooks/useCommandPanel'
+import { useClientIdentity } from '@/hooks/useClientIdentity'
 import BrainActivity from '@/components/BrainActivity'
 import ContentManager from '@/components/ContentManager'
+import ClientHeader from '@/components/ClientHeader'
+import WelcomeSection from '@/components/WelcomeSection'
 
 // ── Agent display config ──────────────────────────────────────
 
@@ -320,6 +323,7 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
 
 export default function CommandPage() {
   const { pulse, feed, isConnected, isLoading, error, sendCommand, stats, toasts, dismissToast } = useCommandPanel()
+  const clientIdentity = useClientIdentity()
   const feedContainerRef = useRef<HTMLDivElement>(null)
   const [rightPanel, setRightPanel] = useState<'brain' | 'content'>('brain')
 
@@ -333,51 +337,38 @@ export default function CommandPage() {
       {/* ── Toast Notifications ───────────────────────────── */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* ── Header ──────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-base font-bold text-white tracking-tight font-mono">
-            SPARKLE // COMMAND
-          </h1>
-          <span className="text-[10px] text-white/20 font-mono uppercase tracking-widest">
-            v{pulse?.timestamp ? 'live' : '...'}
-          </span>
-        </div>
+      {/* ── Client Header ─────────────────────────────────── */}
+      <ClientHeader
+        identity={clientIdentity}
+        rightContent={
+          <div className="flex items-center gap-3">
+            {/* System Activity link */}
+            <a
+              href="/system"
+              className="text-[10px] font-mono text-white/25 hover:text-white/50 transition-colors uppercase tracking-widest"
+              title="System Activity Monitor"
+            >
+              System
+            </a>
 
-        <div className="flex items-center gap-3">
-          {/* System Activity link */}
-          <a
-            href="/system"
-            className="text-[10px] font-mono text-white/25 hover:text-white/50 transition-colors uppercase tracking-widest"
-            title="System Activity Monitor"
-          >
-            System
-          </a>
-
-          {/* Brain stats mini */}
-          {pulse && (
-            <div className="hidden md:flex items-center gap-1.5 text-[10px] text-white/25 font-mono">
-              <IconBrain />
-              <span>{pulse.brain.chunks_total} chunks</span>
-              <span className="text-white/10">|</span>
-              <span className="text-[#00ff87]/50">+{pulse.brain.chunks_today} hoje</span>
+            {/* Realtime indicator */}
+            <div className="flex items-center gap-1.5">
+              <span
+                className={[
+                  'h-1.5 w-1.5 rounded-full transition-colors duration-500',
+                  isConnected ? 'bg-[#00ff87] animate-pulse' : 'bg-zinc-600',
+                ].join(' ')}
+              />
+              <span className="text-[10px] text-white/30 font-mono">
+                {isConnected ? 'LIVE' : 'POLL'}
+              </span>
             </div>
-          )}
-
-          {/* Realtime indicator */}
-          <div className="flex items-center gap-1.5">
-            <span
-              className={[
-                'h-1.5 w-1.5 rounded-full transition-colors duration-500',
-                isConnected ? 'bg-[#00ff87] animate-pulse' : 'bg-zinc-600',
-              ].join(' ')}
-            />
-            <span className="text-[10px] text-white/30 font-mono">
-              {isConnected ? 'LIVE' : 'POLL'}
-            </span>
           </div>
-        </div>
-      </div>
+        }
+      />
+
+      {/* ── Welcome Section ────────────────────────────────── */}
+      <WelcomeSection identity={clientIdentity} />
 
       {/* ── Stats Bar ──────────────────────────────────────── */}
       <StatsBar stats={stats} pulse={pulse} />
