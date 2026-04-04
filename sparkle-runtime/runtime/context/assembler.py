@@ -1,11 +1,11 @@
 """
-Context Assembler — SYS-2.2: monta contexto completo para agentes.
+Context Assembler — SYS-2.5: monta contexto dinamico completo para agentes.
 
 Combina 4 camadas (do mais estavel ao mais volatil):
   1. SISTEMA — blocos estaticos (identidade, regras, agentes, tools)
   2. PROCESSOS — processos operacionais + bootstrap do agente
-  3. ESTADO — dados ao vivo (clientes, sprint items, datetime)
-  4. CONHECIMENTO — DNA do agente + narrativas do Brain
+  3. ESTADO — dados ao vivo (clientes, sprint items, recent tasks, capabilities, datetime)
+  4. CONHECIMENTO — DNA do agente + narrativas do Brain + Brain search relevante ao request
 
 Busca blocos da tabela agent_context_blocks (globais + especificos do agente).
 Trunca camada 4 primeiro se ultrapassar MAX_CONTEXT_TOKENS.
@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 from runtime.config import settings
 from runtime.db import supabase
 
-MAX_CONTEXT_TOKENS = 12000
+MAX_CONTEXT_TOKENS = 4000
 # Estimativa grosseira: 1 token ~ 4 chars
 _CHARS_PER_TOKEN = 4
 
@@ -52,7 +52,7 @@ async def _get_blocks(layer: str, agent_id: str) -> list[dict]:
 
 # ── Camada 3: Estado dinamico ─────────────────────────────────
 
-async def _build_state_context() -> dict:
+async def _build_state_context(agent_id: str) -> dict:
     """Monta contexto de estado atual do sistema — queries ao vivo."""
     parts = []
 
@@ -63,7 +63,7 @@ async def _build_state_context() -> dict:
     except Exception:
         parts.append("Data/hora: indisponivel")
 
-    # Clientes ativos
+    # Clientes ativos (compacto)
     try:
         clients = await asyncio.to_thread(
             lambda: supabase.table("clients")
@@ -73,47 +73,67 @@ async def _build_state_context() -> dict:
         )
         clients_list = clients.data or []
         if clients_list:
-            clients_text = "\n".join(
-                f"- {c['name']} ({c.get('type', '?')}): R${c.get('mrr', 0)}/mes — {c['status']}"
-                for c in clients_list
+            total_mrr = sum(c.get("mrr", 0) or 0 for c in clients_list)
+            names = [c["name"] for c in clients_list]
+            parts.append(
+                f"Clientes ativos ({len(clients_list)}): {', '.join(names)}. "
+                f"MRR total: R${total_mrr}/mes"
             )
-            parts.append(f"Clientes ativos:\n{clients_text}")
-        else:
-            parts.append("Clientes ativos: nenhum no banco")
     except Exception as e:
         print(f"[context] falha ao buscar clientes: {e}")
-        parts.append("Clientes ativos: consulta falhou")
 
-    # Sprint items ativos
+    # Sprint items ativos (compacto — top 8)
     try:
         items = await asyncio.to_thread(
             lambda: supabase.table("agent_work_items")
-            .select("sprint_item,status,agent_id,notes")
+            .select("sprint_item,status,agent_id")
             .neq("status", "done")
             .order("created_at", desc=True)
-            .limit(15)
+            .limit(8)
             .execute()
         )
         items_list = items.data or []
         if items_list:
-            items_text = "\n".join(
-                f"- {i['sprint_item']}: {i['status']} ({i.get('agent_id', '?')})"
+            items_text = "; ".join(
+                f"{i['sprint_item']}={i['status']}"
                 for i in items_list
             )
-            parts.append(f"Items de sprint em andamento:\n{items_text}")
-        else:
-            parts.append("Items de sprint: nenhum item ativo")
+            parts.append(f"Sprint ativo: {items_text}")
     except Exception as e:
         print(f"[context] falha ao buscar sprint items: {e}")
-        parts.append("Sprint items: consulta falhou")
 
-    return {"title": "Estado Atual do Sistema", "content": "\n\n".join(parts)}
+    # Recent tasks (ultimas 5 tasks executadas — o que o Runtime fez)
+    try:
+        tasks = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
+            .select("task_type,status,agent_id,created_at")
+            .order("created_at", desc=True)
+            .limit(5)
+            .execute()
+        )
+        tasks_list = tasks.data or []
+        if tasks_list:
+            tasks_text = "; ".join(
+                f"{t['task_type']}({t.get('agent_id', '?')})={t['status']}"
+                for t in tasks_list
+            )
+            parts.append(f"Tasks recentes: {tasks_text}")
+    except Exception as e:
+        print(f"[context] falha ao buscar tasks recentes: {e}")
+
+    # Runtime capabilities (hardcoded — muda raramente, mais eficiente que query)
+    parts.append(
+        "Capabilities do Runtime: brain_query, brain_ingest, activate_agent, "
+        "generate_content, echo, schedule_task, gap_report, workflow_execute"
+    )
+
+    return {"title": "Estado Atual", "content": "\n".join(parts)}
 
 
-# ── Camada 4: Conhecimento (DNA + Narrativas) ────────────────
+# ── Camada 4: Conhecimento (DNA + Brain search) ──────────────
 
 async def _build_knowledge_context(agent_id: str, request: str) -> dict:
-    """Busca DNA do agente + narrativas relevantes do Brain."""
+    """Busca DNA do agente + conhecimento do Brain relevante ao request."""
     content_parts = []
 
     # DNA do agente
@@ -123,45 +143,61 @@ async def _build_knowledge_context(agent_id: str, request: str) -> dict:
             .select("layer,content")
             .eq("agent_id", agent_id)
             .eq("active", True)
-            .limit(20)
+            .limit(10)
             .execute()
         )
         if dna.data:
             by_layer: dict[str, list[str]] = {}
             for d in dna.data:
                 by_layer.setdefault(d["layer"], []).append(d["content"])
-            dna_text = ""
+            dna_lines = []
             for layer, items in by_layer.items():
-                dna_text += f"\n### {layer.title()}\n"
-                for item in items:
-                    dna_text += f"- {item}\n"
-            content_parts.append(f"DNA do Agente:\n{dna_text}")
+                dna_lines.append(f"{layer.title()}: {'; '.join(i[:120] for i in items)}")
+            content_parts.append("DNA: " + " | ".join(dna_lines))
     except Exception as e:
         print(f"[context] falha ao buscar DNA para {agent_id}: {e}")
 
-    # Narrativas de entidades (top 3 mais recentes)
+    # Brain knowledge search — busca chunks relevantes ao request
+    if request:
+        try:
+            brain_chunks = await asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("content,source")
+                .text_search("content", request, config="portuguese")
+                .limit(3)
+                .execute()
+            )
+            chunks = brain_chunks.data or []
+            if chunks:
+                brain_text = "\n".join(
+                    f"- [{c.get('source', '?')}] {c['content'][:300]}"
+                    for c in chunks
+                )
+                content_parts.append(f"Brain (relevante):\n{brain_text}")
+        except Exception as e:
+            print(f"[context] falha ao buscar Brain chunks: {e}")
+
+    # Narrativas de entidades (top 2 — compacto)
     try:
         narratives = await asyncio.to_thread(
             lambda: supabase.table("brain_entities")
             .select("canonical_name,narrative")
             .not_.is_("narrative", "null")
             .order("updated_at", desc=True)
-            .limit(3)
+            .limit(2)
             .execute()
         )
         narrative_texts = [
-            f"**{n['canonical_name']}:** {n['narrative'][:500]}"
+            f"{n['canonical_name']}: {n['narrative'][:200]}"
             for n in (narratives.data or [])
             if n.get("narrative")
         ]
         if narrative_texts:
-            content_parts.append(
-                f"Entidades Conhecidas:\n\n" + "\n\n".join(narrative_texts)
-            )
+            content_parts.append("Entidades: " + " | ".join(narrative_texts))
     except Exception as e:
         print(f"[context] falha ao buscar narrativas: {e}")
 
-    content = "\n\n".join(content_parts) if content_parts else "Sem DNA ou narrativas carregados."
+    content = "\n\n".join(content_parts) if content_parts else ""
     return {"title": "Conhecimento (Brain)", "content": content}
 
 
@@ -206,21 +242,26 @@ async def assemble_context(agent_id: str, request: str = "") -> str:
     try:
         blocks: list[dict] = []
 
-        # CAMADA 1: SISTEMA — blocos estaticos do banco
-        system_blocks = await _get_blocks(layer="system", agent_id=agent_id)
+        # Fetch all layers in parallel for speed
+        (system_blocks, process_blocks, state, knowledge) = await asyncio.gather(
+            _get_blocks(layer="system", agent_id=agent_id),
+            _get_blocks(layer="process", agent_id=agent_id),
+            _build_state_context(agent_id),
+            _build_knowledge_context(agent_id, request),
+        )
+
+        # CAMADA 1: SISTEMA
         blocks.extend(system_blocks)
 
-        # CAMADA 2: PROCESSOS — blocos filtrados por agente
-        process_blocks = await _get_blocks(layer="process", agent_id=agent_id)
+        # CAMADA 2: PROCESSOS
         blocks.extend(process_blocks)
 
-        # CAMADA 3: ESTADO — montado dinamicamente
-        state = await _build_state_context()
+        # CAMADA 3: ESTADO
         blocks.append(state)
 
-        # CAMADA 4: CONHECIMENTO — DNA + narrativas
-        knowledge = await _build_knowledge_context(agent_id, request)
-        blocks.append(knowledge)
+        # CAMADA 4: CONHECIMENTO
+        if knowledge.get("content"):
+            blocks.append(knowledge)
 
         if not blocks:
             return ""

@@ -339,6 +339,34 @@ async def list_templates(active_only: bool = True):
     return {"templates": result.data or [], "count": len(result.data or [])}
 
 
+# ── GET /workflow/templates/definitions ────────────────────────────
+# NOTE: must be registered BEFORE /templates/{slug} to avoid path capture
+
+@router.get("/templates/definitions/all")
+async def list_template_definitions():
+    """
+    Returns in-code template definitions (no DB roundtrip).
+    Useful for documentation, validation, and seeing what seed_workflow_templates will create.
+    """
+    from runtime.workflows.templates import get_template_definitions
+    definitions = get_template_definitions()
+    return {"definitions": definitions, "count": len(definitions)}
+
+
+# ── POST /workflow/templates/seed ──────────────────────────────────
+
+@router.post("/templates/seed")
+async def seed_templates():
+    """
+    Upsert workflow templates from code into Supabase.
+    Uses slug as unique key — updates existing (if version is higher), inserts new.
+    Safe to call multiple times (idempotent).
+    """
+    from runtime.workflows.templates import seed_workflow_templates
+    result = await seed_workflow_templates()
+    return result
+
+
 # ── GET /workflow/templates/:slug ───────────────────────────────────
 
 @router.get("/templates/{slug}")
