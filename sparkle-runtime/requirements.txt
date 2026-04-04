@@ -31,3 +31,6 @@ apscheduler>=3.10.0
 
 # TTS fallback
 gtts>=2.5.0
+
+# PDF extraction
+PyPDF2>=3.0.0
