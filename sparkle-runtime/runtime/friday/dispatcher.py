@@ -275,56 +275,82 @@ async def classify_and_dispatch(
         if text_lower.startswith(trigger):
             # Remove o trigger do inicio pra pegar so o conteudo
             content = text[len(trigger):].lstrip(":").strip()
-            if content and len(content) > 30:
-                # Texto longo → pipeline completa com insights
-                task_type = "brain_ingest_pipeline" if len(content) > 200 else "brain_ingest"
-                payload: dict = {
-                    "original_text": text,
-                    "from_number": from_number,
-                }
-                if task_type == "brain_ingest_pipeline":
-                    payload["raw_content"] = content
-                    payload["source_type"] = "direct_input"
-                    payload["title"] = f"Friday ingest: {content[:60]}"
-                    payload["persona"] = "especialista"
-                    payload["run_dna"] = False
-                    payload["run_insights"] = True
-                    payload["run_narrative"] = False
-                    payload["run_synthesis"] = True
-                else:
-                    payload["content"] = content
-                    payload["ingest_type"] = "manual"
-                    payload["source_agent"] = "mauro"
+            if not content or len(content) < 10:
+                break
 
-                ingest_task = await asyncio.to_thread(
-                    lambda: supabase.table("runtime_tasks").insert({
-                        "agent_id": "friday",
-                        "client_id": settings.sparkle_internal_client_id,
-                        "task_type": task_type,
-                        "payload": payload,
-                        "status": "pending",
-                        "priority": 7,
-                    }).execute()
-                )
-                ingest_record = ingest_task.data[0] if ingest_task.data else {}
-                # Executa pipeline em background — Friday responde imediatamente
+            # Se o conteudo e uma URL, roteia para pipeline com source_ref
+            content_url = _detect_url(content)
+            if content_url:
+                ingest_task = await _handle_url_ingest(text, content_url, from_number)
                 from runtime.tasks.worker import execute_task
-                asyncio.create_task(execute_task(ingest_record))
-                word_count = len(content.split())
-                ack_msg = f"Recebi! Tô jogando no Brain ({word_count} palavras). Vou extrair os insights e quando terminar, esse conhecimento fica disponível pro sistema todo."
+                asyncio.create_task(execute_task(ingest_task))
+                source_label = "video do YouTube" if _is_youtube(content_url) else "link"
+                ack_msg = f"Recebi o {source_label}! Tô processando e jogando no Brain. Quando terminar, esse conhecimento já vai estar disponível pro sistema todo."
                 ack_task = await asyncio.to_thread(
                     lambda: supabase.table("runtime_tasks").insert({
                         "agent_id": "friday",
                         "client_id": settings.sparkle_internal_client_id,
                         "task_type": "chat",
-                        "payload": {"original_text": text[:200], "brain_ingest_triggered": True},
+                        "payload": {"original_text": text[:200], "url_detected": content_url},
                         "status": "done",
-                        "result": {"message": ack_msg, "ingest_task_id": ingest_record.get("id")},
+                        "result": {"message": ack_msg, "ingest_task_id": ingest_task.get("id")},
                         "priority": 7,
                     }).execute()
                 )
                 return ack_task.data[0] if ack_task.data else {"status": "done", "result": {"message": ack_msg}}
-            break
+
+            # Texto longo → pipeline completa com insights
+            if len(content) > 200:
+                task_type = "brain_ingest_pipeline"
+            else:
+                task_type = "brain_ingest"
+
+            payload: dict = {
+                "original_text": text,
+                "from_number": from_number,
+            }
+            if task_type == "brain_ingest_pipeline":
+                payload["raw_content"] = content
+                payload["source_type"] = "direct_input"
+                payload["title"] = f"Friday ingest: {content[:60]}"
+                payload["persona"] = "especialista"
+                payload["run_dna"] = False
+                payload["run_insights"] = True
+                payload["run_narrative"] = False
+                payload["run_synthesis"] = True
+            else:
+                payload["content"] = content
+                payload["ingest_type"] = "manual"
+                payload["source_agent"] = "mauro"
+
+            ingest_task = await asyncio.to_thread(
+                lambda: supabase.table("runtime_tasks").insert({
+                    "agent_id": "friday",
+                    "client_id": settings.sparkle_internal_client_id,
+                    "task_type": task_type,
+                    "payload": payload,
+                    "status": "pending",
+                    "priority": 7,
+                }).execute()
+            )
+            ingest_record = ingest_task.data[0] if ingest_task.data else {}
+            # Executa em background — Friday responde imediatamente
+            from runtime.tasks.worker import execute_task
+            asyncio.create_task(execute_task(ingest_record))
+            word_count = len(content.split())
+            ack_msg = f"Recebi! Tô jogando no Brain ({word_count} palavras). Vou extrair os insights e quando terminar, esse conhecimento fica disponível pro sistema todo."
+            ack_task = await asyncio.to_thread(
+                lambda: supabase.table("runtime_tasks").insert({
+                    "agent_id": "friday",
+                    "client_id": settings.sparkle_internal_client_id,
+                    "task_type": "chat",
+                    "payload": {"original_text": text[:200], "brain_ingest_triggered": True},
+                    "status": "done",
+                    "result": {"message": ack_msg, "ingest_task_id": ingest_record.get("id")},
+                    "priority": 7,
+                }).execute()
+            )
+            return ack_task.data[0] if ack_task.data else {"status": "done", "result": {"message": ack_msg}}
 
     # URL detection: se a mensagem contem URL, roteia para brain_ingest_pipeline
     detected_url = _detect_url(text)
