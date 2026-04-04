@@ -72,14 +72,20 @@ async def _get_embedding(text: str) -> list[float] | None:
 
 
 def _clean_json(text: str) -> str:
-    """Remove markdown code fences from LLM output."""
+    """Remove markdown code fences and fix truncated JSON from LLM output."""
     text = text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
         lines = lines[1:]  # remove ```json
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
-        text = "\n".join(lines)
+        text = "\n".join(lines).strip()
+    # Fix truncated JSON: try closing open brackets
+    if text and not text.endswith("}"):
+        text = text.rstrip(",\n ")
+        open_braces = text.count("{") - text.count("}")
+        open_brackets = text.count("[") - text.count("]")
+        text += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
     return text.strip()
 
 
@@ -145,7 +151,7 @@ async def handle_extract_insights(task: dict) -> dict:
                 task_id=task_id,
                 agent_id="brain",
                 purpose="extract_insights",
-                max_tokens=600,
+                max_tokens=1000,
             )
         except Exception as e:
             print(f"[extract_insights] Haiku falhou para chunk {chunk['id']}: {e}")
