@@ -152,9 +152,10 @@ async def handle_extract_insights(task: dict) -> dict:
             continue
 
         try:
-            parsed = json.loads(_clean_json(raw_response))
+            cleaned = _clean_json(raw_response)
+            parsed = json.loads(cleaned)
         except json.JSONDecodeError:
-            print(f"[extract_insights] JSON invalido para chunk {chunk['id']}")
+            print(f"[extract_insights] JSON invalido para chunk {chunk['id']}: {raw_response[:200]}")
             continue
 
         insights = parsed.get("insights", [])
