@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -63,5 +63,68 @@ body {
       linear-gradient(rgba(124, 58, 237, 0.04) 1px, transparent 1px),
       linear-gradient(90deg, rgba(124, 58, 237, 0.04) 1px, transparent 1px);
     background-size: 40px 40px;
+  }
+}
+
+/* ── Premium Header/Footer styles ──────────────────────────────── */
+
+.header-logo-gradient {
+  background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+  background-size: 200% 200%;
+  animation: gradient_shift 6s ease infinite;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Animated gradient border utility ──────────────────────────── */
+
+.gradient-border-top {
+  position: relative;
+}
+.gradient-border-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(124, 58, 237, 0.4) 25%,
+    rgba(0, 229, 255, 0.3) 50%,
+    rgba(124, 58, 237, 0.4) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: gradient_shift 6s ease infinite;
+}
+
+/* ── Glow hover for interactive elements ───────────────────────── */
+
+.glow-hover {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.glow-hover:hover {
+  box-shadow: 0 0 16px rgba(124, 58, 237, 0.15), 0 0 4px rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.25);
+}
+
+/* ── Smooth page transitions ───────────────────────────────────── */
+
+.page-content {
+  animation: fadeUp 0.35s ease-out;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
