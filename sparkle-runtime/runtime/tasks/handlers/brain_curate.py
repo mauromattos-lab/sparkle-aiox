@@ -2,7 +2,7 @@
 brain_curate handler — Auto-curation of brain_chunks using Haiku.
 
 Scheduled daily at 02:00 UTC. Processes pending chunks in batches of 20,
-evaluating each with claude-3-5-haiku-20241022 on a 0-1 quality scale:
+evaluating each with claude-haiku-4-5-20251001 on a 0-1 quality scale:
 
   score > 0.7   → curation_status = 'approved'
   score 0.4-0.7 → curation_status = 'review'   (human queue)
@@ -53,7 +53,7 @@ async def _evaluate_chunk(content: str) -> tuple[float, str]:
     raw_text = ""
     try:
         resp = await _client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=64,
             system=_EVAL_SYSTEM,
             messages=[
