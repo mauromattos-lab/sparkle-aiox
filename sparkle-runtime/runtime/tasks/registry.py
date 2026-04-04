@@ -39,6 +39,7 @@ from runtime.tasks.handlers.observer_gap_analysis import handle_observer_gap_ana
 from runtime.tasks.handlers.auto_implement_gap import handle_auto_implement_gap
 from runtime.tasks.handlers.extract_insights import handle_extract_insights
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
+from runtime.onboarding.handler import handle_onboarding
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -75,6 +76,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "auto_implement_gap":       handle_auto_implement_gap,
     "extract_insights":         handle_extract_insights,
     "cross_source_synthesis":   handle_cross_source_synthesis,
+    "onboarding_start":         handle_onboarding,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }
