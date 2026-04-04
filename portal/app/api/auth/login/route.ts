@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Autenticar via Supabase Auth
+    // Autenticar via Supabase Auth (anon key é suficiente para signInWithPassword)
     const supabaseAuth = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
     const { data: authData, error: authError } =
