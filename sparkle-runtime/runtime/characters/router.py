@@ -1,7 +1,7 @@
 """
-Character router — S5-01 + B1-02 (Character State) + B2-02 (Orchestrator).
+Character router — S5-01 + B1-02 (Character State) + B2-02 (Orchestrator) + B2-03 (Pipeline).
 
-POST /character/message                    — envia mensagem para um personagem (com TTS opcional)
+POST /character/message                    — envia mensagem para um personagem (6-phase pipeline)
 GET  /character/{slug}                     — retorna perfil público do personagem
 GET  /character/{slug}/state               — retorna estado canônico (mood, energy, arc, etc.)
 PATCH /character/{slug}/state              — atualiza campos do estado
@@ -48,6 +48,10 @@ class CharacterMessageResponse(BaseModel):
     response: str
     character_slug: str
     model: str
+    mood: Optional[str] = None
+    energy: Optional[float] = None
+    tone: Optional[str] = None
+    is_reveal_moment: bool = False
     audio_url: Optional[str] = None
     voice_id: Optional[str] = None
 
