@@ -26,6 +26,7 @@ from runtime.brain.ingest_url import (
     _get_url_content,
     _is_youtube,
 )
+from runtime.brain.dedup import check_duplicate_chunk, confirm_existing_chunk
 from runtime.tasks.handlers.brain_ingest import canonicalize_entities
 
 
@@ -243,8 +244,9 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
     # ── FASE 2: Chunking Semantico ──
     chunks = _chunk_text(raw_text, chunk_size=1500, overlap=200)
 
-    # ── FASE 3 + 4: Canonicalizacao + Embedding por chunk ──
+    # ── FASE 3 + 4: Canonicalizacao + Embedding por chunk (com dedup) ──
     chunk_ids: list[str] = []
+    duplicates_confirmed = 0
     effective_client_id = client_id or settings.sparkle_internal_client_id
 
     for i, chunk_text in enumerate(chunks):
@@ -256,6 +258,19 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
 
             # Fase 4: Embedding
             embedding = await _get_embedding(canonical or chunk_text)
+
+            # Dedup: verifica se chunk similar ja existe
+            if embedding:
+                existing = await check_duplicate_chunk(embedding)
+                if existing:
+                    print(
+                        f"[brain/dedup] chunk similar encontrado "
+                        f"(similarity={existing['similarity']:.4f}), "
+                        f"confirmando existente {existing['id']}"
+                    )
+                    await confirm_existing_chunk(existing["id"])
+                    duplicates_confirmed += 1
+                    continue
 
             # Insere em brain_chunks
             row: dict = {
@@ -331,10 +346,12 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
 
     result = {
         "message": (
-            f"Pipeline Mega Brain completa: {len(chunk_ids)} chunks ingeridos de '{title}'"
+            f"Pipeline Mega Brain completa: {len(chunk_ids)} chunks novos, "
+            f"{duplicates_confirmed} duplicatas confirmadas de '{title}'"
         ),
         "raw_ingestion_id": str(raw_id) if raw_id else None,
         "chunks_inserted": len(chunk_ids),
+        "duplicates_confirmed": duplicates_confirmed,
         "chunk_ids": [str(cid) for cid in chunk_ids],
         "total_text_length": len(raw_text),
         "dna": dna_stats,

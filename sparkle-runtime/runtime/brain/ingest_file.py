@@ -136,12 +136,29 @@ async def ingest_file(
         # 4. Chunking
         chunks = _chunk_text(raw_text)
 
-        # 5. Inserir cada chunk no Brain com embedding
+        # 5. Inserir cada chunk no Brain com embedding (com dedup semantica)
+        from runtime.brain.dedup import check_duplicate_chunk, confirm_existing_chunk
+
         inserted = 0
+        duplicates_confirmed = 0
         chunk_ids = []
 
         for i, chunk in enumerate(chunks):
             embedding = await _get_embedding(chunk)
+
+            # Dedup: verifica se chunk similar ja existe
+            if embedding:
+                existing = await check_duplicate_chunk(embedding)
+                if existing:
+                    print(
+                        f"[brain/dedup] chunk similar encontrado "
+                        f"(similarity={existing['similarity']:.4f}), "
+                        f"confirmando existente {existing['id']}"
+                    )
+                    await confirm_existing_chunk(existing["id"])
+                    duplicates_confirmed += 1
+                    continue
+
             chunk_title = (
                 f"{file_title} (chunk {i+1}/{len(chunks)})"
                 if len(chunks) > 1
@@ -184,9 +201,13 @@ async def ingest_file(
             "file_extension": ext,
             "chunks_total": len(chunks),
             "chunks_inserted": inserted,
+            "duplicates_confirmed": duplicates_confirmed,
             "chunk_ids": chunk_ids,
             "text_length": len(raw_text),
-            "message": f"'{file_title}' ingerido no Brain — {inserted} chunks com embedding vetorial",
+            "message": (
+                f"'{file_title}' ingerido no Brain — {inserted} chunks novos, "
+                f"{duplicates_confirmed} duplicatas confirmadas"
+            ),
         }
 
     except HTTPException:

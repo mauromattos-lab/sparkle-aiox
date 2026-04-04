@@ -20,6 +20,7 @@ import os
 
 import httpx
 
+from runtime.brain.dedup import check_duplicate_insight, confirm_existing_insight
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -157,6 +158,7 @@ async def handle_extract_insights(task: dict) -> dict:
 
     processed = 0
     inserted = 0
+    duplicates_confirmed = 0
     domain_distribution: dict[str, int] = {}
 
     for chunk in all_chunks:
@@ -208,6 +210,19 @@ async def handle_extract_insights(task: dict) -> dict:
             embed_text = f"{insight.get('title', '')}: {insight.get('content', '')}. Aplicacao: {insight.get('application', '')}"
             embedding = await _get_embedding(embed_text)
 
+            # 3b. Dedup: verifica se insight similar ja existe
+            if embedding:
+                existing = await check_duplicate_insight(embedding)
+                if existing:
+                    print(
+                        f"[brain/dedup] insight similar encontrado "
+                        f"(similarity={existing['similarity']:.4f}), "
+                        f"confirmando existente {existing['id']}"
+                    )
+                    await confirm_existing_insight(existing["id"])
+                    duplicates_confirmed += 1
+                    continue
+
             # 4. Insere em brain_insights
             row: dict = {
                 "domain": domain,
@@ -252,10 +267,12 @@ async def handle_extract_insights(task: dict) -> dict:
     return {
         "message": (
             f"{'[DRY RUN] ' if dry_run else ''}Insight Extraction concluida. "
-            f"Chunks: {processed}, Insights: {inserted}, Dominios: {domain_distribution}"
+            f"Chunks: {processed}, Insights novos: {inserted}, "
+            f"Duplicatas confirmadas: {duplicates_confirmed}, Dominios: {domain_distribution}"
         ),
         "processed": processed,
         "inserted": inserted,
+        "duplicates_confirmed": duplicates_confirmed,
         "dry_run": dry_run,
         "domain_distribution": domain_distribution,
     }
