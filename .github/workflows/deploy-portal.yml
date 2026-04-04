@@ -1,150 +1,93 @@
-name: Deploy — Sparkle Portal
+# Deploy Sparkle Portal (Docker) to VPS
+# Triggers on push to main when portal/ files change.
+# Builds Docker image on VPS, swaps container, verifies response.
+#
+# Required GitHub Secrets:
+#   VPS_SSH_KEY       - Private SSH key for root@VPS (content of ~/.ssh/sparkle_vps)
+#   VPS_HOST          - VPS IP address (187.77.37.88)
+#   SUPABASE_ANON_KEY - Supabase anonymous/public key for portal build args
+
+name: Deploy Portal
 
 on:
   push:
     branches: [main]
     paths:
       - 'portal/**'
-      - '.github/workflows/deploy-portal.yml'
-  workflow_dispatch:
+
+concurrency:
+  group: deploy-portal
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy Portal to VPS
+    name: Deploy sparkle-portal to VPS
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
-
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 187.77.37.88
+          host: ${{ secrets.VPS_HOST }}
           username: root
-          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          envs: SUPABASE_URL,SUPABASE_SERVICE_KEY,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
           script: |
-            set -e
-            REPO_DIR=/opt/sparkle-portal
-            COMMIT_SHA="${{ github.sha }}"
+            set -euo pipefail
 
-            # Clona repo se não existir, senão faz pull
-            if [ ! -d "$REPO_DIR/.git" ]; then
-              git clone https://github.com/mauromattos-lab/sparkle-aiox.git $REPO_DIR
-            else
-              cd $REPO_DIR
-              git fetch origin main
-              git reset --hard origin/main
-            fi
-            cd $REPO_DIR
+            DEPLOY_DIR="/opt/sparkle-runtime/portal"
+            CONTAINER_NAME="sparkle-portal"
+            IMAGE_NAME="sparkle-portal:latest"
+            PORTAL_URL="https://portal.sparkleai.tech"
+            SUPABASE_URL="https://gqhdspayjtiijcqklbys.supabase.co"
+            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+            MAX_RETRIES=6
+            RETRY_INTERVAL=5
 
-            # Tag imagem atual como previous para rollback
-            docker tag sparkle-portal:latest sparkle-portal:previous 2>/dev/null || true
+            echo "=== [1/6] Pulling latest changes ==="
+            cd /opt/sparkle-runtime
+            git pull origin main
 
-            # Build nova imagem no VPS
-            cd $REPO_DIR/portal
+            echo "=== [2/6] Building Docker image ==="
+            cd "$DEPLOY_DIR"
             docker build \
-              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-              -t sparkle-portal:$COMMIT_SHA \
-              -t sparkle-portal:latest \
-              .
+              --build-arg SUPABASE_URL="$SUPABASE_URL" \
+              --build-arg SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+              -t "$IMAGE_NAME" .
 
-            # Deploy via Python (evita problema de escaping de backticks no shell)
-            SUPABASE_URL="$SUPABASE_URL" \
-            SUPABASE_SERVICE_KEY="$SUPABASE_SERVICE_KEY" \
-            NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-            NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-            python3 << 'PYEOF'
-            import subprocess, os, sys
+            echo "=== [3/6] Stopping old container ==="
+            docker stop "$CONTAINER_NAME" 2>/dev/null || true
+            docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
-            env_vars = [
-                "NODE_ENV=production",
-                f"SUPABASE_URL={os.environ.get('SUPABASE_URL','')}",
-                f"SUPABASE_SERVICE_KEY={os.environ.get('SUPABASE_SERVICE_KEY','')}",
-                f"NEXT_PUBLIC_SUPABASE_URL={os.environ.get('NEXT_PUBLIC_SUPABASE_URL','')}",
-                f"NEXT_PUBLIC_SUPABASE_ANON_KEY={os.environ.get('NEXT_PUBLIC_SUPABASE_ANON_KEY','')}",
-                "NEXT_PUBLIC_APP_URL=https://portal.sparkleai.tech",
-            ]
+            echo "=== [4/6] Starting new container ==="
+            docker run -d \
+              --name "$CONTAINER_NAME" \
+              --restart unless-stopped \
+              --label "coolify.managed=true" \
+              -p 3001:3000 \
+              "$IMAGE_NAME"
 
-            subprocess.run(["docker", "stop", "sparkle-portal"], capture_output=True)
-            subprocess.run(["docker", "rm", "sparkle-portal"], capture_output=True)
+            echo "=== [5/6] Verifying portal responds ==="
+            HEALTHY=false
+            for i in $(seq 1 $MAX_RETRIES); do
+              sleep $RETRY_INTERVAL
+              HTTP_CODE=$(curl -sk -o /dev/null -w '%{http_code}' "$PORTAL_URL" || echo "000")
+              echo "  Attempt $i/$MAX_RETRIES — HTTP $HTTP_CODE"
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+                HEALTHY=true
+                break
+              fi
+            done
 
-            env_args = []
-            for e in env_vars:
-                env_args += ["--env", e]
-
-            cmd = ["docker", "run", "-d",
-                "--name", "sparkle-portal",
-                "--network", "sparkle-portal-net",
-                "--label", "traefik.enable=true",
-                "--label", "traefik.http.routers.portal.rule=Host(`portal.sparkleai.tech`)",
-                "--label", "traefik.http.routers.portal.entrypoints=https",
-                "--label", "traefik.http.routers.portal.tls=true",
-                "--label", "traefik.http.routers.portal.tls.certresolver=letsencrypt",
-                "--label", "traefik.http.services.portal.loadbalancer.server.port=3000",
-                "--restart", "unless-stopped",
-            ] + env_args + ["sparkle-portal:latest"]
-
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                print("ERROR:", r.stderr)
-                sys.exit(1)
-            print("Container started:", r.stdout.strip())
-            PYEOF
-
-            # Health check via URL pública
-            sleep 10
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://portal.sparkleai.tech/ 2>/dev/null || echo "000")
-
-            if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
-              echo "ERROR: Portal health check falhou (HTTP $HTTP_CODE). Rollback para imagem anterior..."
-              python3 -c "
-import subprocess
-subprocess.run(['docker','stop','sparkle-portal'], capture_output=True)
-subprocess.run(['docker','rm','sparkle-portal'], capture_output=True)
-subprocess.run(['docker','run','-d',
-  '--name','sparkle-portal',
-  '--network','sparkle-portal-net',
-  '--label','traefik.enable=true',
-  '--label','traefik.http.routers.portal.rule=Host(\`portal.sparkleai.tech\`)',
-  '--label','traefik.http.routers.portal.entrypoints=https',
-  '--label','traefik.http.routers.portal.tls=true',
-  '--label','traefik.http.routers.portal.tls.certresolver=letsencrypt',
-  '--label','traefik.http.services.portal.loadbalancer.server.port=3000',
-  '--restart','unless-stopped',
-  'sparkle-portal:previous'])
-"
-              exit 1
+            if [ "$HEALTHY" = true ]; then
+              echo "=== [6/6] Portal deploy PASSED ==="
+              echo "Cleaning up old images..."
+              docker image prune -f
+              exit 0
             fi
 
-            echo "Portal deploy OK — HTTP $HTTP_CODE"
-
-      - name: Calculate duration
-        id: duration
-        if: always()
-        run: |
-          END=$(date +%s)
-          echo "seconds=$((END - ${{ steps.timer.outputs.start }}))" >> $GITHUB_OUTPUT
-
-      - name: Log deploy to Supabase
-        if: always()
-        run: |
-          STATUS="${{ job.status }}"
-          [ "$STATUS" = "success" ] && STATUS="success" || STATUS="failed"
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/deploy_log" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"service\":\"portal\",\"commit_sha\":\"${{ github.sha }}\",\"status\":\"$STATUS\",\"triggered_by\":\"github-actions/${{ github.event_name }}\",\"duration_ms\":$(( ${{ steps.duration.outputs.seconds || 0 }} * 1000 )),\"smoke_passed\":${{ job.status == 'success' && 'true' || 'false' }}}" || true
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          curl -s -X POST "${{ secrets.ZAPI_BASE_URL }}/instances/${{ secrets.ZAPI_INSTANCE_ID }}/token/${{ secrets.ZAPI_TOKEN }}/send-text" \
-            -H "Client-Token: ${{ secrets.ZAPI_CLIENT_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"phone\":\"${{ secrets.MAURO_PHONE }}\",\"message\":\"[DEVOPS] Deploy Portal FALHOU. Rollback executado. Commit: ${{ github.sha }}.\"}" || true
+            echo "=== [6/6] Portal deploy FAILED ==="
+            echo "Container logs:"
+            docker logs "$CONTAINER_NAME" --tail 50
+            exit 1

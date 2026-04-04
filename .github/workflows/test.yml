@@ -1,0 +1,47 @@
+# Run tests and syntax checks on pull requests
+# No secrets required for this workflow.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-runtime:
+    name: Test sparkle-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'sparkle-runtime/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r sparkle-runtime/requirements.txt
+          pip install pytest
+
+      - name: Python syntax check
+        run: |
+          echo "Checking Python syntax on all .py files..."
+          python -m py_compile sparkle-runtime/main.py
+          find sparkle-runtime -name '*.py' -exec python -m py_compile {} +
+          echo "All files passed syntax check."
+
+      - name: Run tests
+        run: |
+          if [ -d "sparkle-runtime/tests" ]; then
+            pytest sparkle-runtime/tests/ -v --tb=short
+          else
+            echo "No tests directory found at sparkle-runtime/tests/ — skipping pytest."
+            echo "Consider adding tests to improve CI coverage."
+          fi
