@@ -5,13 +5,19 @@ POST /agent/invoke
   Stateless endpoint for invoking any registered Sparkle agent by agent_id.
   Intended for programmatic callers: n8n, portal, other agents.
   NOT a replacement for /friday — that router handles Mauro's personal interface.
+
+GET /agent/list
+  Returns all active agents from the database.
 """
 from __future__ import annotations
+
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from runtime.agents.handler import invoke_agent
+from runtime.agents.loader import list_active_agents
 
 router = APIRouter()
 
@@ -51,3 +57,19 @@ async def invoke(req: AgentInvokeRequest) -> AgentInvokeResponse:
         context=req.context,
     )
     return AgentInvokeResponse(**result)
+
+
+@router.get("/list")
+async def list_agents() -> dict[str, Any]:
+    """
+    List all active agents from the database.
+
+    Returns a dict with:
+    - **agents**: list of active agent records (slug, display_name, agent_type, model, skills, etc.)
+    - **count**: total number of active agents
+    """
+    agents = await list_active_agents()
+    return {
+        "agents": agents,
+        "count": len(agents),
+    }

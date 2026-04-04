@@ -273,7 +273,7 @@ _TOOL_DEFINITIONS = [
 # -- Tool executors -------------------------------------------------------------
 
 _SUPABASE_TABLE_WHITELIST = {
-    "clients", "runtime_tasks", "llm_cost_log",
+    "agents", "clients", "runtime_tasks", "llm_cost_log",
     "knowledge_base", "conversation_history", "agent_work_items",
     "zenya_clients", "gap_reports",
 }
@@ -515,7 +515,13 @@ async def handle_activate_agent(task: dict) -> dict:
     """
     Ativa um subagent real via Claude API com tool_use.
     Se o agente nao tem subagent implementado, retorna lista de disponiveis.
+
+    Lookup order:
+      1. DB (via load_agent) — source of truth
+      2. Fallback to hardcoded _AVAILABLE_AGENTS dict
     """
+    from runtime.agents.loader import load_agent
+
     payload = task.get("payload", {})
 
     agent_raw = _extract_agent(payload)
@@ -532,7 +538,12 @@ async def handle_activate_agent(task: dict) -> dict:
     agent_key = _normalize_agent(agent_raw)
     agent_display = f"@{agent_key}"
 
-    # Check if agent has real subagent implementation
+    # 1. Try loading from DB first
+    db_agent = await load_agent(agent_key)
+    if db_agent and db_agent.get("system_prompt"):
+        return await _execute_subagent(agent_key, request, task, config_override=db_agent)
+
+    # 2. Fallback to hardcoded dict
     if agent_key in _AVAILABLE_AGENTS:
         return await _execute_subagent(agent_key, request, task)
 
@@ -560,9 +571,19 @@ async def handle_activate_agent(task: dict) -> dict:
     }
 
 
-async def _execute_subagent(agent_key: str, request: str, task: dict) -> dict:
-    """Executa o subagent com timeout e trata erros."""
-    config = _AVAILABLE_AGENTS[agent_key]
+async def _execute_subagent(
+    agent_key: str,
+    request: str,
+    task: dict,
+    config_override: dict | None = None,
+) -> dict:
+    """Executa o subagent com timeout e trata erros.
+
+    Args:
+        config_override: If provided, use this config instead of _AVAILABLE_AGENTS.
+                         Typically comes from DB via load_agent().
+    """
+    config = config_override or _AVAILABLE_AGENTS[agent_key]
     task_id = task.get("id")
     agent_display = config["name"]
     timeout = config["timeout_s"]
