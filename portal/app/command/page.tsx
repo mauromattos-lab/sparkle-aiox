@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useCommandPanel, AgentPulse, FeedEvent } from '@/hooks/useCommandPanel'
 import BrainActivity from '@/components/BrainActivity'
+import ContentManager from '@/components/ContentManager'
 
 // ── Agent display config ──────────────────────────────────────
 
@@ -249,6 +250,7 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
 export default function CommandPage() {
   const { pulse, feed, isConnected, isLoading, error, sendCommand } = useCommandPanel()
   const feedContainerRef = useRef<HTMLDivElement>(null)
+  const [rightPanel, setRightPanel] = useState<'brain' | 'content'>('brain')
 
   // Auto-scroll feed to top (newest first, so no scroll needed)
 
@@ -395,9 +397,37 @@ export default function CommandPage() {
           </div>
         </div>
 
-        {/* Brain Activity (right panel) */}
-        <div className="w-[340px] flex-shrink-0 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
-          <BrainActivity />
+        {/* Right panel (Brain Activity / Content Manager) */}
+        <div className="w-[340px] flex-shrink-0 flex flex-col min-h-0">
+          {/* Tab toggle */}
+          <div className="flex items-center gap-1 mb-2">
+            <button
+              onClick={() => setRightPanel('brain')}
+              className={[
+                'text-[10px] font-mono px-2.5 py-1 rounded transition-colors uppercase tracking-widest',
+                rightPanel === 'brain'
+                  ? 'bg-white/10 text-white/70'
+                  : 'bg-transparent text-white/25 hover:text-white/40',
+              ].join(' ')}
+            >
+              Brain
+            </button>
+            <button
+              onClick={() => setRightPanel('content')}
+              className={[
+                'text-[10px] font-mono px-2.5 py-1 rounded transition-colors uppercase tracking-widest',
+                rightPanel === 'content'
+                  ? 'bg-white/10 text-white/70'
+                  : 'bg-transparent text-white/25 hover:text-white/40',
+              ].join(' ')}
+            >
+              Content
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+            {rightPanel === 'brain' ? <BrainActivity /> : <ContentManager />}
+          </div>
         </div>
       </div>
 
