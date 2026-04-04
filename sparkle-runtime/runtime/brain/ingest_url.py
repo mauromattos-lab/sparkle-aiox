@@ -52,33 +52,72 @@ def _extract_video_id(url: str) -> str | None:
 async def _get_youtube_transcript(url: str) -> tuple[str, str]:
     """Extrai transcrição do YouTube. Retorna (texto, titulo).
 
-    Compatível com youtube-transcript-api >= 1.0 (API de instância com .fetch()).
+    Tenta youtube-transcript-api primeiro (rápido, grátis).
+    Se falhar (IP bloqueado em cloud), usa Apify como fallback.
     """
     video_id = _extract_video_id(url)
     if not video_id:
         raise ValueError(f"Não foi possível extrair video_id de: {url}")
 
+    # Tentativa 1: youtube-transcript-api (direto, grátis)
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
         def _fetch() -> str:
             api = YouTubeTranscriptApi()
-            # Tenta PT primeiro, fallback para EN
             for lang in (["pt", "pt-BR"], ["en"]):
                 try:
                     fetched = api.fetch(video_id, languages=lang)
                     return " ".join(s.text for s in fetched)
                 except Exception:
                     continue
-            # Última tentativa sem filtro de idioma
             fetched = api.fetch(video_id)
             return " ".join(s.text for s in fetched)
 
         text = await asyncio.to_thread(_fetch)
         title = f"YouTube: {video_id}"
         return text, title
-    except Exception as e:
-        raise ValueError(f"Transcrição não disponível para {video_id}: {e}")
+    except Exception as direct_err:
+        print(f"[ingest_url] youtube-transcript-api falhou: {direct_err}")
+
+    # Tentativa 2: Apify YouTube Transcript (contorna bloqueio de IP)
+    apify_token = os.getenv("APIFY_API_TOKEN")
+    if apify_token:
+        try:
+            text, title = await _get_youtube_via_apify(video_id, url, apify_token)
+            return text, title
+        except Exception as apify_err:
+            print(f"[ingest_url] Apify fallback falhou: {apify_err}")
+
+    raise ValueError(f"Transcrição não disponível para {video_id} (direto + Apify falharam)")
+
+
+async def _get_youtube_via_apify(video_id: str, url: str, token: str) -> tuple[str, str]:
+    """Extrai transcrição do YouTube via Apify actor."""
+    async with httpx.AsyncClient() as client:
+        # Usa o RAG Web Browser actor do Apify para extrair conteúdo da página
+        run_resp = await client.post(
+            "https://api.apify.com/v2/acts/apify~rag-web-browser/run-sync-get-dataset-items",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "query": f"youtube transcript {video_id}",
+                "startUrls": [{"url": url}],
+                "maxResults": 1,
+                "outputFormats": ["text"],
+            },
+            timeout=120.0,
+        )
+        run_resp.raise_for_status()
+        items = run_resp.json()
+
+        if items and len(items) > 0:
+            item = items[0]
+            text = item.get("text", "") or item.get("markdown", "")
+            title = item.get("metadata", {}).get("title", f"YouTube: {video_id}")
+            if text and len(text) > 100:
+                return text, title
+
+    raise ValueError(f"Apify não retornou conteúdo útil para {video_id}")
 
 
 async def _get_url_content(url: str) -> tuple[str, str]:
