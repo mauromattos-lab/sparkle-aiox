@@ -93,18 +93,12 @@ async def _get_youtube_transcript(url: str) -> tuple[str, str]:
 
 
 async def _get_youtube_via_apify(video_id: str, url: str, token: str) -> tuple[str, str]:
-    """Extrai transcrição do YouTube via Apify actor."""
+    """Extrai transcrição do YouTube via Apify pintostudio/youtube-transcript-scraper."""
     async with httpx.AsyncClient() as client:
-        # Usa o RAG Web Browser actor do Apify para extrair conteúdo da página
         run_resp = await client.post(
-            "https://api.apify.com/v2/acts/apify~rag-web-browser/run-sync-get-dataset-items",
+            f"https://api.apify.com/v2/acts/pintostudio~youtube-transcript-scraper/run-sync-get-dataset-items?token={token}",
             headers={"Authorization": f"Bearer {token}"},
-            json={
-                "query": f"youtube transcript {video_id}",
-                "startUrls": [{"url": url}],
-                "maxResults": 1,
-                "outputFormats": ["text"],
-            },
+            json={"videoUrl": url},
             timeout=120.0,
         )
         run_resp.raise_for_status()
@@ -112,10 +106,13 @@ async def _get_youtube_via_apify(video_id: str, url: str, token: str) -> tuple[s
 
         if items and len(items) > 0:
             item = items[0]
-            text = item.get("text", "") or item.get("markdown", "")
-            title = item.get("metadata", {}).get("title", f"YouTube: {video_id}")
-            if text and len(text) > 100:
-                return text, title
+            # O actor retorna {"data": [{"start": "0.0", "dur": "3.0", "text": "..."}]}
+            segments = item.get("data", [])
+            if isinstance(segments, list) and segments:
+                text = " ".join(seg.get("text", "") for seg in segments if seg.get("text"))
+                if text and len(text) > 100:
+                    title = f"YouTube: {video_id}"
+                    return text, title
 
     raise ValueError(f"Apify não retornou conteúdo útil para {video_id}")
 
