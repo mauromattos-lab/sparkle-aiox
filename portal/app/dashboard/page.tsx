@@ -6,6 +6,7 @@ import type { Client } from '@/lib/supabase'
 import { useClientIdentity, planLabel } from '@/hooks/useClientIdentity'
 import DashboardZenya from '@/components/DashboardZenya'
 import DashboardTrafego from '@/components/DashboardTrafego'
+import ValueNarrative from '@/components/ValueNarrative'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -152,6 +153,11 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Value Narrative — accumulated value storytelling */}
+        <div className="mb-8">
+          <ValueNarrative />
         </div>
 
         {/* No services warning */}
