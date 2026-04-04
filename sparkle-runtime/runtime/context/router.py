@@ -7,6 +7,7 @@ POST   /context/blocks                 — cria bloco
 PUT    /context/blocks/{block_id}      — atualiza bloco
 DELETE /context/blocks/{block_id}      — soft delete (active=false)
 GET    /context/preview?agent=analyst  — preview do contexto montado
+POST   /context/seed                   — seed/upsert all predefined blocks (idempotent)
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 
 from runtime.db import supabase
 from runtime.context.assembler import assemble_context
+from runtime.context.seed_blocks import seed_blocks
 
 router = APIRouter()
 
@@ -208,3 +210,18 @@ async def preview_context(agent: str = "analyst", request: str = ""):
         }
     except Exception as e:
         return {"status": "error", "error": f"Falha ao montar preview: {str(e)[:200]}"}
+
+
+# ── POST /context/seed ───────────────────────────────────────
+
+@router.post("/seed")
+async def seed_context_blocks():
+    """
+    Seed/upsert all predefined context blocks.
+    Idempotent — safe to call multiple times. Updates existing blocks by block_key.
+    """
+    try:
+        result = await seed_blocks()
+        return result
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao executar seed: {str(e)[:200]}"}
