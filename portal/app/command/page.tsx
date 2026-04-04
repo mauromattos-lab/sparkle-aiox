@@ -279,12 +279,6 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
     }
   }
 
-  // Detect slash command being typed for hint highlight
-  const activeHint = input.startsWith('/brain ') ? 'brain'
-    : input.startsWith('/task ') ? 'task'
-    : input.startsWith('/status') ? 'status'
-    : null
-
   return (
     <div className="w-full">
       <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 focus-within:border-[#0ea5e9]/40 transition-colors">
@@ -297,7 +291,7 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="/brain query | /task descricao | /status | ou qualquer comando para Friday..."
+          placeholder="onborda cliente X | landing nicho Y | qualquer comando para Friday..."
           className="flex-1 bg-transparent text-sm font-mono text-white/80 placeholder:text-white/20 outline-none"
           disabled={sending}
         />
@@ -313,29 +307,8 @@ function CommandBar({ onSend }: { onSend: (text: string) => Promise<string> }) {
           )}
         </button>
       </div>
-      {/* Slash command hints */}
-      <div className="flex items-center gap-3 mt-1 px-1">
-        {[
-          { key: 'brain', label: '/brain', desc: 'busca semantica' },
-          { key: 'task', label: '/task', desc: 'criar tarefa' },
-          { key: 'status', label: '/status', desc: 'status sistema' },
-        ].map(h => (
-          <span
-            key={h.key}
-            className={[
-              'text-[9px] font-mono transition-colors',
-              activeHint === h.key
-                ? 'text-[#0ea5e9]/80'
-                : 'text-white/15 hover:text-white/25',
-            ].join(' ')}
-          >
-            <span className="font-semibold">{h.label}</span>
-            <span className="ml-1">{h.desc}</span>
-          </span>
-        ))}
-      </div>
       {lastResponse && (
-        <div className="mt-1 px-3 py-1.5 text-xs font-mono text-white/40 bg-white/[0.02] rounded border border-white/[0.04] whitespace-pre-wrap max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+        <div className="mt-1 px-3 py-1.5 text-xs font-mono text-white/40 bg-white/[0.02] rounded border border-white/[0.04]">
           {lastResponse}
         </div>
       )}
@@ -372,6 +345,15 @@ export default function CommandPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* System Activity link */}
+          <a
+            href="/system"
+            className="text-[10px] font-mono text-white/25 hover:text-white/50 transition-colors uppercase tracking-widest"
+            title="System Activity Monitor"
+          >
+            System
+          </a>
+
           {/* Brain stats mini */}
           {pulse && (
             <div className="hidden md:flex items-center gap-1.5 text-[10px] text-white/25 font-mono">
