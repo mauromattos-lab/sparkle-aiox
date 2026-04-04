@@ -1,11 +1,14 @@
 """
-Character router — S5-01 + B1-02 (Character State).
+Character router — S5-01 + B1-02 (Character State) + B2-02 (Orchestrator).
 
-POST /character/message            — envia mensagem para um personagem (com TTS opcional)
-GET  /character/{slug}             — retorna perfil público do personagem
-GET  /character/{slug}/state       — retorna estado canônico (mood, energy, arc, etc.)
-PATCH /character/{slug}/state      — atualiza campos do estado
-POST /character/{slug}/event       — registra evento com efeitos em mood/energy
+POST /character/message                    — envia mensagem para um personagem (com TTS opcional)
+GET  /character/{slug}                     — retorna perfil público do personagem
+GET  /character/{slug}/state               — retorna estado canônico (mood, energy, arc, etc.)
+PATCH /character/{slug}/state              — atualiza campos do estado
+POST /character/{slug}/event               — registra evento com efeitos em mood/energy
+POST /character/{slug}/orchestrate/event   — avalia evento via Character Orchestrator (B2-02)
+GET  /character/{slug}/orchestrate/context — contexto enriquecido para geração de resposta
+POST /character/{slug}/orchestrate/turn    — processamento completo de turno (B2-02)
 """
 from __future__ import annotations
 
@@ -21,6 +24,11 @@ from runtime.characters.state import (
     get_character_state,
     update_character_state,
     record_character_event,
+)
+from runtime.characters.orchestrator import (
+    evaluate_event,
+    get_character_context,
+    process_character_turn,
 )
 
 router = APIRouter()
@@ -137,6 +145,16 @@ class CharacterEventRequest(BaseModel):
     energy_delta: float = 0.0
 
 
+class OrchestratorEventRequest(BaseModel):
+    event_type: str
+    event_data: Optional[dict] = None
+
+
+class OrchestratorTurnRequest(BaseModel):
+    user_message: str
+    channel: str = "whatsapp"
+
+
 # ── Character State endpoints (B1-02) ────────────────────────────────────
 
 @router.get("/{slug}/state")
@@ -197,3 +215,73 @@ async def post_event(slug: str, body: CharacterEventRequest):
             detail=f"Falha ao registrar evento para '{slug}': {exc}",
         ) from exc
     return state
+
+
+# ── Character Orchestrator endpoints (B2-02) ────────────────────────────
+
+@router.post("/{slug}/orchestrate/event")
+async def orchestrate_event(slug: str, body: OrchestratorEventRequest):
+    """
+    Evaluate an event through the Character Orchestrator.
+
+    The orchestrator determines mood shift, energy delta, reaction style,
+    and whether this is a 'reveal moment' — all without LLM calls.
+
+    Supported event_types: conversation_start, conversation_end,
+    positive_feedback, negative_feedback, milestone, time_passage, lore_trigger.
+    """
+    try:
+        result = await evaluate_event(
+            character_slug=slug,
+            event_type=body.event_type,
+            event_data=body.event_data,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Orchestrator evaluate_event failed for '{slug}': {exc}",
+        ) from exc
+    return result
+
+
+@router.get("/{slug}/orchestrate/context")
+async def orchestrate_context(slug: str):
+    """
+    Get the enriched character context built by the orchestrator.
+
+    Includes: mood, energy, energy band, arc position, recent events,
+    time-of-day style, and response generation hints.
+    """
+    try:
+        context = await get_character_context(slug)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Orchestrator get_character_context failed for '{slug}': {exc}",
+        ) from exc
+    return context
+
+
+@router.post("/{slug}/orchestrate/turn")
+async def orchestrate_turn(slug: str, body: OrchestratorTurnRequest):
+    """
+    Full turn processing through the Character Orchestrator.
+
+    Loads state, evaluates events (conversation_start if new, sentiment
+    detection from message), builds enriched context, and returns
+    system_prompt_additions for the response generator.
+
+    Does NOT call the LLM — returns context for the handler to use.
+    """
+    try:
+        result = await process_character_turn(
+            character_slug=slug,
+            user_message=body.user_message,
+            channel=body.channel,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Orchestrator process_character_turn failed for '{slug}': {exc}",
+        ) from exc
+    return result

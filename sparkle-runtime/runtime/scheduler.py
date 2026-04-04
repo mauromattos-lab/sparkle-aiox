@@ -358,6 +358,10 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # ── B2-02: Character Orchestrator periodic jobs ──────────
+    from runtime.characters.scheduler import register_character_jobs
+    register_character_jobs(_scheduler)
+
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     job_names = ", ".join(j.id for j in jobs)
