@@ -76,9 +76,13 @@ async def load_agent(slug: str) -> Optional[dict[str, Any]]:
         "skills": row.get("skills") or [],
         "tools": tools_raw,
         "config": config,
-        "agent_type": row.get("agent_type") or "specialist",
+        "agent_type": row.get("agent_type") or "operational",
         "character_id": row.get("character_id"),
         "slug": slug,
+        # B2-01 taxonomy fields (backward-compatible defaults)
+        "routing_rules": row.get("routing_rules") or {},
+        "capabilities": row.get("capabilities") or [],
+        "priority": row.get("priority") or 50,
     }
 
 
@@ -92,7 +96,7 @@ async def list_active_agents() -> list[dict[str, Any]]:
         result = await asyncio.to_thread(
             lambda: supabase
             .table("agents")
-            .select("slug, display_name, agent_type, model, max_tokens, skills, config, active, character_id, created_at, updated_at")
+            .select("slug, display_name, agent_type, model, max_tokens, skills, config, active, character_id, routing_rules, capabilities, priority, created_at, updated_at")
             .eq("active", True)
             .order("slug")
             .execute()

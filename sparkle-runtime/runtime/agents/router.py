@@ -13,11 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from runtime.agents.handler import invoke_agent
 from runtime.agents.loader import list_active_agents
+from runtime.agents.routing import get_taxonomy_summary, resolve_agent, get_agent_capabilities
 
 router = APIRouter()
 
@@ -73,3 +74,53 @@ async def list_agents() -> dict[str, Any]:
         "agents": agents,
         "count": len(agents),
     }
+
+
+# ── Taxonomy endpoints (B2-01) ───────────────────────────────
+
+@router.get("/types")
+async def agent_types() -> dict[str, Any]:
+    """
+    Return the agent taxonomy summary.
+
+    Returns:
+    - **types**: list of agent type strings
+    - **counts**: dict mapping type -> count
+    - **agents_by_type**: dict mapping type -> list of agents
+    - **total**: total active agents
+    """
+    return await get_taxonomy_summary()
+
+
+class ResolveRequest(BaseModel):
+    intent: str
+    context: dict = {}
+
+
+@router.post("/resolve")
+async def resolve(req: ResolveRequest) -> dict[str, Any]:
+    """
+    Resolve the best agent for a given intent and context.
+
+    - **intent**: The intent to resolve (e.g. "deploy", "customer_chat").
+    - **context**: Optional dict with channel, agent_type filter, etc.
+
+    Returns the matched agent record, or 404 if none found.
+    """
+    agent = await resolve_agent(intent=req.intent, context=req.context)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"No agent found for intent '{req.intent}'")
+    return {"agent": agent}
+
+
+@router.get("/capabilities/{slug}")
+async def capabilities(slug: str) -> dict[str, Any]:
+    """
+    Get the capabilities list for an agent by slug.
+
+    Returns:
+    - **slug**: the agent slug
+    - **capabilities**: list of capability strings
+    """
+    caps = await get_agent_capabilities(slug)
+    return {"slug": slug, "capabilities": caps}
