@@ -1,13 +1,15 @@
 """
 Brain Curation router -- B3-01: Quality > Volume.
 
-Endpoints para Mauro revisar, aprovar ou rejeitar brain chunks via portal.
-Chunks rejeitados sao excluidos de consultas Brain.
+Manual review endpoints:
+GET  /brain/curation/queue          -- fila de chunks pendentes de revisao
+POST /brain/curation/{id}/approve   -- aprovar chunk
+POST /brain/curation/{id}/reject    -- rejeitar chunk com motivo
+GET  /brain/curation/stats          -- contadores e taxa de aprovacao
 
-GET  /brain/curation/queue    -- fila de chunks pendentes de revisao
-POST /brain/curation/{id}/approve  -- aprovar chunk
-POST /brain/curation/{id}/reject   -- rejeitar chunk com motivo
-GET  /brain/curation/stats    -- contadores e taxa de aprovacao
+Auto-curation endpoints (S8-P1):
+POST /brain/curate                  -- dispara curadoria automatica via Haiku
+GET  /brain/curate/stats            -- stats por status (pending/approved/review/rejected)
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from runtime.config import settings
 from runtime.db import supabase
 
 router = APIRouter()
@@ -193,6 +196,109 @@ async def curation_stats():
             "approved": approved,
             "rejected": rejected,
             "total": pending + total_reviewed,
+            "approval_rate": approval_rate,
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao buscar stats: {str(e)[:200]}"}
+
+
+# -- POST /brain/curate --------------------------------------------------------
+
+@router.post("/curate")
+async def trigger_brain_curate():
+    """
+    Dispara curadoria automatica dos chunks pendentes via Haiku (S8-P1).
+    Cria uma task brain_curate no Supabase e executa inline.
+    """
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "brain_curate",
+                "payload": {"triggered_by": "manual_api"},
+                "status": "pending",
+                "priority": 5,
+            }).execute()
+        )
+
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Falha ao criar task brain_curate")
+
+        task = res.data[0]
+        task_id = task["id"]
+
+        # Execute inline (same pattern as scheduler)
+        from runtime.tasks.worker import execute_task
+        result = await execute_task(task)
+
+        return {
+            "status": "ok",
+            "task_id": task_id,
+            "result": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao executar curadoria: {str(e)[:200]}"}
+
+
+# -- GET /brain/curate/stats ---------------------------------------------------
+
+@router.get("/curate/stats")
+async def curate_stats():
+    """
+    Retorna contadores de chunks por status de curadoria.
+    Inclui 'review' (curadoria automatica — aguardando revisao humana).
+    """
+    try:
+        pending_q, approved_q, review_q, rejected_q = await asyncio.gather(
+            asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id", count="exact")
+                .eq("curation_status", "pending")
+                .limit(1)
+                .execute()
+            ),
+            asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id", count="exact")
+                .eq("curation_status", "approved")
+                .limit(1)
+                .execute()
+            ),
+            asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id", count="exact")
+                .eq("curation_status", "review")
+                .limit(1)
+                .execute()
+            ),
+            asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id", count="exact")
+                .eq("curation_status", "rejected")
+                .limit(1)
+                .execute()
+            ),
+        )
+
+        pending = pending_q.count or 0
+        approved = approved_q.count or 0
+        review = review_q.count or 0
+        rejected = rejected_q.count or 0
+        total = pending + approved + review + rejected
+        curated = approved + review + rejected
+        approval_rate = round((approved / curated * 100), 1) if curated > 0 else 0.0
+
+        return {
+            "status": "ok",
+            "pending": pending,
+            "approved": approved,
+            "review": review,
+            "rejected": rejected,
+            "total": total,
+            "curated": curated,
             "approval_rate": approval_rate,
         }
     except Exception as e:

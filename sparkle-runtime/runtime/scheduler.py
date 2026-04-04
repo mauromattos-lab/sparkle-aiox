@@ -15,6 +15,7 @@ Jobs (12 total):
 - content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
 - friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
 - brain_archival          : todo dia às 3h de Brasília (B3-05)
+- brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -106,6 +107,12 @@ async def _run_upsell_opportunity() -> None:
 
 async def _run_brain_archival() -> None:
     await _run_and_execute("brain_archival", priority=4)
+
+
+# ── S8-P1: Brain Auto-Curation (daily) ─────────────────────
+
+async def _run_brain_curate() -> None:
+    await _run_and_execute("brain_curate", priority=4)
 
 
 # ── SYS-1.6: Brain Weekly Digest ────────────────────────────
@@ -355,6 +362,14 @@ def start_scheduler() -> None:
         _run_brain_archival,
         trigger=CronTrigger(hour=3, minute=0, timezone=_TZ),
         id="brain_archival",
+        replace_existing=True,
+    )
+
+    # S8-P1: brain_curate todo dia às 2h UTC (auto-curation via Haiku)
+    _scheduler.add_job(
+        _run_brain_curate,
+        trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
+        id="brain_curate",
         replace_existing=True,
     )
 

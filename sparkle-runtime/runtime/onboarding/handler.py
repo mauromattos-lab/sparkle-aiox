@@ -53,20 +53,15 @@ async def _create_client(
     instagram_handle: str,
 ) -> str:
     """Create or update client in `clients` table with status=draft. Returns client_id."""
-    slug = re.sub(r"[^a-z0-9]+", "-", business_name.lower()).strip("-")
-
     row = {
         "id": client_id,
         "name": business_name,
-        "slug": slug,
-        "phone": contact_phone,
+        "whatsapp": contact_phone,
+        "instagram": instagram_handle or None,
+        "website": website_url or None,
+        "niche": "geral",
         "status": "draft",
         "mrr": 0,
-        "metadata": json.dumps({
-            "website_url": website_url,
-            "instagram_handle": instagram_handle,
-            "onboarding_started_at": _now(),
-        }),
     }
 
     await asyncio.to_thread(
@@ -165,10 +160,6 @@ async def _create_character(
         "active_channels": ["whatsapp"],
         "lore_status": "draft",
         "client_id": client_id,
-        "metadata": json.dumps({
-            "created_by": "onboarding_sop",
-            "created_at": _now(),
-        }),
     }
 
     result = await asyncio.to_thread(
@@ -202,7 +193,7 @@ async def _save_onboarding_progress(
     row = {
         "client_id": client_id,
         "status": status,
-        "steps": json.dumps(steps),
+        "steps": steps,
         "soul_prompt": soul_prompt,
         "character_slug": character_slug,
         "updated_at": _now(),
