@@ -9,7 +9,7 @@
 **Representante Legal:** {signatario_nome}
 
 **Contratada:** Sparkle AIOX Soluções em Inteligência Artificial LTDA
-**CNPJ:** [INSERIR CNPJ SPARKLE]
+**CNPJ:** 44.263.836/0001-54
 **Representante:** Mauro Mattos
 
 Celebram o presente Contrato de Prestação de Serviços de Tecnologia, mediante as cláusulas e condições a seguir:
