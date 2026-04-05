@@ -46,6 +46,9 @@ from runtime.tasks.handlers.cockpit_summary import handle_cockpit_summary, handl
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
 from runtime.tasks.handlers.billing import handle_create_subscription, handle_billing_alert
 from runtime.tasks.handlers.gate_check import handle_gate_check
+from runtime.tasks.handlers.intake_form_whatsapp import handle_intake_form_whatsapp
+from runtime.tasks.handlers.scrape_instagram import handle_scrape_instagram
+from runtime.tasks.handlers.intake_orchestrator import handle_intake_orchestrator
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -92,6 +95,10 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "create_subscription":      handle_create_subscription,
     "billing_alert":            handle_billing_alert,
     "gate_check":               handle_gate_check,
+    # ONB-2: Intake automático
+    "intake_form_whatsapp":     handle_intake_form_whatsapp,
+    "scrape_instagram":         handle_scrape_instagram,
+    "intake_orchestrator":      handle_intake_orchestrator,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

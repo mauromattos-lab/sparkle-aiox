@@ -1,10 +1,13 @@
 """
-Onboarding router — ONB-1: Pipeline Orquestrador de Onboarding.
+Onboarding router — ONB-1 + ONB-2.
 
 POST /onboarding/start              — inicia pipeline de onboarding (AC-2.x)
 GET  /onboarding/status/{client_id} — consulta progresso
 POST /onboarding/approve/{client_id} — aprovacao humana, ativa Zenya
 POST /onboarding/gate/{client_id}/{phase} — gate check manual para uma fase
+POST /onboarding/intake/{client_id}       — dispara intake automatico (ONB-2)
+POST /onboarding/intake/answer            — recebe resposta do formulario WhatsApp (ONB-2)
+POST /onboarding/intake/reminders         — cron: verifica timeouts de formularios (ONB-2)
 """
 from __future__ import annotations
 
@@ -45,6 +48,12 @@ class OnboardingApproveRequest(BaseModel):
 
 class GateCheckRequest(BaseModel):
     conditions: Optional[list[str]] = None
+
+
+class IntakeAnswerRequest(BaseModel):
+    """Payload para receber resposta do formulário WhatsApp."""
+    client_id: str
+    answer_text: str
 
 
 # ── POST /onboarding/start ────────────────────────────────────
@@ -333,3 +342,97 @@ async def approve_onboarding(client_id: str, body: Optional[OnboardingApproveReq
             f"Character active=true, client status=active, testing_mode=live."
         ),
     }
+
+
+# ── POST /onboarding/intake/{client_id} ──────────────────────
+
+@router.post("/intake/{client_id}")
+async def trigger_intake(client_id: str):
+    """
+    ONB-2: Dispara intake automático para um cliente.
+
+    Executa em paralelo:
+    - Scrape do site (se client.website preenchido)
+    - Scrape do Instagram via Apify (se client.instagram preenchido)
+    - Formulário WhatsApp sequencial (se client.whatsapp preenchido)
+
+    Consolida resultados em intake_data na fase 'intake' de onboarding_workflows.
+    Retorna intake_summary com completeness_score.
+    """
+    from runtime.tasks.handlers.intake_orchestrator import handle_intake_orchestrator
+
+    task = {
+        "id": f"intake-{client_id}",
+        "client_id": client_id,
+        "payload": {"client_id": client_id},
+    }
+    try:
+        result = await handle_intake_orchestrator(task)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao iniciar intake: {e}",
+        ) from e
+
+
+# ── POST /onboarding/intake/answer ───────────────────────────
+
+@router.post("/intake/answer")
+async def receive_intake_answer(body: IntakeAnswerRequest):
+    """
+    ONB-2: Recebe resposta do formulário WhatsApp.
+
+    Chamado pelo webhook Z-API quando o cliente responde uma pergunta.
+    Registra a resposta e envia a próxima pergunta automaticamente.
+
+    Body: { "client_id": "...", "answer_text": "..." }
+    """
+    from runtime.tasks.handlers.intake_form_whatsapp import handle_intake_form_whatsapp
+
+    task = {
+        "id": f"intake-answer-{body.client_id}",
+        "client_id": body.client_id,
+        "payload": {
+            "action": "answer",
+            "client_id": body.client_id,
+            "answer_text": body.answer_text,
+        },
+    }
+    try:
+        result = await handle_intake_form_whatsapp(task)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao registrar resposta: {e}",
+        ) from e
+
+
+# ── POST /onboarding/intake/reminders ────────────────────────
+
+@router.post("/intake/reminders")
+async def check_intake_reminders():
+    """
+    ONB-2: Cron endpoint — verifica formulários com timeout e envia lembretes.
+
+    - Sem resposta >= 24h: envia lembrete
+    - Sem resposta >= 48h (reminder 2): envia segundo lembrete
+    - Sem resposta >= 72h (após 2 lembretes): marca partial, alerta Friday
+
+    Deve ser chamado via cron a cada hora (ou a cada 6h).
+    """
+    from runtime.tasks.handlers.intake_form_whatsapp import handle_intake_form_whatsapp
+
+    task = {
+        "id": "intake-reminders-cron",
+        "payload": {"action": "check_timeouts"},
+    }
+    try:
+        result = await handle_intake_form_whatsapp(task)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao verificar timeouts: {e}",
+        ) from e

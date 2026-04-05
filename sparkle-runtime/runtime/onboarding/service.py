@@ -385,6 +385,21 @@ async def _advance_to_phase(client_id: str, phase: str) -> None:
         except Exception as e:
             print(f"[onboarding/service] _advance_to_phase WhatsApp failed (non-fatal): {e}")
 
+    # ONB-2: Auto-trigger intake orchestrator when advancing to 'intake' phase
+    if phase == "intake":
+        try:
+            from runtime.tasks.handlers.intake_orchestrator import handle_intake_orchestrator
+            intake_task = {
+                "id": f"auto-intake-{client_id}",
+                "client_id": client_id,
+                "payload": {"client_id": client_id},
+            }
+            # Fire and forget — intake runs async, does not block phase transition
+            asyncio.create_task(handle_intake_orchestrator(intake_task))
+            print(f"[onboarding/service] intake orchestrator disparado para {client_id[:12]}...")
+        except Exception as e:
+            print(f"[onboarding/service] WARN: falha ao disparar intake orchestrator: {e}")
+
 
 # ── Cron: Check all gates in progress ─────────────────────────
 
