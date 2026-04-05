@@ -35,6 +35,7 @@ import httpx
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
+from runtime.characters.juno_soul import SOUL_PROMPT as _JUNO_SOUL_PROMPT
 
 
 # ── Personas de geração ───────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ _PERSONA_PROMPTS: dict[str, str] = {
         "Tom: visionário, direto, sem frescura. Fala de IA, negócios e autonomia como quem vive isso. "
         "Estilo: insights densos em poucas palavras, sem floreio."
     ),
+    "juno": _JUNO_SOUL_PROMPT,
 }
 
 _FORMAT_INSTRUCTIONS: dict[str, str] = {

@@ -49,6 +49,49 @@ class ScheduleRequestV1(BaseModel):
     scheduled_for: datetime
 
 
+class GenerateRequest(BaseModel):
+    """Direct (synchronous) content generation request."""
+    topic: str
+    persona: str = "zenya"
+    format: str = "instagram_post"
+    platform: str = "instagram"
+    client_id: Optional[str] = None
+    source_type: str = "manual"
+
+
+# ── POST /content/generate ────────────────────────────────────
+
+@router.post("/generate")
+async def generate_content_direct(req: GenerateRequest):
+    """
+    Generate content immediately and return the result synchronously.
+    Persists to generated_content with status=draft.
+    Supports personas: zenya, finch, mauro, juno.
+    """
+    from runtime.tasks.handlers.generate_content import handle_generate_content
+
+    # Build a minimal task dict that matches what the handler expects
+    task = {
+        "id": None,
+        "client_id": req.client_id or settings.sparkle_internal_client_id,
+        "payload": {
+            "topic": req.topic,
+            "format": req.format,
+            "platform": req.platform,
+            "persona": req.persona,
+            "source_type": req.source_type,
+            "triggered_by": "generate_endpoint",
+        },
+    }
+
+    try:
+        result = await handle_generate_content(task)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return result
+
+
 # ── GET /content/list ─────────────────────────────────────────
 
 @router.get("/list")
