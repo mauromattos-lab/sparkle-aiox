@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (15 total):
+Jobs (17 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
@@ -16,7 +16,7 @@ Jobs (15 total):
 - content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
 - friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
 - brain_archival          : todo dia às 3h de Brasília (B3-05)
-- brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
+- brain_curate            : 3x/dia às 2h, 10h, 18h UTC (S8-P1 auto-curation, Gap-1)
 - client_dna_refresh      : toda segunda às 4h de Brasília (SYS-4, after curation)
 - client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
 
@@ -33,6 +33,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from runtime.db import supabase
 from runtime.config import settings
+from runtime.cron_logger import log_cron
 
 _scheduler = AsyncIOScheduler()
 _TZ = ZoneInfo("America/Sao_Paulo")
@@ -68,18 +69,22 @@ async def _run_and_execute(task_type: str, priority: int = 5) -> None:
         print(f"[scheduler] Erro em {task_type}: {e}")
 
 
+@log_cron("health_check")
 async def _run_health_check() -> None:
     await _run_and_execute("health_alert", priority=8)
 
 
+@log_cron("daily_briefing")
 async def _run_daily_briefing() -> None:
     await _run_and_execute("daily_briefing", priority=6)
 
 
+@log_cron("cockpit_summary")
 async def _run_cockpit_summary() -> None:
     await _run_and_execute("cockpit_summary", priority=7)
 
 
+@log_cron("weekly_briefing")
 async def _run_weekly_briefing() -> None:
     await _run_and_execute("weekly_briefing", priority=6)
 
@@ -88,35 +93,44 @@ async def _run_gap_report() -> None:
     await _run_and_execute("gap_report", priority=7)
 
 
+@log_cron("observer_gap_analysis")
 async def _run_observer_gap_analysis() -> None:
     await _run_and_execute("observer_gap_analysis", priority=7)
 
 
+@log_cron("daily_decision_moment")
 async def _run_daily_decision_moment() -> None:
     await _run_and_execute("daily_decision_moment", priority=9)
 
 
 # ── OPS-4: Friday proactive initiatives ─────────────────────
 
+@log_cron("billing_risk")
 async def _run_billing_risk() -> None:
     await _run_and_execute("friday_initiative_billing", priority=7)
 
 
+@log_cron("risk_alert")
 async def _run_risk_alert() -> None:
     await _run_and_execute("friday_initiative_risk", priority=7)
 
 
+@log_cron("upsell_opportunity")
 async def _run_upsell_opportunity() -> None:
     await _run_and_execute("friday_initiative_upsell", priority=5)
 
 
 # ── B3-05: Brain Archival (daily) ──────────────────────────
 
+@log_cron("brain_archival")
 async def _run_brain_archival() -> None:
     await _run_and_execute("brain_archival", priority=4)
 
 
 # ── S8-P1: Brain Auto-Curation (daily) ─────────────────────
+# NOTA: _run_brain_curate NÃO recebe @log_cron aqui pois é registrada com 3 job_ids
+# distintos (brain_curate_02h, brain_curate_10h, brain_curate_18h).
+# O decorator é aplicado inline no add_job — ver start_scheduler().
 
 async def _run_brain_curate() -> None:
     await _run_and_execute("brain_curate", priority=4)
@@ -124,18 +138,21 @@ async def _run_brain_curate() -> None:
 
 # ── SYS-4: Client DNA Refresh (weekly) ─────────────────────
 
+@log_cron("client_dna_refresh")
 async def _run_client_dna_refresh() -> None:
     await _run_and_execute("extract_all_client_dna", priority=4)
 
 
 # ── Monthly Client Reports ───────────────────────────────────
 
+@log_cron("client_reports_monthly")
 async def _run_client_reports_monthly() -> None:
     await _run_and_execute("client_reports_bulk", priority=6)
 
 
 # ── SYS-1.6: Brain Weekly Digest ────────────────────────────
 
+@log_cron("brain_weekly_digest")
 async def _run_brain_weekly_digest() -> None:
     """
     Busca conversas do Mauro com a Friday dos últimos 7 dias,
@@ -225,6 +242,7 @@ async def _run_brain_weekly_digest() -> None:
 
 # ── F2-P1: Content Weekly Batch ────────────────────────────
 
+@log_cron("content_weekly_batch")
 async def _run_content_weekly_batch() -> None:
     """
     Gera 5 posts variados para a semana, baseando-se nos domínios
@@ -392,11 +410,25 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # S8-P1: brain_curate todo dia às 2h UTC (auto-curation via Haiku)
+    # S8-P1 / Gap-1: brain_curate 3x/dia às 2h, 10h, 18h UTC
+    # (batch=50, parallel=5 — drains 150 chunks/day instead of 20)
+    # Decorator aplicado inline para preservar cron_name distinto por job_id
     _scheduler.add_job(
-        _run_brain_curate,
+        log_cron("brain_curate_02h")(_run_brain_curate),
         trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
-        id="brain_curate",
+        id="brain_curate_02h",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        log_cron("brain_curate_10h")(_run_brain_curate),
+        trigger=CronTrigger(hour=10, minute=0, timezone="UTC"),
+        id="brain_curate_10h",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        log_cron("brain_curate_18h")(_run_brain_curate),
+        trigger=CronTrigger(hour=18, minute=0, timezone="UTC"),
+        id="brain_curate_18h",
         replace_existing=True,
     )
 

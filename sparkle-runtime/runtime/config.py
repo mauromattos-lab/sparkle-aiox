@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     # Fallback para text search se todos os resultados ficarem abaixo do threshold.
     brain_similarity_threshold: float = float(os.getenv("BRAIN_SIMILARITY_THRESHOLD", "0.75"))
 
+    # Sentry — Error tracking
+    # SENTRY_DSN vazio = Sentry desabilitado (safe default para local/dev).
+    sentry_dsn: str = os.environ.get("SENTRY_DSN", "")
+    # SENTRY_TRACES_SAMPLE_RATE: 0.0 = sem performance tracing por padrão.
+    sentry_traces_sample_rate: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+
+    # Anthropic billing fallback — Gap 2 resilience
+    # Quando True, billing error no modelo primário faz fallback automático para Haiku.
+    anthropic_billing_fallback: bool = os.getenv("ANTHROPIC_BILLING_FALLBACK", "true").lower() in ("true", "1", "yes")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

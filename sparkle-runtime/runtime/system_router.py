@@ -51,7 +51,10 @@ _CRONS = [
     {"name": "brain_weekly_digest",   "schedule": "sunday 23h Brasilia"},
     {"name": "content_weekly_batch",  "schedule": "monday 7h Brasilia"},
     {"name": "brain_archival",        "schedule": "daily 3h Brasilia"},
-    {"name": "brain_curate",          "schedule": "daily 2h UTC"},
+    {"name": "brain_curate_02h",      "schedule": "daily 2h UTC"},
+    {"name": "brain_curate_10h",      "schedule": "daily 10h UTC"},
+    {"name": "brain_curate_18h",      "schedule": "daily 18h UTC"},
+    {"name": "client_dna_refresh",    "schedule": "monday 4h Brasilia"},
     {"name": "client_reports_monthly","schedule": "day 1 of month 10h UTC"},
 ]
 
@@ -332,6 +335,137 @@ async def _count_workflow_completed_today(today_start: str) -> int:
         return res.count if res.count is not None else 0
     except Exception:
         return -1
+
+
+@router.get("/crons")
+async def get_crons(
+    cron_name: Optional[str] = None,
+    status: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: int = 50,
+):
+    """
+    Retorna log de execuções de crons com filtros opcionais.
+
+    Query params:
+        cron_name (opcional) — filtra por job_id (ex: health_check, brain_curate_02h)
+        status    (opcional) — running | success | error
+        since     (opcional) — ISO 8601 — filtra started_at >= since
+        limit     (default 50, max 200)
+
+    Response:
+        {
+          "total": N,
+          "executions": [...],
+          "summary": {
+            "total_today": N,
+            "errors_today": N,
+            "running_now": N,
+            "last_success_by_cron": {"cron_name": "iso_timestamp", ...}
+          }
+        }
+    """
+    effective_limit = min(max(1, limit), 200)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    async def _fetch_executions() -> list:
+        try:
+            q = (
+                supabase.table("cron_executions")
+                .select("id,cron_name,task_type,started_at,finished_at,duration_ms,status,error,rows_affected,task_id")
+                .order("started_at", desc=True)
+                .limit(effective_limit)
+            )
+            if cron_name:
+                q = q.eq("cron_name", cron_name)
+            if status:
+                q = q.eq("status", status)
+            if since:
+                q = q.gte("started_at", since)
+            res = await asyncio.to_thread(lambda: q.execute())
+            return res.data or []
+        except Exception as e:
+            print(f"[system/crons] fetch executions failed: {e}")
+            return []
+
+    async def _fetch_today_stats() -> tuple[int, int, int]:
+        """Retorna (total_today, errors_today, running_now)."""
+        try:
+            total_res, errors_res, running_res = await asyncio.gather(
+                asyncio.to_thread(
+                    lambda: supabase.table("cron_executions")
+                    .select("id", count="exact")
+                    .gte("started_at", today_start)
+                    .limit(1)
+                    .execute()
+                ),
+                asyncio.to_thread(
+                    lambda: supabase.table("cron_executions")
+                    .select("id", count="exact")
+                    .eq("status", "error")
+                    .gte("started_at", today_start)
+                    .limit(1)
+                    .execute()
+                ),
+                asyncio.to_thread(
+                    lambda: supabase.table("cron_executions")
+                    .select("id", count="exact")
+                    .eq("status", "running")
+                    .limit(1)
+                    .execute()
+                ),
+            )
+            total_today = total_res.count if total_res.count is not None else 0
+            errors_today = errors_res.count if errors_res.count is not None else 0
+            running_now = running_res.count if running_res.count is not None else 0
+            return total_today, errors_today, running_now
+        except Exception as e:
+            print(f"[system/crons] fetch today stats failed: {e}")
+            return 0, 0, 0
+
+    async def _fetch_last_success() -> dict:
+        """Retorna dict {cron_name: last_finished_at} para execuções de sucesso nas últimas 24h."""
+        try:
+            since_24h = (now - timedelta(hours=24)).isoformat()
+            res = await asyncio.to_thread(
+                lambda: supabase.table("cron_executions")
+                .select("cron_name,finished_at")
+                .eq("status", "success")
+                .gte("started_at", since_24h)
+                .order("started_at", desc=True)
+                .limit(200)
+                .execute()
+            )
+            rows = res.data or []
+            last: dict[str, str] = {}
+            for row in rows:
+                name = row.get("cron_name", "")
+                ts = row.get("finished_at") or ""
+                if name and name not in last:
+                    last[name] = ts
+            return last
+        except Exception as e:
+            print(f"[system/crons] fetch last_success failed: {e}")
+            return {}
+
+    executions, (total_today, errors_today, running_now), last_success = await asyncio.gather(
+        _fetch_executions(),
+        _fetch_today_stats(),
+        _fetch_last_success(),
+    )
+
+    return {
+        "total": len(executions),
+        "executions": executions,
+        "summary": {
+            "total_today": total_today,
+            "errors_today": errors_today,
+            "running_now": running_now,
+            "last_success_by_cron": last_success,
+        },
+    }
 
 
 @router.get("/state")

@@ -11,11 +11,26 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+import sentry_sdk
+
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.middleware.auth import APIKeyMiddleware
 from runtime.middleware.rate_limit import RateLimitMiddleware, start_cleanup_task
 from runtime.scheduler import start_scheduler, stop_scheduler
+
+# ── Sentry — Error tracking ────────────────────────────────
+# Inicializar antes do app para interceptar o lifecycle ASGI completo.
+# Se SENTRY_DSN estiver vazio (local/dev), o SDK é ignorado — no-op seguro.
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment="production",
+        release=settings.runtime_version,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        # Nunca enviar dados pessoais (cookies, IP, auth headers)
+        send_default_pii=False,
+    )
 
 
 @asynccontextmanager
