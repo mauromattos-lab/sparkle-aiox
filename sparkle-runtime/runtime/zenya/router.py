@@ -89,8 +89,50 @@ async def _get_client_config(client_id: str) -> dict | None:
     return None
 
 
+def _split_message(text: str, max_len: int = 400) -> list[str]:
+    """
+    Quebra a resposta em partes naturais para envio sequencial no WhatsApp.
+    Prioridade: parágrafos duplos > parágrafos simples > tamanho máximo.
+    """
+    if len(text) <= max_len:
+        return [text]
+
+    # Tenta quebrar por parágrafos duplos primeiro
+    parts = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if len(parts) > 1:
+        # Reagrupa partes muito pequenas (<40 chars) com a anterior
+        merged: list[str] = []
+        for part in parts:
+            if merged and len(merged[-1]) < 40:
+                merged[-1] = merged[-1] + "\n\n" + part
+            else:
+                merged.append(part)
+        return merged
+
+    # Fallback: quebra por parágrafo simples
+    parts = [p.strip() for p in text.split("\n") if p.strip()]
+    if len(parts) > 1:
+        return parts
+
+    # Último recurso: corta no max_len na última frase completa
+    chunks = []
+    while len(text) > max_len:
+        cut = text.rfind(". ", 0, max_len)
+        if cut == -1:
+            cut = max_len
+        else:
+            cut += 1
+        chunks.append(text[:cut].strip())
+        text = text[cut:].strip()
+    if text:
+        chunks.append(text)
+    return chunks
+
+
 async def _send_zenya_message(client_config: dict, phone: str, message: str) -> None:
-    """Envia mensagem via Z-API com credenciais do cliente."""
+    """Envia mensagem via Z-API com credenciais do cliente.
+    Mensagens longas são quebradas em partes com delay entre elas.
+    """
     zapi_instance = client_config.get("zapi_instance_id")
     zapi_token = client_config.get("zapi_token")
     zapi_client_token = client_config.get("zapi_client_token", "")
@@ -99,17 +141,36 @@ async def _send_zenya_message(client_config: dict, phone: str, message: str) -> 
         print(f"[zenya] credenciais Z-API ausentes para cliente {client_config.get('client_id')}")
         return
 
-    url = f"https://api.z-api.io/instances/{zapi_instance}/token/{zapi_token}/send-text"
+    url_text = f"https://api.z-api.io/instances/{zapi_instance}/token/{zapi_token}/send-text"
+    url_typing = f"https://api.z-api.io/instances/{zapi_instance}/token/{zapi_token}/send-typing"
     headers = {"Client-Token": zapi_client_token} if zapi_client_token else {}
 
+    parts = _split_message(message)
+
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                url,
-                json={"phone": phone, "message": message},
-                headers=headers,
-                timeout=10.0,
-            )
+        async with httpx.AsyncClient() as http:
+            for i, part in enumerate(parts):
+                # Typing indicator antes de cada parte
+                try:
+                    await http.post(
+                        url_typing,
+                        json={"phone": phone, "duration": min(len(part) * 30, 3000)},
+                        headers=headers,
+                        timeout=5.0,
+                    )
+                except Exception:
+                    pass  # typing indicator não é crítico
+
+                # Delay proporcional ao tamanho da parte (simula digitação)
+                if i > 0:
+                    await asyncio.sleep(1.2 + len(part) / 800)
+
+                await http.post(
+                    url_text,
+                    json={"phone": phone, "message": part},
+                    headers=headers,
+                    timeout=10.0,
+                )
     except Exception as e:
         print(f"[zenya] falha ao enviar mensagem: {e}")
 
