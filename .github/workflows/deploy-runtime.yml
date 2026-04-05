@@ -76,7 +76,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            DEPLOY_DIR="/opt/sparkle-runtime"
+            DEPLOY_DIR="/opt/sparkle-aiox"
             SERVICE="sparkle-runtime"
             ARQ_SERVICE="sparkle-arq"
             HEALTH_URL="http://127.0.0.1:8001/health"
@@ -98,6 +98,9 @@ jobs:
               echo "No new changes — skipping restart."
               exit 0
             fi
+
+            echo "=== [2.5/5] Hardening .env permissions ==="
+            find "$DEPLOY_DIR" -name '.env' -exec chmod 600 {} \;
 
             echo "=== [3/5] Restarting services ==="
             systemctl restart "$SERVICE"
