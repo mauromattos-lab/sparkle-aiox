@@ -45,6 +45,62 @@ Retorne APENAS JSON valido:
 Onde N e o numero de mensagens em cada categoria."""
 
 
+async def _fetch_events_zenya(
+    client_id: str,
+    since: datetime,
+    event_type: Optional[str] = "conversation",
+) -> int:
+    """
+    Fonte primária: conta eventos em zenya_events por client_id + event_type desde `since`.
+    Retorna 0 graciosamente se a tabela não existir ou client_id não tiver eventos.
+    """
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_events")
+            .select("id", count="exact")
+            .eq("client_id", client_id)
+            .eq("event_type", event_type)
+            .gte("created_at", since.isoformat())
+            .execute()
+        )
+        return result.count or 0
+    except Exception as e:
+        err = str(e).lower()
+        if "does not exist" in err or "relation" in err or "42p01" in err:
+            return 0
+        raise
+
+
+async def _fetch_escalation_events(client_id: str, since: datetime) -> tuple[int, int]:
+    """
+    Retorna (escalation_count, total_conversations) de zenya_events para o período.
+    Usado para calcular taxa de escalação via fonte primária.
+    """
+    try:
+        esc = await asyncio.to_thread(
+            lambda: supabase.table("zenya_events")
+            .select("id", count="exact")
+            .eq("client_id", client_id)
+            .eq("event_type", "escalation")
+            .gte("created_at", since.isoformat())
+            .execute()
+        )
+        total = await asyncio.to_thread(
+            lambda: supabase.table("zenya_events")
+            .select("id", count="exact")
+            .eq("client_id", client_id)
+            .eq("event_type", "conversation")
+            .gte("created_at", since.isoformat())
+            .execute()
+        )
+        return (esc.count or 0, total.count or 0)
+    except Exception as e:
+        err = str(e).lower()
+        if "does not exist" in err or "relation" in err or "42p01" in err:
+            return (0, 0)
+        raise
+
+
 async def _fetch_conversations_zenya(client_id: str, since: datetime) -> list[dict]:
     """Tenta buscar conversas de zenya_conversations (fonte primaria)."""
     try:
@@ -221,7 +277,7 @@ async def collect_health_metrics(
         "escalation_total": int | None,
         "escalation_pct": float | None,  # None = dados indisponiveis
         "sentiment": { ... },         # resultado de analyze_sentiment
-        "data_source": "zenya_conversations" | "brain_raw_ingestions" | "unavailable",
+        "data_source": "zenya_events" | "zenya_conversations" | "brain_raw_ingestions" | "unavailable",
         "collected_at": iso_str,
     }
     """
@@ -237,51 +293,51 @@ async def collect_health_metrics(
     escalation_count: Optional[int] = None
     escalation_total: Optional[int] = None
 
-    # ── Tenta zenya_conversations ─────────────────────────────
-    convs_7d = await _fetch_conversations_zenya(client_id, since_7d)
+    # ── Fonte primária: zenya_events (eventos reportados pelo n8n) ────────────
+    events_7d = await _fetch_events_zenya(client_id, since_7d, event_type="conversation")
 
-    if convs_7d:
-        data_source = "zenya_conversations"
-        convs_48h = [c for c in convs_7d if c.get("created_at", "") >= since_48h.isoformat()]
-        volume_48h = len(convs_48h)
-        volume_7d = len(convs_7d)
+    if events_7d > 0:
+        data_source = "zenya_events"
+        volume_48h = await _fetch_events_zenya(client_id, since_48h, event_type="conversation")
+        volume_7d = events_7d
 
-        # Busca semana anterior para calcular queda
+        # Semana anterior
         try:
-            prev_result = await asyncio.to_thread(
-                lambda: supabase.table("zenya_conversations")
-                .select("id")
+            prev = await asyncio.to_thread(
+                lambda: supabase.table("zenya_events")
+                .select("id", count="exact")
                 .eq("client_id", client_id)
+                .eq("event_type", "conversation")
                 .gte("created_at", since_14d.isoformat())
                 .lt("created_at", since_7d.isoformat())
                 .execute()
             )
-            volume_prev_7d = len(prev_result.data or [])
+            volume_prev_7d = prev.count or 0
         except Exception:
             volume_prev_7d = 0
 
-        # Calcula taxa de escalacao se campo disponivel
-        escalation_rows = [c for c in convs_7d if c.get("escalated") is True]
-        if convs_7d:
-            escalation_count = len(escalation_rows)
-            escalation_total = len(convs_7d)
+        # Taxa de escalação via zenya_events
+        esc_count, esc_total = await _fetch_escalation_events(client_id, since_7d)
+        if esc_total > 0:
+            escalation_count = esc_count
+            escalation_total = esc_total
+
     else:
-        # ── Fallback: brain_raw_ingestions ────────────────────
-        brain_7d = await _fetch_conversations_brain(client_id, since_7d)
+        # ── Fallback 2: zenya_conversations ──────────────────────────────────
+        convs_7d = await _fetch_conversations_zenya(client_id, since_7d)
 
-        if brain_7d:
-            data_source = "brain_raw_ingestions"
-            brain_48h = [b for b in brain_7d if b.get("created_at", "") >= since_48h.isoformat()]
-            volume_48h = len(brain_48h)
-            volume_7d = len(brain_7d)
+        if convs_7d:
+            data_source = "zenya_conversations"
+            convs_48h = [c for c in convs_7d if c.get("created_at", "") >= since_48h.isoformat()]
+            volume_48h = len(convs_48h)
+            volume_7d = len(convs_7d)
 
-            # Busca semana anterior
+            # Busca semana anterior para calcular queda
             try:
                 prev_result = await asyncio.to_thread(
-                    lambda: supabase.table("brain_raw_ingestions")
+                    lambda: supabase.table("zenya_conversations")
                     .select("id")
                     .eq("client_id", client_id)
-                    .eq("source_type", "whatsapp")
                     .gte("created_at", since_14d.isoformat())
                     .lt("created_at", since_7d.isoformat())
                     .execute()
@@ -289,8 +345,38 @@ async def collect_health_metrics(
                 volume_prev_7d = len(prev_result.data or [])
             except Exception:
                 volume_prev_7d = 0
-            # Escalacao indisponivel nesta fonte
-        # else: data_source permanece "unavailable"
+
+            # Calcula taxa de escalacao se campo disponivel
+            escalation_rows = [c for c in convs_7d if c.get("escalated") is True]
+            if convs_7d:
+                escalation_count = len(escalation_rows)
+                escalation_total = len(convs_7d)
+        else:
+            # ── Fallback 3: brain_raw_ingestions ─────────────────────────────
+            brain_7d = await _fetch_conversations_brain(client_id, since_7d)
+
+            if brain_7d:
+                data_source = "brain_raw_ingestions"
+                brain_48h = [b for b in brain_7d if b.get("created_at", "") >= since_48h.isoformat()]
+                volume_48h = len(brain_48h)
+                volume_7d = len(brain_7d)
+
+                # Busca semana anterior
+                try:
+                    prev_result = await asyncio.to_thread(
+                        lambda: supabase.table("brain_raw_ingestions")
+                        .select("id")
+                        .eq("client_id", client_id)
+                        .eq("source_type", "whatsapp")
+                        .gte("created_at", since_14d.isoformat())
+                        .lt("created_at", since_7d.isoformat())
+                        .execute()
+                    )
+                    volume_prev_7d = len(prev_result.data or [])
+                except Exception:
+                    volume_prev_7d = 0
+                # Escalacao indisponivel nesta fonte
+            # else: data_source permanece "unavailable"
 
     # ── Sentiment analysis (max 1x/dia — idempotencia via gate_details) ─────
     gate = existing_gate_details or {}

@@ -4,6 +4,9 @@ Zenya router — Webhook multi-tenant por cliente + integração n8n → Runtime
 POST /zenya/webhook/{client_id}  — Webhook Z-API por cliente (substitui n8n para novos clientes)
 POST /zenya/learn                — Recebe notificação do n8n ao final de uma conversa Zenya
                                    e enfileira task learn_from_conversation para extração de KB.
+POST /zenya/event                — Recebe eventos dos workflows Zenya no n8n (conversation,
+                                   escalation, scheduling, billing, voice_call) e persiste em
+                                   zenya_events para alimentar health_analyzer e métricas.
 GET  /zenya/clients              — Lista clientes Zenya ativos no Runtime.
 
 Multi-tenant: cada client_id tem suas próprias credenciais Z-API no Supabase (tabela zenya_clients).
@@ -11,11 +14,12 @@ Multi-tenant: cada client_id tem suas próprias credenciais Z-API no Supabase (t
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field
 
 from runtime.db import supabase
 from runtime.friday.transcriber import transcribe_url
@@ -382,6 +386,114 @@ async def preview_soul_prompt(client_id: str):
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+# ── Zenya Event (n8n → Runtime) ───────────────────────────
+
+class ZenyaEventPayload(BaseModel):
+    """Payload livre do evento — campos opcionais por tipo."""
+    message: Optional[str] = None
+    from_phone: Optional[str] = None
+    sentiment: Optional[Literal["positive", "neutral", "negative"]] = None
+    metadata: Optional[dict] = Field(default_factory=dict)
+
+
+class ZenyaEventRequest(BaseModel):
+    """
+    Payload do POST /zenya/event enviado pelo n8n.
+
+    event_type:
+    - conversation  — nova mensagem/conversa com cliente
+    - escalation    — escalação para atendente humano
+    - scheduling    — agendamento via Google Calendar
+    - billing       — cobrança PIX via Asaas
+    - voice_call    — chamada de voz via Retell
+    """
+    client_id: str
+    event_type: Literal["conversation", "escalation", "scheduling", "billing", "voice_call"]
+    payload: ZenyaEventPayload = Field(default_factory=ZenyaEventPayload)
+    timestamp: Optional[datetime] = None
+
+
+async def _persist_zenya_event(
+    client_id: str,
+    event_type: str,
+    payload: dict,
+    ts: datetime,
+) -> None:
+    """Fire-and-forget: insere evento em zenya_events. Falhas são logadas, nunca propagadas."""
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_events").insert({
+                "client_id": client_id,
+                "event_type": event_type,
+                "payload": payload,
+                "created_at": ts.isoformat(),
+            }).execute()
+        )
+        print(f"[zenya/event] persisted {event_type} for client {client_id}")
+    except Exception as e:
+        print(f"[zenya/event] failed to persist event for {client_id}: {e}")
+
+
+@router.post("/event")
+async def receive_zenya_event(body: ZenyaEventRequest, background_tasks: BackgroundTasks):
+    """
+    Recebe eventos dos workflows Zenya no n8n e persiste em zenya_events.
+
+    Leve e fire-and-forget: valida client_id, responde 200 imediatamente
+    e persiste o evento em background — não bloqueia o n8n.
+
+    Events suportados:
+    - conversation: nova conversa com cliente
+    - escalation:   escalação para humano
+    - scheduling:   agendamento Google Calendar
+    - billing:      cobrança PIX via Asaas
+    - voice_call:   chamada de voz via Retell
+    """
+    # Valida que o cliente existe (busca leve por UUID)
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("clients")
+            .select("id")
+            .eq("id", body.client_id)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            # Tenta zenya_clients como fallback (clientes podem estar em qualquer tabela)
+            result2 = await asyncio.to_thread(
+                lambda: supabase.table("zenya_clients")
+                .select("client_id")
+                .eq("client_id", body.client_id)
+                .limit(1)
+                .execute()
+            )
+            if not result2.data:
+                raise HTTPException(status_code=404, detail=f"client_id {body.client_id!r} not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[zenya/event] client validation error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao validar client_id")
+
+    ts = body.timestamp or datetime.now(timezone.utc)
+    payload_dict = body.payload.model_dump(exclude_none=True)
+
+    background_tasks.add_task(
+        _persist_zenya_event,
+        client_id=body.client_id,
+        event_type=body.event_type,
+        payload=payload_dict,
+        ts=ts,
+    )
+
+    return {
+        "status": "queued",
+        "event_type": body.event_type,
+        "client_id": body.client_id,
+        "timestamp": ts.isoformat(),
+    }
 
 
 # ── Request models ─────────────────────────────────────────

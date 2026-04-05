@@ -575,6 +575,13 @@ async def run_onboarding_gate_check() -> dict:
     except Exception as e:
         print(f"[onboarding/cron] check_go_live_reminders error: {e}")
 
+    # ONB-1 AC-6.x: Alertas de timeout por condicao especifica
+    try:
+        timeout_result = await check_condition_timeouts()
+        alerts_sent += timeout_result.get("alerted", 0)
+    except Exception as e:
+        print(f"[onboarding/cron] check_condition_timeouts error: {e}")
+
     return {
         "checked": checked,
         "advanced": advanced,
@@ -1400,3 +1407,127 @@ async def check_go_live_reminders() -> dict:
             print(f"[onboarding/service] check_go_live_reminders: gate_details update failed: {e}")
 
     return {"checked": checked, "alerted": alerted, "timestamp": now.isoformat()}
+
+
+# ── ONB-1 AC-6.x: Timeout por condição específica ────────────
+
+def _hours_since(started_at_iso: str, now: datetime) -> float:
+    """Returns hours elapsed since started_at_iso (ISO 8601 string)."""
+    try:
+        started_at = datetime.fromisoformat(started_at_iso.replace("Z", "+00:00"))
+        return (now - started_at).total_seconds() / 3600
+    except Exception:
+        return 0.0
+
+
+async def _get_client_name(client_id: str) -> str:
+    """Returns the client's name, falling back to the first 12 chars of client_id."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("clients")
+            .select("name")
+            .eq("id", client_id)
+            .maybe_single()
+            .execute()
+        )
+        return (result.data or {}).get("name", client_id[:12]) if result else client_id[:12]
+    except Exception:
+        return client_id[:12]
+
+
+async def _update_gate_details(client_id: str, phase: str, gate_details: dict) -> None:
+    """Persists gate_details back to onboarding_workflows for the given client+phase."""
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .update({
+                "gate_details": gate_details,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("client_id", client_id)
+            .eq("phase", phase)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[onboarding/service] _update_gate_details {client_id[:12]}/{phase} failed: {e}")
+
+
+async def check_condition_timeouts() -> dict:
+    """
+    ONB-1 AC-6.1/6.2/6.3: Alertas de timeout por condicao especifica.
+
+    - AC-6.1: contrato nao assinado em 48h (fase contract, sem contract_signed)
+    - AC-6.2: pagamento nao confirmado em 72h (fase contract, sem payment_confirmed)
+    - AC-6.3: intake parado por 5+ dias uteis (fase intake)
+
+    Idempotente via flags no gate_details de cada workflow.
+    Chamado pelo cron run_onboarding_gate_check.
+    """
+    now = datetime.now(timezone.utc)
+    alerted = 0
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("client_id,phase,gate_details,started_at")
+            .eq("status", "in_progress")
+            .execute()
+        )
+    except Exception as e:
+        print(f"[onboarding/cron] check_condition_timeouts: fetch failed: {e}")
+        return {"error": str(e), "alerted": 0}
+
+    for wf in (result.data or []):
+        client_id = wf["client_id"]
+        phase = wf["phase"]
+        gate_details: dict = wf.get("gate_details") or {}
+        started_at = wf.get("started_at")
+
+        if not started_at:
+            continue
+
+        hours = _hours_since(started_at, now)
+        client_name = await _get_client_name(client_id)
+
+        if phase == "contract":
+            # AC-6.1: contract_signed nao aparece em 48h
+            if (
+                hours >= 48
+                and not gate_details.get("contract_signed")
+                and not gate_details.get("alert_contract_48h_sent")
+            ):
+                await _alert_friday(
+                    f"[Onboarding] {client_name} — contrato nao foi assinado em 48h. "
+                    f"Verificar se cliente recebeu o link."
+                )
+                gate_details["alert_contract_48h_sent"] = True
+                await _update_gate_details(client_id, phase, gate_details)
+                alerted += 1
+
+            # AC-6.2: payment_confirmed nao aparece em 72h
+            if (
+                hours >= 72
+                and not gate_details.get("payment_confirmed")
+                and not gate_details.get("alert_payment_72h_sent")
+            ):
+                await _alert_friday(
+                    f"[Onboarding] {client_name} — pagamento nao confirmado em 72h. "
+                    f"Verificar cobranca Asaas."
+                )
+                gate_details["alert_payment_72h_sent"] = True
+                await _update_gate_details(client_id, phase, gate_details)
+                alerted += 1
+
+        elif phase == "intake":
+            # AC-6.3: intake parado por 5+ dias uteis
+            bdays = _business_days_elapsed(started_at, now)
+            if bdays >= 5 and not gate_details.get("alert_intake_5d_sent"):
+                await _alert_friday(
+                    f"[Onboarding] {client_name} — intake parado ha {bdays} dias uteis. "
+                    f"Cliente pode nao ter respondido o formulario."
+                )
+                gate_details["alert_intake_5d_sent"] = True
+                await _update_gate_details(client_id, phase, gate_details)
+                alerted += 1
+
+    return {"alerted": alerted}

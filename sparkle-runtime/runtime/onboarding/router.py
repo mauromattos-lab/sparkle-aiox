@@ -1,5 +1,5 @@
 """
-Onboarding router — ONB-1 + ONB-2 + ONB-5 + ONB-1.7 + Story 1.8.
+Onboarding router — ONB-1 + ONB-2 + ONB-5 + ONB-1.7 + Story 1.8 + Story 1.2.
 
 POST /onboarding/start              — inicia pipeline de onboarding (AC-2.x)
 GET  /onboarding/status/{client_id} — consulta progresso
@@ -12,6 +12,7 @@ POST /onboarding/qa/{client_id}           — dispara smoke test (ONB-5)
 POST /onboarding/{client_id}/approve-client-test  — ONB-1.7: Mauro aprova inicio do teste com cliente
 POST /onboarding/{client_id}/client-feedback      — ONB-1.7: registra feedback do cliente
 POST /onboarding/{client_id}/go-live              — Story 1.8: Gate 5 — go-live com checklist pre-go-live
+POST /onboarding/{client_id}/generate-contract    — Story 1.2: gera e envia contrato via Autentique
 """
 from __future__ import annotations
 
@@ -674,4 +675,38 @@ async def run_smoke_test(client_id: str, body: Optional[SmokeTestRequest] = None
         raise HTTPException(
             status_code=500,
             detail=f"Falha ao executar smoke test: {e}",
+        ) from e
+
+
+# ── POST /onboarding/{client_id}/generate-contract ───────────
+
+@router.post("/{client_id}/generate-contract")
+async def generate_contract(client_id: str):
+    """
+    Story 1.2 AC-1.x/2.x/5.x: Gera contrato Zenya via Autentique e envia link de assinatura.
+
+    - Idempotente: se autentique_document_id ja existe em gate_details, retorna skip.
+    - Envia link de assinatura por WhatsApp se phone disponivel.
+    - A propria API Autentique envia o link por email automaticamente (AC-2.1).
+
+    Retorna: { status, autentique_document_id, sign_link, sent_via_whatsapp }
+    """
+    from runtime.tasks.handlers.generate_contract import handle_generate_contract
+
+    task = {
+        "id": f"generate-contract-{client_id}",
+        "client_id": client_id,
+        "payload": {"client_id": client_id},
+    }
+    try:
+        result = await handle_generate_contract(task)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=422, detail=result.get("error"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao gerar contrato: {e}",
         ) from e

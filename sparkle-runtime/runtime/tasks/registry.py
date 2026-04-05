@@ -52,6 +52,9 @@ from runtime.tasks.handlers.intake_orchestrator import handle_intake_orchestrato
 from runtime.tasks.handlers.onboard_client_v2 import handle_onboard_client_v2
 from runtime.tasks.handlers.smoke_test_zenya import handle_smoke_test_zenya
 from runtime.tasks.handlers.post_golive_health import handle_post_golive_health
+# Story 1.2: Contrato automatizado via Autentique
+from runtime.tasks.handlers.generate_contract import handle_generate_contract
+from runtime.tasks.handlers.mark_contract_signed import handle_mark_contract_signed
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -108,6 +111,9 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "smoke_test_zenya":         handle_smoke_test_zenya,
     # ONB-1.9: Health check pos-go-live (monitoramento 30 dias)
     "post_golive_health":       handle_post_golive_health,
+    # Story 1.2: Contrato automatizado via Autentique
+    "generate_contract":        handle_generate_contract,
+    "mark_contract_signed":     handle_mark_contract_signed,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # SENTRY_TRACES_SAMPLE_RATE: 0.0 = sem performance tracing por padrão.
     sentry_traces_sample_rate: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 
+    # Autentique — assinatura digital de contratos
+    autentique_token: str = os.environ.get("AUTENTIQUE_TOKEN", "")
+
     # Anthropic billing fallback — Gap 2 resilience
     # Quando True, billing error no modelo primário faz fallback automático para Haiku.
     anthropic_billing_fallback: bool = os.getenv("ANTHROPIC_BILLING_FALLBACK", "true").lower() in ("true", "1", "yes")

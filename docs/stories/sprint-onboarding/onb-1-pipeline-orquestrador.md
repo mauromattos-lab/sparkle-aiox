@@ -84,9 +84,9 @@ estimated_effort: 10-14h @dev
 
 ### Friday alerts
 
-- [ ] **AC-6.1:** Se contrato nao assinado em 48h apos inicio, Friday alerta Mauro (pendente: requer cron com timeout especifico por condicao)
-- [ ] **AC-6.2:** Se pagamento nao confirmado em 72h apos inicio, Friday alerta Mauro (pendente: mesma razao AC-6.1)
-- [ ] **AC-6.3:** Se cliente nao responde intake em 48h, lembrete automatico via WhatsApp (pendente: ONB-2)
+- [x] **AC-6.1:** Se contrato nao assinado em 48h apos inicio, Friday alerta Mauro — implementado em check_condition_timeouts() via flag alert_contract_48h_sent
+- [x] **AC-6.2:** Se pagamento nao confirmado em 72h apos inicio, Friday alerta Mauro — implementado em check_condition_timeouts() via flag alert_payment_72h_sent
+- [ ] **AC-6.3:** Se cliente nao responde intake em 48h, lembrete automatico via WhatsApp (pendente: ONB-2) — alerta Friday implementado (5 dias uteis via alert_intake_5d_sent); lembrete WhatsApp ao cliente aguarda ONB-2
 - [x] **AC-6.4:** Se qualquer fase fica `in_progress` por mais de 5 dias (120h), status muda para `stale` e Friday alerta Mauro (implementado no cron)
 
 ---
