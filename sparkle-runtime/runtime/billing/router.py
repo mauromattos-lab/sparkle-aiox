@@ -161,10 +161,21 @@ async def _trigger_billing_alert(asaas_payment_id: str, payment_data: dict) -> N
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        await asyncio.to_thread(
+        res = await asyncio.to_thread(
             lambda: supabase.table("runtime_tasks").insert(task_row).execute()
         )
         logger.info("[billing/webhook] billing_alert task enqueued for %s", asaas_payment_id)
+
+        # Execute inline (same pattern as scheduler._run_and_execute)
+        if res.data:
+            try:
+                from runtime.tasks.worker import execute_task
+                task = res.data[0]
+                await execute_task(task)
+                logger.info("[billing/webhook] billing_alert task executed inline for %s", asaas_payment_id)
+            except Exception as exec_err:
+                # Task remains as 'pending' in Supabase for retry via poll
+                logger.warning("[billing/webhook] billing_alert inline execution failed (will retry via poll): %s", exec_err)
     except Exception as e:
         logger.error("[billing/webhook] failed to enqueue billing_alert: %s", e)
 

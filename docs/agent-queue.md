@@ -38,6 +38,23 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 ---
 
+## Sprint SECURITY — Consolidação Pós-Auditoria
+
+### [SEC-1] P0 Security Fixes — Brownfield Audit
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect (spec) → @dev (impl) → @qa (review + smoke) → @devops (deploy) |
+| **Pipeline** | Processo 3 completo — AIOS pipeline enforced |
+| **Impacto** | 5 vulnerabilidades P0 corrigidas: auth fail-closed, Asaas webhook token, GETs protegidos, rate limit trusted proxy, handler registry clarificado |
+| **Arquivos** | `middleware/auth.py`, `middleware/rate_limit.py`, `billing/router.py`, `config.py`, `tasks/registry.py` |
+| **Story** | `docs/stories/sprint-core/sec-1-p0-security-fixes.md` |
+| **QA Plan** | `docs/stories/sprint-core/sec-1-qa-validation-plan.md` |
+| **Nota** | Bug de schema `payments.billing_type` detectado durante smoke test — item P1 separado |
+
+---
+
 ## Sprint SYSTEM — Fechar o Sistema (próximo)
 
 ### [SYS-1] Pipeline de Ingestão Mega Brain no Runtime
@@ -81,11 +98,12 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @dev (implementação) |
-| **Bloqueante** | SYS-1 ✅ FUNCIONAL — pode começar |
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
 | **Impacto** | Cada cliente tem DNA extraído automaticamente (tom, persona, regras, diferenciais). Zenya nasce mais inteligente. Onboarding semi-autônomo. |
-| **Referências** | `docs/archive/reviews/architect-megabrain-review.md` (schema `zenya_config` proposto) |
+| **Implementação** | 8 categorias DNA (tom, persona, regras, diferenciais, publico_alvo, produtos, objecoes, faq). Extração via Haiku. Auto-trigger no pipeline de ingestão. Cron semanal (seg 4h BRT). Batch endpoint para todos os clientes. |
+| **Arquivos** | `runtime/tasks/handlers/extract_client_dna.py`, `runtime/brain/dna_router.py` |
+| **API** | GET /brain/client-dna/{id}, POST /brain/extract-dna/{id}, POST /brain/extract-dna-all |
 
 ---
 
@@ -105,13 +123,13 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @architect (design) → @ux + @dev (implementação) |
-| **Bloqueante** | SYS-1/2/3 ✅ todos FUNCIONAL — pode começar |
+| **Status** | `EM_EXECUCAO` — TIER 1 funcional, TIER 2 API pronta, Portal pendente conexão |
+| **Responsável** | @dev |
 | **Impacto** | Mauro pilota o sistema visualmente. Não é dashboard — é experiência de comando. |
 | **Stack** | Next.js (portal/ já existe), Supabase Realtime WebSocket, portal.sparkleai.tech |
 | **Lei 15** | "Se parece com Notion ou Trello, está errado. Se parece com Overwatch ou Final Fantasy, está no caminho certo." |
-| **Evolução** | SYS-1→Brain ao vivo. SYS-2→Agentes e skills visíveis. SYS-3→Workflows ao vivo. SYS-4→DNA sendo extraído. SYS-5→Gaps e novos agentes propostos. |
+| **Implementação parcial** | TIER 1 (Friday WhatsApp): cockpit_summary diário 08h BRT funcional. TIER 2 API: 4 endpoints implementados (overview, clients, agents, activity). Falta: conectar Portal Next.js aos endpoints reais. |
+| **API** | GET /cockpit/overview, /cockpit/clients, /cockpit/agents, /cockpit/activity |
 
 ---
 
@@ -146,10 +164,9 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
+| **Status** | `FUNCIONAL` |
 | **Responsável** | @devops |
-| **Bloqueante** | — |
-| **Impacto** | Eliminar confusão `/opt/sparkle-runtime/` vs `/opt/sparkle-runtime/sparkle-runtime/`. Unificar em um só path. Adicionar `.venv/` ao .gitignore. |
+| **Implementação** | Renomeado `/opt/sparkle-runtime/` → `/opt/sparkle-aiox/`. Systemd services, deploy scripts (GitHub Actions), shebangs .venv corrigidos. 3 diretórios STALE removidos. Health check OK. |
 
 ---
 

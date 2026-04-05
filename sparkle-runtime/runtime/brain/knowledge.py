@@ -13,29 +13,9 @@ Resultado: um bloco de texto formatado pronto para injecao em prompt.
 from __future__ import annotations
 
 import asyncio
-import os
 
-import httpx
-
+from runtime.brain.embedding import get_embedding
 from runtime.db import supabase
-
-
-async def _get_embedding(text: str) -> list[float] | None:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
 
 
 async def retrieve_knowledge(
@@ -57,7 +37,7 @@ async def retrieve_knowledge(
       - chunks: lista de chunks crus
       - domains_matched: dominios encontrados
     """
-    embedding = await _get_embedding(topic)
+    embedding = await get_embedding(topic)
     result: dict = {
         "context_text": "",
         "synthesis": None,

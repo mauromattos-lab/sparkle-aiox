@@ -20,11 +20,9 @@ S9 regra: source_agent obrigatório — rejeita se ausente.
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 
-import httpx
-
+from runtime.brain.embedding import get_embedding
 from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.config import settings
 from runtime.db import supabase
@@ -73,28 +71,6 @@ async def canonicalize_entities(raw_text: str, client_id: str) -> tuple[str, lis
     return canonical_text, referenced
 
 
-# ── Embedding ────────────────────────────────────────────────────────────────
-
-async def _get_embedding(text: str) -> list[float] | None:
-    """Gera embedding via OpenAI. Retorna None se não disponível."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception as e:
-        print(f"[brain_ingest] embedding falhou: {e}")
-        return None
-
-
 # ── Handler principal ────────────────────────────────────────────────────────
 
 _COMMAND_PREFIX_RE = re.compile(
@@ -136,7 +112,7 @@ async def handle_brain_ingest(task: dict) -> dict:
             entity_tags.append(ref)
 
     # Gera embedding
-    embedding = await _get_embedding(canonical_content or content)
+    embedding = await get_embedding(canonical_content or content)
 
     # Monta metadata
     metadata: dict = {

@@ -93,8 +93,30 @@ async def brain_namespace_stats():
       - average usage
     """
     try:
-        # Use raw SQL via RPC for aggregation
-        # Fallback: fetch all and aggregate in Python (safer for Supabase client)
+        # P1-4: Use server-side RPC for aggregation (avoids full table scan)
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.rpc("brain_namespace_stats").execute()
+            )
+            rows = result.data or []
+            namespace_list = [
+                {
+                    "namespace": r["namespace"],
+                    "chunk_count": r["chunk_count"],
+                    "total_usage": r["total_usage"],
+                    "avg_usage": round(float(r["avg_usage"]), 2),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "ok",
+                "total_namespaces": len(namespace_list),
+                "namespaces": namespace_list,
+            }
+        except Exception as rpc_err:
+            print(f"[brain/metrics] RPC brain_namespace_stats failed, using Python fallback: {rpc_err}")
+
+        # Fallback: fetch all and aggregate in Python (if RPC not deployed yet)
         result = await asyncio.to_thread(
             lambda: supabase.table("brain_chunks")
             .select("namespace, usage_count")
@@ -103,7 +125,6 @@ async def brain_namespace_stats():
 
         rows = result.data or []
 
-        # Aggregate in Python
         stats: dict[str, dict] = {}
         for row in rows:
             ns = row.get("namespace") or "general"
@@ -112,7 +133,6 @@ async def brain_namespace_stats():
             stats[ns]["chunk_count"] += 1
             stats[ns]["total_usage"] += row.get("usage_count", 0)
 
-        # Calculate averages and sort by chunk_count desc
         namespace_list = list(stats.values())
         for ns in namespace_list:
             ns["avg_usage"] = round(

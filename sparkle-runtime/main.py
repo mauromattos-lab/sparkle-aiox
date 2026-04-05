@@ -36,9 +36,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── CORS configuration ────────────────────────────────────
+# CORS_ALLOWED_ORIGINS env var: comma-separated origins, or "*" for dev mode.
+# If not set, defaults to production origins.
+if settings.cors_allowed_origins == "*":
+    _cors_origins: list[str] = ["*"]
+elif settings.cors_allowed_origins:
+    _cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
+else:
+    _cors_origins = ["https://runtime.sparkleai.tech", "https://mission.sparkleai.tech"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

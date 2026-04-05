@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Redis (ARQ)
     redis_url: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
+    # CORS
+    cors_allowed_origins: str = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+
     # Auth
     runtime_api_key: str | None = os.environ.get("RUNTIME_API_KEY") or None
 

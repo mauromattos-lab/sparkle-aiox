@@ -95,7 +95,7 @@ async def handle_billing_alert(task: dict) -> dict:
 
     try:
         from runtime.integrations.zapi import send_text
-        send_text(settings.mauro_whatsapp, msg)
+        await asyncio.to_thread(lambda: send_text(settings.mauro_whatsapp, msg))
         logger.info("[handle_billing_alert] overdue alert sent to %s", settings.mauro_whatsapp)
         return {"status": "sent", "to": settings.mauro_whatsapp, "payment_id": asaas_payment_id}
     except Exception as e:

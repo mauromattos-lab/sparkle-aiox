@@ -88,7 +88,7 @@ async def test_brain_ingest_content_after_prefix_strip_empty():
         }
     }
     with patch("runtime.tasks.handlers.brain_ingest.supabase", _mock_supabase_entities()):
-        with patch("runtime.tasks.handlers.brain_ingest._get_embedding", new_callable=AsyncMock, return_value=None):
+        with patch("runtime.tasks.handlers.brain_ingest.get_embedding", new_callable=AsyncMock, return_value=None):
             result = await handle_brain_ingest(task)
     # After stripping "brain, aprende isso:" only ":" remains -> stripped to empty
     assert "vazio" in result["message"].lower() or "não recebi" in result["message"].lower()
@@ -110,7 +110,7 @@ async def test_brain_ingest_success_without_embedding():
     }
 
     with patch("runtime.tasks.handlers.brain_ingest.supabase", mock_sb):
-        with patch("runtime.tasks.handlers.brain_ingest._get_embedding", new_callable=AsyncMock, return_value=None):
+        with patch("runtime.tasks.handlers.brain_ingest.get_embedding", new_callable=AsyncMock, return_value=None):
             result = await handle_brain_ingest(task)
 
     assert "Anotado no Brain" in result["message"]
@@ -135,7 +135,7 @@ async def test_brain_ingest_success_with_embedding():
     }
 
     with patch("runtime.tasks.handlers.brain_ingest.supabase", mock_sb):
-        with patch("runtime.tasks.handlers.brain_ingest._get_embedding", new_callable=AsyncMock, return_value=fake_embedding):
+        with patch("runtime.tasks.handlers.brain_ingest.get_embedding", new_callable=AsyncMock, return_value=fake_embedding):
             result = await handle_brain_ingest(task)
 
     assert "Anotado no Brain" in result["message"]
@@ -158,7 +158,7 @@ async def test_brain_ingest_with_entity_refs():
     }
 
     with patch("runtime.tasks.handlers.brain_ingest.supabase", mock_sb):
-        with patch("runtime.tasks.handlers.brain_ingest._get_embedding", new_callable=AsyncMock, return_value=None):
+        with patch("runtime.tasks.handlers.brain_ingest.get_embedding", new_callable=AsyncMock, return_value=None):
             result = await handle_brain_ingest(task)
 
     assert "Mauro Mattos" in result["entity_tags"]
@@ -192,7 +192,7 @@ async def test_brain_ingest_db_error():
     }
 
     with patch("runtime.tasks.handlers.brain_ingest.supabase", mock_sb):
-        with patch("runtime.tasks.handlers.brain_ingest._get_embedding", new_callable=AsyncMock, return_value=None):
+        with patch("runtime.tasks.handlers.brain_ingest.get_embedding", new_callable=AsyncMock, return_value=None):
             result = await handle_brain_ingest(task)
 
     assert "erro" in result["message"].lower()

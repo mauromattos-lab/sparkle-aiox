@@ -15,13 +15,13 @@ Se Brain retornar erro: task vai para retry — nunca executa sem contexto.
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from arq import cron
 from arq.connections import RedisSettings
 
+from runtime.brain.embedding import get_embedding
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.tasks.registry import get_handler
@@ -57,20 +57,7 @@ async def _fetch_brain_context(namespace: str, query: str) -> dict:
     Retorna dict com chunks e context_id do chunk mais relevante.
     """
     try:
-        import httpx
-        api_key = os.getenv("OPENAI_API_KEY")
-        embedding = None
-
-        if api_key:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "https://api.openai.com/v1/embeddings",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json={"model": "text-embedding-3-small", "input": query},
-                    timeout=8.0,
-                )
-                if resp.status_code == 200:
-                    embedding = resp.json()["data"][0]["embedding"]
+        embedding = await get_embedding(query)
 
         if embedding:
             result = await asyncio.to_thread(
@@ -469,14 +456,13 @@ async def trigger_weekly_content(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_pending_tasks, trigger_daily_briefing, trigger_weekly_briefing, trigger_gap_report, trigger_health_check, trigger_weekly_content]
+    # Only process_pending_tasks runs via ARQ cron.
+    # All other scheduled jobs (daily_briefing, weekly_briefing, gap_report,
+    # health_check, weekly_content) are handled by APScheduler in scheduler.py.
+    # Keeping them here would cause duplicate execution. (P1-6 fix)
+    functions = [process_pending_tasks]
     cron_jobs = [
         cron(process_pending_tasks, second={0, 15, 30, 45}),
-        cron(trigger_daily_briefing, hour={11}, minute={0}),
-        cron(trigger_weekly_briefing, weekday={6}, hour={11}, minute={0}),
-        cron(trigger_gap_report, weekday={0}, hour={11}, minute={0}),
-        cron(trigger_health_check, second={0}, minute={0, 15, 30, 45}),
-        cron(trigger_weekly_content, weekday={4}, hour={12}, minute={0}),  # sexta 9h Brasília
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10

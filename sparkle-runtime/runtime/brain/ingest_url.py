@@ -20,6 +20,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from runtime.brain.embedding import get_embedding
 from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.brain.namespace import resolve_namespace
 from runtime.db import supabase
@@ -165,25 +166,6 @@ def _chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> list[s
     return chunks
 
 
-async def _get_embedding(text: str) -> list[float] | None:
-    """Gera embedding via OpenAI text-embedding-3-small. Retorna None se sem API key."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
-
-
 @router.post("/ingest-url")
 async def ingest_url(req: IngestUrlRequest):
     """
@@ -217,7 +199,7 @@ async def ingest_url(req: IngestUrlRequest):
         chunk_ids = []
 
         for i, chunk in enumerate(chunks):
-            embedding = await _get_embedding(chunk)
+            embedding = await get_embedding(chunk)
 
             # Dedup: verifica se chunk similar ja existe
             if embedding:
