@@ -50,7 +50,12 @@ class ZAPIWebhookPayload(BaseModel):
 
 
 async def _get_client_config(client_id: str) -> dict | None:
-    """Carrega configuração do cliente (credenciais Z-API, soul_prompt) do Supabase."""
+    """Carrega configuração do cliente (credenciais Z-API, soul_prompt) do Supabase.
+
+    Lookup order:
+    1. Try client_id as UUID (canonical)
+    2. Fallback: try display_slug for backward compatibility with old URLs
+    """
     try:
         result = await asyncio.to_thread(
             lambda: supabase.table("zenya_clients")
@@ -61,9 +66,27 @@ async def _get_client_config(client_id: str) -> dict | None:
             .execute()
         )
         return result.data
-    except Exception as e:
-        print(f"[zenya] cliente {client_id} não encontrado: {e}")
-        return None
+    except Exception:
+        pass
+
+    # Fallback: lookup by display_slug (old slug-based URLs)
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("*")
+            .eq("display_slug", client_id)
+            .eq("active", True)
+            .single()
+            .execute()
+        )
+        if result.data:
+            print(f"[zenya] cliente {client_id} encontrado via display_slug fallback")
+            return result.data
+    except Exception:
+        pass
+
+    print(f"[zenya] cliente {client_id} não encontrado por UUID nem display_slug")
+    return None
 
 
 async def _send_zenya_message(client_config: dict, phone: str, message: str) -> None:
