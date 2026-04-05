@@ -40,6 +40,7 @@ from runtime.tasks.handlers.auto_implement_gap import handle_auto_implement_gap
 from runtime.tasks.handlers.extract_insights import handle_extract_insights
 from runtime.tasks.handlers.brain_archival import handle_brain_archival
 from runtime.tasks.handlers.brain_curate import handle_brain_curate
+from runtime.tasks.handlers.client_report import handle_client_report, handle_client_reports_bulk
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
 
 # task_type → handler(task: dict) -> dict
@@ -78,6 +79,8 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "observer_gap_analysis":    handle_observer_gap_analysis,
     "auto_implement_gap":       handle_auto_implement_gap,
     "extract_insights":         handle_extract_insights,
+    "client_report":             handle_client_report,
+    "client_reports_bulk":       handle_client_reports_bulk,
     "cross_source_synthesis":   handle_cross_source_synthesis,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,

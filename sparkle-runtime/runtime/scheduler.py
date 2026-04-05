@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (12 total):
+Jobs (13 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
@@ -16,6 +16,7 @@ Jobs (12 total):
 - friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
 - brain_archival          : todo dia às 3h de Brasília (B3-05)
 - brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
+- client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -113,6 +114,12 @@ async def _run_brain_archival() -> None:
 
 async def _run_brain_curate() -> None:
     await _run_and_execute("brain_curate", priority=4)
+
+
+# ── Monthly Client Reports ───────────────────────────────────
+
+async def _run_client_reports_monthly() -> None:
+    await _run_and_execute("client_reports_bulk", priority=6)
 
 
 # ── SYS-1.6: Brain Weekly Digest ────────────────────────────
@@ -370,6 +377,14 @@ def start_scheduler() -> None:
         _run_brain_curate,
         trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
         id="brain_curate",
+        replace_existing=True,
+    )
+
+    # Monthly client reports: dia 1 de cada mês às 10h UTC (7h BRT)
+    _scheduler.add_job(
+        _run_client_reports_monthly,
+        trigger=CronTrigger(day=1, hour=10, minute=0, timezone="UTC"),
+        id="client_reports_monthly",
         replace_existing=True,
     )
 
