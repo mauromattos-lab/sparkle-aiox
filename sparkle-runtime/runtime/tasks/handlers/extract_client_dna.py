@@ -122,16 +122,40 @@ def _parse_json_response(raw: str) -> dict | None:
 
 
 async def _get_client_chunks(client_id: str, limit: int = 60) -> list[dict]:
-    """Fetch the most recent brain chunks for a client."""
+    """Fetch the most recent brain chunks for a client.
+
+    brain_chunks.client_id is UUID while zenya_clients.client_id is text slug.
+    We search by brain_owner (text, set to client_id slug for Zenya agents)
+    as the primary lookup, falling back to client_id UUID match.
+    """
+    # Primary: search by brain_owner (text slug, matches zenya_clients.client_id)
     result = await asyncio.to_thread(
         lambda: supabase.table("brain_chunks")
         .select("id,raw_content,source_type,source_title,chunk_metadata")
-        .eq("client_id", client_id)
+        .eq("brain_owner", client_id)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
-    return result.data or []
+    chunks = result.data or []
+
+    if chunks:
+        return chunks
+
+    # Fallback: try client_id directly (works if caller passes a valid UUID)
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .select("id,raw_content,source_type,source_title,chunk_metadata")
+            .eq("client_id", client_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception:
+        # client_id is not a valid UUID — no fallback results
+        return []
 
 
 async def _get_next_version(client_id: str) -> int:
@@ -342,6 +366,85 @@ def _count_categories(items: list[dict]) -> dict[str, int]:
 
 
 # ── Main handler ──────────────────────────────────────────────
+
+async def handle_extract_all_client_dna(task: dict) -> dict:
+    """
+    Batch extraction: extract DNA for ALL active zenya_clients that have brain chunks.
+
+    Payload (optional):
+        regenerate_prompt (bool): generate soul_prompt per client (default True)
+
+    Iterates zenya_clients where active=true, checks for brain_chunks,
+    and runs handle_extract_client_dna for each.
+    """
+    payload = task.get("payload", {})
+    regenerate = payload.get("regenerate_prompt", True)
+
+    # Fetch all active zenya_clients
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_id,business_name")
+            .eq("active", True)
+            .execute()
+        )
+        clients = result.data or []
+    except Exception as e:
+        return {"error": f"Falha ao buscar clientes: {e}"}
+
+    if not clients:
+        return {"message": "Nenhum cliente ativo encontrado em zenya_clients"}
+
+    results = []
+    success = 0
+    skipped = 0
+    errors = 0
+
+    for client in clients:
+        cid = client.get("client_id")
+        name = client.get("business_name", cid)
+
+        # Check if client has brain chunks before calling extraction
+        chunks = await _get_client_chunks(cid, limit=1)
+        if not chunks:
+            skipped += 1
+            results.append({"client_id": cid, "business_name": name, "status": "skipped", "reason": "no_chunks"})
+            continue
+
+        sub_task = {
+            "id": task.get("id"),
+            "payload": {
+                "client_id": cid,
+                "regenerate_prompt": regenerate,
+            },
+        }
+
+        try:
+            r = await handle_extract_client_dna(sub_task)
+            if "error" in r:
+                errors += 1
+                results.append({"client_id": cid, "business_name": name, "status": "error", "error": r["error"]})
+            else:
+                success += 1
+                results.append({
+                    "client_id": cid,
+                    "business_name": name,
+                    "status": "ok",
+                    "items_extracted": r.get("items_extracted", 0),
+                })
+        except Exception as e:
+            errors += 1
+            results.append({"client_id": cid, "business_name": name, "status": "error", "error": str(e)[:200]})
+
+    return {
+        "message": f"Batch DNA extraction: {success} ok, {skipped} skipped, {errors} errors de {len(clients)} clientes",
+        "total_clients": len(clients),
+        "success": success,
+        "skipped": skipped,
+        "errors": errors,
+        "details": results,
+    }
+
 
 async def handle_extract_client_dna(task: dict) -> dict:
     """

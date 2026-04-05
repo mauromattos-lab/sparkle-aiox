@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (14 total):
+Jobs (15 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
@@ -17,6 +17,7 @@ Jobs (14 total):
 - friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
 - brain_archival          : todo dia às 3h de Brasília (B3-05)
 - brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
+- client_dna_refresh      : toda segunda às 4h de Brasília (SYS-4, after curation)
 - client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
@@ -119,6 +120,12 @@ async def _run_brain_archival() -> None:
 
 async def _run_brain_curate() -> None:
     await _run_and_execute("brain_curate", priority=4)
+
+
+# ── SYS-4: Client DNA Refresh (weekly) ─────────────────────
+
+async def _run_client_dna_refresh() -> None:
+    await _run_and_execute("extract_all_client_dna", priority=4)
 
 
 # ── Monthly Client Reports ───────────────────────────────────
@@ -414,6 +421,14 @@ def start_scheduler() -> None:
         _run_content_weekly_batch,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=0, timezone=_TZ),
         id="content_weekly_batch",
+        replace_existing=True,
+    )
+
+    # SYS-4: client DNA refresh toda segunda às 4h de Brasília (off-peak, after curation)
+    _scheduler.add_job(
+        _run_client_dna_refresh,
+        trigger=CronTrigger(day_of_week="mon", hour=4, minute=0, timezone=_TZ),
+        id="client_dna_refresh",
         replace_existing=True,
     )
 
