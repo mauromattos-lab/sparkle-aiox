@@ -122,13 +122,14 @@ def _parse_json_response(raw: str) -> dict | None:
 
 
 async def _get_client_chunks(client_id: str, limit: int = 60) -> list[dict]:
-    """Fetch the most recent brain chunks for a client.
+    """Fetch content for DNA extraction from brain_chunks AND zenya_knowledge_base.
 
-    brain_chunks.client_id is UUID while zenya_clients.client_id is text slug.
-    We search by brain_owner (text, set to client_id slug for Zenya agents)
-    as the primary lookup, falling back to client_id UUID match.
+    Search order:
+    1. brain_chunks by brain_owner
+    2. brain_chunks by client_id (UUID)
+    3. zenya_knowledge_base (product catalog / KB entries)
     """
-    # Primary: search by brain_owner (text slug, matches zenya_clients.client_id)
+    # 1. brain_chunks by brain_owner
     result = await asyncio.to_thread(
         lambda: supabase.table("brain_chunks")
         .select("id,raw_content,source_type,source_title,chunk_metadata")
@@ -139,23 +140,53 @@ async def _get_client_chunks(client_id: str, limit: int = 60) -> list[dict]:
     )
     chunks = result.data or []
 
-    if chunks:
-        return chunks
+    # 2. brain_chunks by client_id UUID
+    if not chunks:
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id,raw_content,source_type,source_title,chunk_metadata")
+                .eq("client_id", client_id)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            chunks = result.data or []
+        except Exception:
+            pass
 
-    # Fallback: try client_id directly (works if caller passes a valid UUID)
-    try:
-        result = await asyncio.to_thread(
-            lambda: supabase.table("brain_chunks")
-            .select("id,raw_content,source_type,source_title,chunk_metadata")
-            .eq("client_id", client_id)
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        return result.data or []
-    except Exception:
-        # client_id is not a valid UUID — no fallback results
-        return []
+    # 3. zenya_knowledge_base — convert KB entries to chunk-like dicts
+    if not chunks:
+        try:
+            kb_result = await asyncio.to_thread(
+                lambda: supabase.table("zenya_knowledge_base")
+                .select("id,category,item_name,description,price,price_unit,additional_info")
+                .eq("client_id", client_id)
+                .eq("active", True)
+                .limit(limit)
+                .execute()
+            )
+            kb_rows = kb_result.data or []
+            for row in kb_rows:
+                parts = [f"[{row.get('category', '')}] {row.get('item_name', '')}"]
+                if row.get("description"):
+                    parts.append(row["description"])
+                if row.get("price"):
+                    unit = row.get("price_unit", "R$")
+                    parts.append(f"Preco: {unit} {row['price']}")
+                if row.get("additional_info"):
+                    parts.append(row["additional_info"])
+                chunks.append({
+                    "id": str(row["id"]),
+                    "raw_content": " | ".join(parts),
+                    "source_type": "knowledge_base",
+                    "source_title": row.get("item_name", ""),
+                    "chunk_metadata": {"category": row.get("category", "")},
+                })
+        except Exception:
+            pass
+
+    return chunks
 
 
 async def _get_next_version(client_id: str) -> int:
