@@ -16,6 +16,7 @@ Exempt paths (time-sensitive webhooks that must never be throttled):
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import time
 from collections import deque
 from typing import Deque
@@ -136,17 +137,33 @@ async def _cleanup_loop() -> None:  # pragma: no cover
 # Helper functions
 # ---------------------------------------------------------------------------
 
+TRUSTED_PROXIES = {
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+}
+
+
+def _is_trusted_proxy(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return any(ip in net for net in TRUSTED_PROXIES)
+    except ValueError:
+        return False
+
+
 def _get_client_ip(request: Request) -> str:
     """
     Resolve the real client IP.
-    Honour X-Forwarded-For (set by Nginx/Coolify proxy) when present.
+    Only trust X-Forwarded-For when the direct connection comes from a trusted proxy.
     """
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
+    client_ip = request.client.host if request.client else "unknown"
+    if _is_trusted_proxy(client_ip):
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+    return client_ip
 
 
 def _is_exempt(path: str) -> bool:

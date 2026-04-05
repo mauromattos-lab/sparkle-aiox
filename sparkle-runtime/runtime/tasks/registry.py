@@ -18,6 +18,7 @@ from runtime.tasks.handlers.daily_briefing import handle_daily_briefing
 from runtime.tasks.handlers.daily_decision_moment import handle_daily_decision_moment
 from runtime.tasks.handlers.echo import handle_echo
 from runtime.tasks.handlers.extract_dna import handle_extract_dna
+# NOTE: file names are swapped vs content — billing handler lives in upsell.py, upsell handler lives in no_contact.py
 from runtime.tasks.handlers.friday_initiative_upsell import handle_friday_initiative_billing
 from runtime.tasks.handlers.friday_initiative_risk import handle_friday_initiative_risk
 from runtime.tasks.handlers.friday_initiative_no_contact import handle_friday_initiative_upsell
@@ -34,7 +35,7 @@ from runtime.tasks.handlers.status_mrr import handle_status_mrr
 from runtime.tasks.handlers.status_report import handle_status_report
 from runtime.tasks.handlers.weekly_briefing import handle_weekly_briefing
 from runtime.tasks.handlers.workflow_step import handle_workflow_step
-from runtime.tasks.handlers.extract_client_dna import handle_extract_client_dna
+from runtime.tasks.handlers.extract_client_dna import handle_extract_client_dna, handle_extract_all_client_dna
 from runtime.tasks.handlers.observer_gap_analysis import handle_observer_gap_analysis
 from runtime.tasks.handlers.auto_implement_gap import handle_auto_implement_gap
 from runtime.tasks.handlers.extract_insights import handle_extract_insights
@@ -78,6 +79,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "weekly_briefing":          handle_weekly_briefing,
     "workflow_step":             handle_workflow_step,
     "extract_client_dna":       handle_extract_client_dna,
+    "extract_all_client_dna":   handle_extract_all_client_dna,
     "observer_gap_analysis":    handle_observer_gap_analysis,
     "auto_implement_gap":       handle_auto_implement_gap,
     "extract_insights":         handle_extract_insights,

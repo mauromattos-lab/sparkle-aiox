@@ -13,7 +13,9 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
+from runtime.config import settings
 from runtime.db import supabase
 from runtime.integrations import asaas as asaas_client
 
@@ -36,6 +38,17 @@ async def asaas_webhook(request: Request):
     - PAYMENT_CREATED: upserts payment record
     - PAYMENT_DELETED: marks payment as DELETED
     """
+    # Validate Asaas webhook token (fail-closed)
+    expected_token = settings.asaas_webhook_token
+    if not expected_token:
+        logger.error("[billing/webhook] ASAAS_WEBHOOK_TOKEN not configured — rejecting request")
+        return JSONResponse(status_code=401, content={"detail": "Webhook token not configured"})
+
+    provided_token = request.headers.get("asaas-access-token", "")
+    if provided_token != expected_token:
+        logger.warning("[billing/webhook] invalid asaas-access-token from %s", request.client.host if request.client else "unknown")
+        return JSONResponse(status_code=401, content={"detail": "Invalid webhook token"})
+
     try:
         body = await request.json()
     except Exception:
