@@ -710,3 +710,41 @@ async def generate_contract(client_id: str):
             status_code=500,
             detail=f"Falha ao gerar contrato: {e}",
         ) from e
+
+
+# ── POST /onboarding/{client_id}/qr-confirmed — ONB-1.5a ─────
+
+# -- POST /onboarding/{client_id}/qr-confirmed -- ONB-1.5a
+
+@router.post('/{client_id}/qr-confirmed')
+async def qr_confirmed(client_id: str):
+    from datetime import datetime, timezone
+    try:
+        row = await asyncio.to_thread(
+            lambda: supabase.table('onboarding_sessions')
+            .select('gates_passed, client_name')
+            .eq('client_id', client_id)
+            .order('created_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+        session = (row.data or [{}])[0]
+        gates = session.get('gates_passed') or {}
+        gates['zapi_connected'] = True
+        client_name = session.get('client_name', client_id)
+        await asyncio.to_thread(
+            lambda: supabase.table('onboarding_sessions')
+            .update({'gates_passed': gates, 'updated_at': datetime.now(timezone.utc).isoformat()})
+            .eq('client_id', client_id)
+            .execute()
+        )
+        try:
+            from runtime.friday.router import send_friday_message
+            await send_friday_message(
+                f'WhatsApp conectado para {client_name} -- avancando para testes internos.'
+            )
+        except Exception:
+            pass
+        return {'status': 'ok', 'zapi_connected': True, 'client_id': client_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'qr-confirmed falhou: {e}') from e
