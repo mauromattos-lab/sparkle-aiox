@@ -140,6 +140,15 @@ async def handle_chat(task: dict) -> dict:
     current_datetime = _get_current_datetime()
     system_prompt = _FRIDAY_SYSTEM_BASE + f"\nData e hora atual: {current_datetime} (horário de Brasília)\n"
 
+    # --- C2-B3: Inject mauro-personal Brain context ---
+    try:
+        from runtime.brain.namespace_context import fetch_namespace_context
+        brain_context = await fetch_namespace_context("mauro-personal", user_text)
+        if brain_context:
+            system_prompt = brain_context + "\n\n" + system_prompt
+    except Exception as e:
+        print(f"[chat] C2-B3 namespace context injection failed (non-fatal): {e}")
+
     # --- Histórico de conversa ---
     history = await _get_history(phone)
     history_text = ""

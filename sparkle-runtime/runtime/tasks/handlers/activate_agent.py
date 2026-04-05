@@ -432,6 +432,15 @@ async def _run_subagent(
     else:
         system = base_system
 
+    # C2-B3: Inject sparkle-ops operational context into agent system prompt
+    try:
+        from runtime.brain.namespace_context import fetch_namespace_context
+        ops_context = await fetch_namespace_context("sparkle-ops", user_prompt)
+        if ops_context:
+            system = ops_context + "\n\n" + system
+    except Exception as e:
+        print(f"[activate_agent] C2-B3 namespace context injection failed (non-fatal): {e}")
+
     messages: list[dict] = [{"role": "user", "content": user_prompt}]
     tools_used: list[str] = []
     total_cost = 0.0

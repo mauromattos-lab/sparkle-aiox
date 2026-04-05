@@ -239,11 +239,23 @@ async def handle_send_character_message(task: dict) -> dict:
                 print(f"[send_character_message] Loja Integrada query failed: {e}")
                 # Non-fatal: Zenya responde sem dados do pedido
 
+    # ── 2.5. C2-B3: Inject sparkle-lore context for character ──────────
+    lore_context = ""
+    try:
+        from runtime.brain.namespace_context import fetch_namespace_context
+        lore_context = await fetch_namespace_context("sparkle-lore", message)
+    except Exception as e:
+        print(f"[send_character_message] C2-B3 namespace context injection failed (non-fatal): {e}")
+
     # ── 3. Montar system prompt enriquecido ───────────────────────────
     now = datetime.now(_TZ_BRASILIA)
     date_str = now.strftime("%d/%m/%Y %H:%M")
 
-    system_prompt = soul_prompt or ""
+    system_prompt = ""
+    # C2-B3: Lore context from Brain appears BEFORE other context (AC-14)
+    if lore_context:
+        system_prompt += lore_context + "\n\n"
+    system_prompt += soul_prompt or ""
     if lore:
         system_prompt += f"\n\n--- Contexto adicional ---\n{lore}"
     if tool_context:
