@@ -75,6 +75,7 @@ async def _create_client(
     # Bug S0.2-4: testing_mode column now exists via migration — set to 'off' initially
     zenya_row = {
         "client_id": client_id,
+        "business_name": business_name,  # NOT NULL in schema
         "active": False,
         "testing_mode": "off",
     }

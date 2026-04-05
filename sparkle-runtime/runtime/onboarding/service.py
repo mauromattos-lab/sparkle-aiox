@@ -199,6 +199,8 @@ async def create_onboarding_pipeline(
     # 2. Create zenya_clients record (active=false, testing_mode='off' until configured)
     zenya_row = {
         "client_id": client_id,
+        "business_name": client_name,  # NOT NULL in schema
+        "business_type": business_type,
         "active": False,
         "testing_mode": "off",
     }
