@@ -55,6 +55,19 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 ---
 
+### [SEC-2] P1 Code Quality Fixes — Brownfield Audit
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect (spec) → @dev (3 batches) → @qa (7/7 PASS) → @devops (deploy) |
+| **Pipeline** | Processo 3 completo — AIOS pipeline enforced |
+| **Impacto** | 7 bugs P1: billing blocking/alert, embedding centralizado, brain RPC, CORS, ARQ crons, atomic dedup |
+| **Migrations** | `brain_namespace_stats()` RPC + `increment_confirmation_count()` RPC — aplicadas via MCP |
+| **Story** | `docs/stories/sprint-core/sec-2-p1-code-quality-fixes.md` |
+
+---
+
 ## Sprint SYSTEM — Fechar o Sistema (próximo)
 
 ### [SYS-1] Pipeline de Ingestão Mega Brain no Runtime
