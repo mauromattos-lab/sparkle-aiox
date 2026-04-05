@@ -52,7 +52,10 @@ async def _create_client(
     website_url: str,
     instagram_handle: str,
 ) -> str:
-    """Create or update client in `clients` table with status=draft. Returns client_id."""
+    """Create or update client in `clients` table with status=draft. Returns client_id.
+
+    Bug S0.2-3/4 fix: also creates zenya_clients record with testing_mode='off'.
+    """
     row = {
         "id": client_id,
         "name": business_name,
@@ -67,6 +70,21 @@ async def _create_client(
     await asyncio.to_thread(
         lambda: supabase.table("clients").upsert(row, on_conflict="id").execute()
     )
+
+    # Bug S0.2-3: create zenya_clients record (was missing in original handler)
+    # Bug S0.2-4: testing_mode column now exists via migration — set to 'off' initially
+    zenya_row = {
+        "client_id": client_id,
+        "active": False,
+        "testing_mode": "off",
+    }
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients").upsert(zenya_row, on_conflict="client_id").execute()
+        )
+    except Exception as e:
+        print(f"[onboarding] zenya_clients upsert failed (non-fatal): {e}")
+
     return client_id
 
 
@@ -87,7 +105,7 @@ async def _ingest_website(client_id: str, website_url: str) -> dict:
     req = IngestUrlRequest(
         url=website_url,
         title=f"Website — onboarding",
-        source_agent="onboarding",
+        source_agent="zenya",  # Bug S0.2-1 fix: "zenya" + client_id -> brain_owner=client_id
         client_id=client_id,
         persona="zenya",
     )
@@ -276,7 +294,7 @@ async def handle_onboarding(task: dict) -> dict:
     if chunks_inserted > 0:
         try:
             dna_result = await _extract_dna(client_id)
-            items = dna_result.get("total_items", 0)
+            items = dna_result.get("items_extracted", dna_result.get("total_items", 0))
             _log_step(steps, "extract_dna", "ok", f"{items} itens de DNA extraidos")
         except Exception as e:
             _log_step(steps, "extract_dna", "warning", f"Falha (nao-bloqueante): {str(e)[:200]}")

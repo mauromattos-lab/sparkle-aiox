@@ -56,6 +56,7 @@ _CRONS = [
     {"name": "brain_curate_18h",      "schedule": "daily 18h UTC"},
     {"name": "client_dna_refresh",    "schedule": "monday 4h Brasilia"},
     {"name": "client_reports_monthly","schedule": "day 1 of month 10h UTC"},
+    {"name": "onboarding_check_gates","schedule": "every 1h (ONB-1)"},
 ]
 
 _VERSION = "sprint9"

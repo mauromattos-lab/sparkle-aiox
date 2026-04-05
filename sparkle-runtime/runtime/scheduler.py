@@ -2,23 +2,24 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (17 total):
-- health_check            : a cada 15 minutos
-- daily_briefing          : todo dia às 8h de Brasília
-- cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
-- daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
-- weekly_briefing         : todo domingo às 8h de Brasília
-- observer_gap_analysis   : toda segunda às 8h de Brasília (SYS-5, substitui gap_report)
-- billing_risk            : todo dia às 8h45 de Brasília (OPS-4)
-- risk_alert              : todo dia às 9h30 de Brasília (OPS-4)
-- upsell_opportunity      : toda segunda às 7h30 de Brasília (OPS-4)
-- brain_weekly_digest     : todo domingo às 23h de Brasília (SYS-1.6)
-- content_weekly_batch    : toda segunda às 7h de Brasília (F2-P1)
-- friday_proactive_check  : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
-- brain_archival          : todo dia às 3h de Brasília (B3-05)
-- brain_curate            : 3x/dia às 2h, 10h, 18h UTC (S8-P1 auto-curation, Gap-1)
-- client_dna_refresh      : toda segunda às 4h de Brasília (SYS-4, after curation)
-- client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
+Jobs (18 total):
+- health_check              : a cada 15 minutos
+- daily_briefing            : todo dia às 8h de Brasília
+- cockpit_summary           : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
+- daily_decision_moment     : todo dia às 9h de Brasília (S9-P5)
+- weekly_briefing           : todo domingo às 8h de Brasília
+- observer_gap_analysis     : toda segunda às 8h de Brasília (SYS-5, substitui gap_report)
+- billing_risk              : todo dia às 8h45 de Brasília (OPS-4)
+- risk_alert                : todo dia às 9h30 de Brasília (OPS-4)
+- upsell_opportunity        : toda segunda às 7h30 de Brasília (OPS-4)
+- brain_weekly_digest       : todo domingo às 23h de Brasília (SYS-1.6)
+- content_weekly_batch      : toda segunda às 7h de Brasília (F2-P1)
+- friday_proactive_check    : a cada 30 min das 7h às 21h30 de Brasília (B3-02)
+- brain_archival            : todo dia às 3h de Brasília (B3-05)
+- brain_curate              : 3x/dia às 2h, 10h, 18h UTC (S8-P1 auto-curation, Gap-1)
+- client_dna_refresh        : toda segunda às 4h de Brasília (SYS-4, after curation)
+- client_reports_monthly    : dia 1 de cada mês às 10h UTC (7h BRT)
+- onboarding_check_gates    : a cada hora (ONB-1: verifica gates de onboarding em progresso)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -328,6 +329,29 @@ async def _run_content_weekly_batch() -> None:
         print(f"[scheduler] content_weekly_batch: erro — {e}")
 
 
+# ── ONB-1: Onboarding Gate Check (hourly) ──────────────────
+
+@log_cron("onboarding_check_gates")
+async def _run_onboarding_check_gates() -> None:
+    """
+    ONB-1 AC-4.1/4.2/4.3/4.4: Verifica gates de onboarding em progresso a cada hora.
+    Avanca fases automaticamente quando gates sao satisfeitos.
+    Alerta Friday se fase > 72h sem progresso.
+    """
+    import asyncio
+    from runtime.onboarding.service import run_onboarding_gate_check
+
+    try:
+        result = await run_onboarding_gate_check()
+        print(
+            f"[scheduler] onboarding_check_gates: checked={result.get('checked', 0)}, "
+            f"advanced={result.get('advanced', 0)}, alerts={result.get('alerts_sent', 0)}, "
+            f"stale={result.get('stale_marked', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] onboarding_check_gates: erro — {e}")
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -461,6 +485,14 @@ def start_scheduler() -> None:
         _run_client_dna_refresh,
         trigger=CronTrigger(day_of_week="mon", hour=4, minute=0, timezone=_TZ),
         id="client_dna_refresh",
+        replace_existing=True,
+    )
+
+    # ONB-1: onboarding gate check a cada hora
+    _scheduler.add_job(
+        _run_onboarding_check_gates,
+        trigger=IntervalTrigger(hours=1),
+        id="onboarding_check_gates",
         replace_existing=True,
     )
 
