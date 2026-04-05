@@ -43,6 +43,7 @@ from runtime.tasks.handlers.brain_curate import handle_brain_curate
 from runtime.tasks.handlers.client_report import handle_client_report, handle_client_reports_bulk
 from runtime.tasks.handlers.cockpit_summary import handle_cockpit_summary, handle_cockpit_query
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
+from runtime.tasks.handlers.billing import handle_create_subscription, handle_billing_alert
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -85,6 +86,8 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "cockpit_summary":          handle_cockpit_summary,
     "cockpit_query":            handle_cockpit_query,
     "cross_source_synthesis":   handle_cross_source_synthesis,
+    "create_subscription":      handle_create_subscription,
+    "billing_alert":            handle_billing_alert,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Auth
     runtime_api_key: str | None = os.environ.get("RUNTIME_API_KEY") or None
 
+    # Asaas billing
+    asaas_api_key: str = os.environ.get("ASAAS_API_KEY", "")
+    asaas_sandbox: bool = os.getenv("ASAAS_SANDBOX", "true").lower() in ("true", "1", "yes")
+
     # Brain — S8-P3 Embeddings
     # BRAIN_EMBEDDINGS_ENABLED=false por padrão. Orion habilita após validar custo e comportamento.
     brain_embeddings_enabled: bool = os.getenv("BRAIN_EMBEDDINGS_ENABLED", "false").lower() in ("true", "1", "yes")
