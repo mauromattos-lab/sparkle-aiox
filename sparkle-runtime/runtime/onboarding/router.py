@@ -199,8 +199,33 @@ async def get_onboarding_status(client_id: str):
         except json.JSONDecodeError:
             steps = []
 
+    # Derivar status dinamicamente a partir dos workflows (BUG-1 fix)
+    derived_status = "unknown"
+    if workflows:
+        phase_statuses = {w["phase"]: w["status"] for w in workflows}
+        if any(s == "failed" for s in phase_statuses.values()):
+            derived_status = "failed"
+        elif phase_statuses.get("go_live") == "completed":
+            derived_status = "live"
+        elif any(s == "completed" for s in phase_statuses.values()) and all(
+            s in ("completed", "pending") for s in phase_statuses.values()
+        ) and all(s == "completed" for s in phase_statuses.values()):
+            derived_status = "completed"
+        else:
+            in_progress = next(
+                (w["phase"] for w in workflows if w["status"] == "in_progress"), None
+            )
+            if in_progress:
+                derived_status = in_progress
+            elif all(s == "pending" for s in phase_statuses.values()):
+                derived_status = "pending"
+            elif all(s == "completed" for s in phase_statuses.values()):
+                derived_status = "completed"
+    elif data:
+        derived_status = data.get("status", "unknown") or "unknown"
+
     return {
-        "status": data.get("status", "unknown") if data else "unknown",
+        "status": derived_status,
         "phase": data.get("phase", "contract") if data else "contract",
         "client_id": client_id,
         "character_slug": data.get("character_slug", "") if data else "",

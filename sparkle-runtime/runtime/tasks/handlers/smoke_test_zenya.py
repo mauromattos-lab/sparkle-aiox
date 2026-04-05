@@ -557,12 +557,13 @@ async def handle_smoke_test_zenya(task: dict) -> dict:
             except Exception as e:
                 print(f"[smoke_test] WARN: falha ao enviar alerta critico: {e}")
 
-        # Marcar fase test_internal como failed
+        # BUG-2 fix: manter fase test_internal como "in_progress" para permitir re-execucao.
+        # Salvar erro em error_log sem alterar status (gate nao passa pois
+        # internal_tests_passed nao e setado como true).
         try:
             await asyncio.to_thread(
                 lambda: supabase.table("onboarding_workflows")
                 .update({
-                    "status": "failed",
                     "error_log": {
                         "error": "smoke_test_failed",
                         "pass_rate": round(pass_rate, 3),
@@ -577,7 +578,7 @@ async def handle_smoke_test_zenya(task: dict) -> dict:
                 .execute()
             )
         except Exception as e:
-            print(f"[smoke_test] WARN: falha ao marcar fase como failed: {e}")
+            print(f"[smoke_test] WARN: falha ao salvar error_log da fase: {e}")
 
     # ── 9. Retornar relatorio ──────────────────────────────────
 
