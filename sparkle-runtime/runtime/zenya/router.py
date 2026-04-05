@@ -287,7 +287,14 @@ async def extract_client_dna(client_id: str):
             }).execute()
         )
         task = result.data[0] if result.data else {}
-        return {"message": "Extracao de DNA agendada", "task_id": task.get("id")}
+        # Execute inline (same pattern as scheduler._run_and_execute)
+        if task:
+            try:
+                from runtime.tasks.worker import execute_task
+                await execute_task(task)
+            except Exception as exec_err:
+                logger.warning("[zenya/dna/extract] inline execution failed: %s", exec_err)
+        return {"message": "Extracao de DNA concluida", "task_id": task.get("id")}
     except Exception as e:
         return {"error": str(e)}
 
