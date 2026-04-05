@@ -1,13 +1,17 @@
 """
-Onboarding router — ONB-1 + ONB-2.
+Onboarding router — ONB-1 + ONB-2 + ONB-5 + ONB-1.7 + Story 1.8.
 
 POST /onboarding/start              — inicia pipeline de onboarding (AC-2.x)
 GET  /onboarding/status/{client_id} — consulta progresso
-POST /onboarding/approve/{client_id} — aprovacao humana, ativa Zenya
+POST /onboarding/approve/{client_id} — aprovacao humana, ativa Zenya (legado — backward compat)
 POST /onboarding/gate/{client_id}/{phase} — gate check manual para uma fase
 POST /onboarding/intake/{client_id}       — dispara intake automatico (ONB-2)
 POST /onboarding/intake/answer            — recebe resposta do formulario WhatsApp (ONB-2)
 POST /onboarding/intake/reminders         — cron: verifica timeouts de formularios (ONB-2)
+POST /onboarding/qa/{client_id}           — dispara smoke test (ONB-5)
+POST /onboarding/{client_id}/approve-client-test  — ONB-1.7: Mauro aprova inicio do teste com cliente
+POST /onboarding/{client_id}/client-feedback      — ONB-1.7: registra feedback do cliente
+POST /onboarding/{client_id}/go-live              — Story 1.8: Gate 5 — go-live com checklist pre-go-live
 """
 from __future__ import annotations
 
@@ -15,9 +19,10 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
+from runtime.config import settings
 from runtime.db import supabase
 from runtime.onboarding.handler import handle_onboarding
 
@@ -54,6 +59,12 @@ class IntakeAnswerRequest(BaseModel):
     """Payload para receber resposta do formulário WhatsApp."""
     client_id: str
     answer_text: str
+
+
+class SmokeTestRequest(BaseModel):
+    """Payload opcional para POST /onboarding/qa/{client_id}"""
+    business_type: Optional[str] = None
+    retry_count: Optional[int] = 0
 
 
 # ── POST /onboarding/start ────────────────────────────────────
@@ -435,4 +446,207 @@ async def check_intake_reminders():
         raise HTTPException(
             status_code=500,
             detail=f"Falha ao verificar timeouts: {e}",
+        ) from e
+
+
+# ── POST /onboarding/{client_id}/approve-client-test ─────────
+
+class ApproveClientTestRequest(BaseModel):
+    """ONB-1.7 AC-1.2: payload opcional (sem campos obrigatorios)."""
+    pass
+
+
+@router.post("/{client_id}/approve-client-test")
+async def approve_client_test(client_id: str, body: Optional[ApproveClientTestRequest] = None):
+    """
+    ONB-1.7 AC-1.2/1.3/1.4/1.5: Mauro aprova inicio do teste com cliente.
+
+    - Ativa client_testing_active=true em zenya_clients
+    - Salva client_test_started_at em gate_details da fase test_client
+    - Envia WhatsApp para o cliente avisando que pode testar
+    - Envia alerta Friday confirmando inicio do teste
+    - Insere evento client_test_started em onboarding_events
+    """
+    from runtime.onboarding.service import approve_client_test as svc_approve_client_test
+
+    try:
+        result = await svc_approve_client_test(client_id)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao aprovar teste com cliente: {e}",
+        ) from e
+
+
+# ── POST /onboarding/{client_id}/client-feedback ─────────────
+
+class ClientFeedbackRequest(BaseModel):
+    """ONB-1.7 AC-3.2/3.3/3.4: payload do feedback do cliente."""
+    approved: bool
+    feedback_text: Optional[str] = ""
+
+
+@router.post("/{client_id}/client-feedback")
+async def client_feedback(client_id: str, body: ClientFeedbackRequest):
+    """
+    ONB-1.7 AC-3.x / AC-4.x: Registra feedback do cliente apos periodo de teste.
+
+    Payload: { "approved": bool, "feedback_text": str }
+
+    - Se approved=true: gate client_approved=true → avanca para go_live
+    - Se approved=false e loops < 3: volta para config, re-executa ONB-3
+    - Se approved=false e loops >= 3: alerta Friday para intervencao manual
+    """
+    from runtime.onboarding.service import register_client_feedback
+
+    if body.approved is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Campo 'approved' e obrigatorio (true/false)",
+        )
+
+    try:
+        result = await register_client_feedback(
+            client_id=client_id,
+            approved=body.approved,
+            feedback_text=body.feedback_text or "",
+        )
+        if result.get("status") == "error":
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao registrar feedback do cliente: {e}",
+        ) from e
+
+
+# ── POST /onboarding/{client_id}/go-live ─────────────────────
+
+@router.post("/{client_id}/go-live")
+async def go_live(
+    client_id: str,
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Story 1.8 — Gate 5: Confirmacao de go-live por Mauro.
+
+    AC-1.3: Exige header Authorization: Bearer <RUNTIME_API_KEY>
+    AC-4.1/4.2/4.3: Executa checklist pre-go-live antes de ativar
+    AC-2.1/2.2: Transicao atomica testing -> live com rollback best-effort
+    AC-3.x: Notificacoes pos-go-live (Friday, cliente, onboarding_events)
+
+    Retorna: { status, checks, client_id, go_live_at } ou HTTP 409 se checklist falhar.
+    """
+    from runtime.onboarding.service import pre_go_live_checklist, execute_go_live
+
+    # AC-1.3: Autenticacao via Authorization: Bearer token
+    # (A rota ja esta protegida pelo APIKeyMiddleware via X-API-Key,
+    #  mas adicionamos uma segunda camada com Bearer para confirmar intencao explicita)
+    runtime_api_key = settings.runtime_api_key
+    if runtime_api_key:
+        bearer_token = None
+        if authorization and authorization.startswith("Bearer "):
+            bearer_token = authorization[len("Bearer "):]
+        if bearer_token != runtime_api_key:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Autenticacao Bearer invalida ou ausente. "
+                    "Envie o header: Authorization: Bearer <RUNTIME_API_KEY>"
+                ),
+            )
+
+    # AC-4.1/4.2/4.3: Executa checklist pre-go-live
+    try:
+        checklist = await pre_go_live_checklist(client_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao executar checklist pre-go-live: {e}",
+        ) from e
+
+    if not checklist.get("can_go_live"):
+        blocking_issues = checklist.get("blocking_issues", [])
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Go-live bloqueado — checklist nao passou",
+                "blocking_issues": blocking_issues,
+                "checks": checklist.get("checks"),
+            },
+        )
+
+    # AC-2.1/2.2: Executa transicao atomica
+    try:
+        result = await execute_go_live(client_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao executar go-live: {e}",
+        ) from e
+
+    if result.get("status") == "error":
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": result.get("error", "Erro desconhecido no go-live"),
+                "rollback": result.get("rollback"),
+            },
+        )
+
+    # Inclui resultado do checklist na resposta (AC-4.3)
+    return {
+        **result,
+        "checks": checklist.get("checks"),
+    }
+
+
+# ── POST /onboarding/qa/{client_id} ──────────────────────────
+
+@router.post("/qa/{client_id}")
+async def run_smoke_test(client_id: str, body: Optional[SmokeTestRequest] = None):
+    """
+    ONB-5: Dispara smoke test completo da Zenya.
+
+    Executa:
+    1. Checklist de qualidade do soul_prompt (AC-2.x)
+    2. Checklist de qualidade da KB (AC-3.x)
+    3. 10 perguntas de teste (7 genericas + 3 da vertical)
+    4. Avaliacao automatica por criterios objetivos
+
+    Se pass_rate >= 80% e checklists OK:
+      - testing_mode -> 'client_testing'
+      - gate test_internal passa automaticamente
+      - pipeline avanca para fase test_client
+
+    Se fail:
+      - Friday e alertado com detalhes
+      - retry_count incrementado (max 3 tentativas)
+    """
+    from runtime.tasks.handlers.smoke_test_zenya import handle_smoke_test_zenya
+
+    task = {
+        "id": f"qa-{client_id}",
+        "client_id": client_id,
+        "payload": {
+            "client_id": client_id,
+            "business_type": body.business_type if body else None,
+            "retry_count": body.retry_count if body else 0,
+        },
+    }
+    try:
+        result = await handle_smoke_test_zenya(task)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao executar smoke test: {e}",
         ) from e

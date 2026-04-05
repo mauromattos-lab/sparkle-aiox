@@ -29,15 +29,15 @@ python3.11 --version
 # ---- 3. Clonar repositório ----------------------------------
 echo ""
 echo "[3/6] Clonando repositório..."
-mkdir -p /opt/sparkle-runtime
-cd /opt/sparkle-runtime
+mkdir -p /opt/sparkle-aiox
+cd /opt/sparkle-aiox
 
 if [ -d ".git" ]; then
   echo "  Repositório já existe — fazendo git pull..."
   git pull
 else
   git clone https://github.com/mauromattos-lab/sparkle-aiox.git /tmp/sparkle-aiox
-  cp -r /tmp/sparkle-aiox/sparkle-runtime/. /opt/sparkle-runtime/
+  cp -r /tmp/sparkle-aiox/sparkle-runtime/. /opt/sparkle-aiox/
   rm -rf /tmp/sparkle-aiox
 fi
 
@@ -62,9 +62,9 @@ After=network.target redis-server.service
 
 [Service]
 User=root
-WorkingDirectory=/opt/sparkle-runtime
-EnvironmentFile=/opt/sparkle-runtime/.env
-ExecStart=/opt/sparkle-runtime/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2
+WorkingDirectory=/opt/sparkle-aiox
+EnvironmentFile=/opt/sparkle-aiox/.env
+ExecStart=/opt/sparkle-aiox/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -81,9 +81,9 @@ After=network.target redis-server.service sparkle-runtime.service
 
 [Service]
 User=root
-WorkingDirectory=/opt/sparkle-runtime
-EnvironmentFile=/opt/sparkle-runtime/.env
-ExecStart=/opt/sparkle-runtime/.venv/bin/arq runtime.tasks.worker.WorkerSettings
+WorkingDirectory=/opt/sparkle-aiox
+EnvironmentFile=/opt/sparkle-aiox/.env
+ExecStart=/opt/sparkle-aiox/.venv/bin/arq runtime.tasks.worker.WorkerSettings
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -131,9 +131,9 @@ echo " Setup concluído!"
 echo "============================================"
 echo ""
 echo "PRÓXIMO PASSO OBRIGATÓRIO:"
-echo "  Crie o arquivo /opt/sparkle-runtime/.env com as credenciais:"
+echo "  Crie o arquivo /opt/sparkle-aiox/.env com as credenciais:"
 echo ""
-echo "  nano /opt/sparkle-runtime/.env"
+echo "  nano /opt/sparkle-aiox/.env"
 echo ""
 echo "Conteúdo do .env (preencha os valores):"
 cat << 'ENVEOF'

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from runtime.db import supabase
 from runtime.tasks.handlers.extract_client_dna import (
     handle_extract_client_dna,
+    handle_extract_all_client_dna,
     DNA_CATEGORIES,
 )
 
@@ -132,6 +133,30 @@ async def extract_client_dna(client_id: str, body: Optional[ExtractDNARequest] =
         "status": "ok",
         **result,
     }
+
+
+# ── POST: batch extraction for all clients ──────────────────
+
+@router.post("/extract-dna-all")
+async def extract_all_dna(regenerate_prompt: bool = True):
+    """
+    Dispara extracao de DNA para TODOS os clientes ativos com chunks no Brain.
+
+    Itera zenya_clients ativos, verifica se ha chunks, e extrai DNA de cada um.
+    Util para refresh periodico ou primeira populacao.
+    """
+    task = {
+        "id": "api-extract-dna-all",
+        "task_type": "extract_all_client_dna",
+        "payload": {"regenerate_prompt": regenerate_prompt},
+    }
+
+    result = await handle_extract_all_client_dna(task)
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    return {"status": "ok", **result}
 
 
 # ── GET: list available categories ────────────────────────────

@@ -240,7 +240,47 @@ async def onboard_client(req: OnboardRequest):
     Trigger autonomous client onboarding (Sprint 8).
     Scrapes site, generates KB + system prompt, clones Zenya workflows.
     Long-running (~30-60s): polls until done, returns full result.
+
+    Campos obrigatórios validados antes de criar qualquer task:
+      - business_name: não pode ser vazio
+      - site_url: deve começar com http:// ou https://
     """
+    # Validate inputs before creating any task or workflow instance
+    if not req.business_name or not req.business_name.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_input",
+                "field": "business_name",
+                "message": "business_name não pode ser vazio",
+            },
+        )
+
+    if not req.client_id or not str(req.client_id).strip():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_input",
+                "field": "client_id",
+                "message": "client_id é obrigatório para evitar dados órfãos no Brain/KB",
+            },
+        )
+
+    site_url = req.site_url or ""
+    if not (site_url.startswith("http://") or site_url.startswith("https://")):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_input",
+                "field": "site_url",
+                "message": (
+                    "site_url deve começar com 'http://' ou 'https://' "
+                    "(ex: https://seusite.com.br). "
+                    f"Valor recebido: {site_url!r}"
+                ),
+            },
+        )
+
     try:
         from runtime.tasks.worker import execute_task
         task = await asyncio.to_thread(

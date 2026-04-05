@@ -40,6 +40,36 @@ class WorkflowStartRequest(BaseModel):
     context: dict = {}
 
 
+# ── Required context fields per template ───────────────────────────────
+# Maps template_slug -> list of (field_name, validation_fn, error_message)
+# Validation is run before creating the workflow instance.
+
+def _validate_url(value: str) -> bool:
+    """Returns True if value starts with http:// or https://."""
+    return isinstance(value, str) and (value.startswith("http://") or value.startswith("https://"))
+
+
+_TEMPLATE_REQUIRED_CONTEXT: dict[str, list[tuple]] = {
+    "onboarding_zenya": [
+        (
+            "site_url",
+            _validate_url,
+            "site_url deve começar com 'http://' ou 'https://' (ex: https://seusite.com.br)",
+        ),
+        (
+            "business_name",
+            lambda v: isinstance(v, str) and len(v.strip()) > 0,
+            "business_name não pode ser vazio",
+        ),
+        (
+            "client_id",
+            lambda v: isinstance(v, str) and len(v.strip()) > 0,
+            "client_id não pode ser vazio",
+        ),
+    ],
+}
+
+
 # ── POST /workflow/start ────────────────────────────────────────────
 
 @router.post("/start")
@@ -72,14 +102,35 @@ async def start_workflow(req: WorkflowStartRequest):
             detail=f"Template '{req.template_slug}' nao tem steps definidos",
         )
 
-    # 2. Create workflow instance
+    # 2. Validate required context fields for this template
+    required_fields = _TEMPLATE_REQUIRED_CONTEXT.get(req.template_slug, [])
+    for field_name, validator, error_msg in required_fields:
+        value = req.context.get(field_name, "")
+        if not validator(value):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "invalid_context",
+                    "field": field_name,
+                    "message": error_msg,
+                    "template": req.template_slug,
+                },
+            )
+
+    # 3. Create workflow instance
+    # Merge req.client_id into context so {{client_id}} resolves in payload_template.
+    # If caller already put client_id in context, preserve it; otherwise inject from req.client_id.
+    merged_context = dict(req.context)
+    if req.client_id and not merged_context.get("client_id"):
+        merged_context["client_id"] = req.client_id
+
     insert_data = {
         "template_id": template["id"],
         "template_slug": req.template_slug,
         "name": req.name,
         "current_step": 0,
         "status": "running",
-        "context": req.context,
+        "context": merged_context,
         "started_by": "api",
     }
     # Only include client_id if a valid UUID was provided (column is nullable)
@@ -98,7 +149,7 @@ async def start_workflow(req: WorkflowStartRequest):
     instance = instance_result.data[0]
     instance_id = instance["id"]
 
-    # 3. Create first task (workflow_step with step_index=0)
+    # 4. Create first task (workflow_step with step_index=0)
     task_insert = {
         "agent_id": "system",
         "task_type": "workflow_step",

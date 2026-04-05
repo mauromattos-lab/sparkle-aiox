@@ -25,11 +25,74 @@ _PRICING: dict[str, dict[str, float]] = {
 }
 
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_BILLING_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     pricing = _PRICING.get(model, {"input": 3.00, "output": 15.00})
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
+
+
+async def _call_claude_inner(
+    prompt: str,
+    *,
+    system: str = "",
+    model: str = _DEFAULT_MODEL,
+    client_id: str = "sparkle-internal",
+    task_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    purpose: Optional[str] = None,
+    max_tokens: int = 1024,
+) -> tuple[str, bool]:
+    """
+    Internal implementation that returns (text, fallback_used).
+
+    If settings.anthropic_billing_fallback is True and the primary model fails
+    with a credit balance error, the call is retried automatically with
+    _BILLING_FALLBACK_MODEL. If the fallback also fails, the error is re-raised.
+    """
+    messages = [{"role": "user", "content": prompt}]
+    kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
+    if system:
+        kwargs["system"] = system
+
+    fallback_used = False
+
+    try:
+        response = await _client.messages.create(**kwargs)
+    except anthropic.BadRequestError as e:
+        billing_error = "credit balance" in str(e).lower()
+        can_fallback = (
+            billing_error
+            and settings.anthropic_billing_fallback
+            and model != _BILLING_FALLBACK_MODEL
+        )
+        if can_fallback:
+            print(f"[llm] billing error on {model}, falling back to {_BILLING_FALLBACK_MODEL}: {e}")
+            kwargs["model"] = _BILLING_FALLBACK_MODEL
+            response = await _client.messages.create(**kwargs)
+            fallback_used = True
+            model = _BILLING_FALLBACK_MODEL
+        else:
+            raise
+
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    cost = _estimate_cost(model, input_tokens, output_tokens)
+
+    # Fire-and-forget cost log — never block the main flow
+    asyncio.create_task(_log_cost_async(
+        client_id=client_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
+        purpose=purpose,
+    ))
+
+    return response.content[0].text, fallback_used
 
 
 async def call_claude(
@@ -48,31 +111,51 @@ async def call_claude(
 
     Returns the text content of the first message block.
     Raises on API error (let the caller handle / mark task as failed).
+
+    Automatically falls back to _BILLING_FALLBACK_MODEL on credit balance errors
+    when settings.anthropic_billing_fallback is True (default).
+    Use call_claude_with_meta() when the caller needs to know if fallback occurred.
     """
-    messages = [{"role": "user", "content": prompt}]
-    kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
-    if system:
-        kwargs["system"] = system
-
-    response = await _client.messages.create(**kwargs)
-
-    input_tokens = response.usage.input_tokens
-    output_tokens = response.usage.output_tokens
-    cost = _estimate_cost(model, input_tokens, output_tokens)
-
-    # Fire-and-forget cost log — never block the main flow
-    asyncio.create_task(_log_cost_async(
+    text, _ = await _call_claude_inner(
+        prompt,
+        system=system,
+        model=model,
         client_id=client_id,
         task_id=task_id,
         agent_id=agent_id,
-        model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost,
         purpose=purpose,
-    ))
+        max_tokens=max_tokens,
+    )
+    return text
 
-    return response.content[0].text
+
+async def call_claude_with_meta(
+    prompt: str,
+    *,
+    system: str = "",
+    model: str = _DEFAULT_MODEL,
+    client_id: str = "sparkle-internal",
+    task_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    purpose: Optional[str] = None,
+    max_tokens: int = 1024,
+) -> tuple[str, bool]:
+    """
+    Same as call_claude but returns (text, fallback_used).
+
+    fallback_used is True when a billing error on the primary model triggered
+    an automatic retry with _BILLING_FALLBACK_MODEL.
+    """
+    return await _call_claude_inner(
+        prompt,
+        system=system,
+        model=model,
+        client_id=client_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        purpose=purpose,
+        max_tokens=max_tokens,
+    )
 
 
 async def _log_cost_async(

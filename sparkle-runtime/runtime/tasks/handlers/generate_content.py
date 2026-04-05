@@ -34,7 +34,7 @@ import httpx
 
 from runtime.config import settings
 from runtime.db import supabase
-from runtime.utils.llm import call_claude
+from runtime.utils.llm import call_claude_with_meta
 from runtime.characters.juno_soul import SOUL_PROMPT as _JUNO_SOUL_PROMPT
 
 
@@ -190,8 +190,8 @@ async def handle_generate_content(task: dict) -> dict:
         user_prompt += f"Contexto do Brain (use para embasar o conteúdo):\n{brain_context_text}\n\n"
     user_prompt += f"Formato solicitado:\n{format_instruction}"
 
-    # 3. Gerar conteúdo via Sonnet
-    raw_content = await call_claude(
+    # 3. Gerar conteúdo via Sonnet (com fallback automático para Haiku em billing error)
+    raw_content, billing_fallback_used = await call_claude_with_meta(
         prompt=user_prompt,
         system=system,
         model="claude-sonnet-4-6",
@@ -232,6 +232,8 @@ async def handle_generate_content(task: dict) -> dict:
     preview = clean_content[:200] + ("..." if len(clean_content) > 200 else "")
     tags_info = f"\n🏷️ {' '.join('#' + h for h in hashtags[:5])}" if hashtags else ""
 
+    quality_tier = "degraded" if billing_fallback_used else "full"
+
     return {
         "message": (
             f"Conteudo gerado ({fmt} • {platform} • {persona})\n\n"
@@ -247,4 +249,5 @@ async def handle_generate_content(task: dict) -> dict:
         "hashtags": hashtags,
         "content": clean_content,
         "status": "draft",
+        "quality_tier": quality_tier,
     }

@@ -20,6 +20,7 @@ Jobs (18 total):
 - client_dna_refresh        : toda segunda às 4h de Brasília (SYS-4, after curation)
 - client_reports_monthly    : dia 1 de cada mês às 10h UTC (7h BRT)
 - onboarding_check_gates    : a cada hora (ONB-1: verifica gates de onboarding em progresso)
+- post_golive_health_check  : 2x/dia 08h e 20h BRT (ONB-1.9: health check pos-go-live)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -352,6 +353,18 @@ async def _run_onboarding_check_gates() -> None:
         print(f"[scheduler] onboarding_check_gates: erro — {e}")
 
 
+# ── ONB-1.9: Post Go-Live Health Check (2x/dia) ─────────────
+
+@log_cron("post_golive_health_check")
+async def _run_post_golive_health_check() -> None:
+    """
+    ONB-1.9: Health check pos-go-live — roda 2x por dia (08h e 20h BRT).
+    Verifica volume, escalacao e sentiment de clientes em post_go_live.
+    Gera relatorio de 1a semana e marca onboarding como completed apos 30 dias.
+    """
+    await _run_and_execute("post_golive_health", priority=5)
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -493,6 +506,20 @@ def start_scheduler() -> None:
         _run_onboarding_check_gates,
         trigger=IntervalTrigger(hours=1),
         id="onboarding_check_gates",
+        replace_existing=True,
+    )
+
+    # ONB-1.9: post-go-live health check 2x/dia (08h e 20h BRT)
+    _scheduler.add_job(
+        _run_post_golive_health_check,
+        trigger=CronTrigger(hour=8, minute=0, timezone=_TZ),
+        id="post_golive_health_check_08h",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _run_post_golive_health_check,
+        trigger=CronTrigger(hour=20, minute=0, timezone=_TZ),
+        id="post_golive_health_check_20h",
         replace_existing=True,
     )
 

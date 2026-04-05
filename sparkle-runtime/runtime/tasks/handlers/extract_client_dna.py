@@ -240,7 +240,7 @@ async def _extract_dna_from_chunks(
         task_id=task_id,
         agent_id="system",
         purpose="extract_client_dna",
-        max_tokens=4096,
+        max_tokens=8192,
     )
 
     return _parse_json_response(raw)

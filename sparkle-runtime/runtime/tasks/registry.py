@@ -49,6 +49,9 @@ from runtime.tasks.handlers.gate_check import handle_gate_check
 from runtime.tasks.handlers.intake_form_whatsapp import handle_intake_form_whatsapp
 from runtime.tasks.handlers.scrape_instagram import handle_scrape_instagram
 from runtime.tasks.handlers.intake_orchestrator import handle_intake_orchestrator
+from runtime.tasks.handlers.onboard_client_v2 import handle_onboard_client_v2
+from runtime.tasks.handlers.smoke_test_zenya import handle_smoke_test_zenya
+from runtime.tasks.handlers.post_golive_health import handle_post_golive_health
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -99,6 +102,12 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "intake_form_whatsapp":     handle_intake_form_whatsapp,
     "scrape_instagram":         handle_scrape_instagram,
     "intake_orchestrator":      handle_intake_orchestrator,
+    # ONB-3: Configuração automática da Zenya (DNA → soul_prompt → KB)
+    "onboard_client_v2":        handle_onboard_client_v2,
+    # ONB-5: QA smoke test (checklists + perguntas de teste)
+    "smoke_test_zenya":         handle_smoke_test_zenya,
+    # ONB-1.9: Health check pos-go-live (monitoramento 30 dias)
+    "post_golive_health":       handle_post_golive_health,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

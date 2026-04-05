@@ -1,12 +1,17 @@
 """
 brain_curate handler — Auto-curation of brain_chunks using Haiku.
 
-Scheduled daily at 02:00 UTC. Processes pending chunks in batches of 20,
-evaluating each with claude-haiku-4-5-20251001 on a 0-1 quality scale:
+Scheduled 3x/day at 02:00, 10:00, 18:00 UTC. Processes pending chunks in
+batches of 50, evaluating each with claude-haiku-4-5-20251001 on a 0-1
+quality scale:
 
   score > 0.7   → curation_status = 'approved'
   score 0.4-0.7 → curation_status = 'review'   (human queue)
   score < 0.4   → curation_status = 'rejected'
+
+Chunks without an embedding receive one before curation (never approved
+without embedding). Up to 5 chunks are evaluated in parallel per batch via
+asyncio.Semaphore(5).
 
 Returns summary: {approved, review, rejected, remaining, errors}
 """
@@ -19,12 +24,14 @@ from datetime import datetime, timezone
 
 import anthropic
 
+from runtime.brain.embedding import get_embedding
 from runtime.config import settings
 from runtime.db import supabase
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 20
+BATCH_SIZE = 50
+_SEMAPHORE = asyncio.Semaphore(5)
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
@@ -89,20 +96,19 @@ async def handle_brain_curate(task: dict) -> dict:
     """
     Auto-curate pending brain_chunks using Haiku quality evaluation.
 
-    Processes up to BATCH_SIZE=20 chunks per run (oldest first).
+    Processes up to BATCH_SIZE=50 chunks per run (oldest first), with up to
+    5 chunks evaluated in parallel via asyncio.Semaphore(5).
+    Chunks missing an embedding receive one before evaluation; chunks that
+    score 'approved' but have no embedding are demoted to 'review'.
     Updates curation_status + confidence_score + curation_note on each chunk.
     Returns summary dict with counts and remaining pending.
     """
-    approved = 0
-    review = 0
-    rejected = 0
-    errors = 0
 
     # Fetch batch of pending chunks (oldest first to drain backlog in order)
     try:
         result = await asyncio.to_thread(
             lambda: supabase.table("brain_chunks")
-            .select("id,raw_content,canonical_content,insight_narrative,source_title,source_type")
+            .select("id,raw_content,canonical_content,insight_narrative,source_title,source_type,embedding")
             .eq("curation_status", "pending")
             .order("created_at", desc=False)
             .limit(BATCH_SIZE)
@@ -131,56 +137,88 @@ async def handle_brain_curate(task: dict) -> dict:
             "remaining": 0,
         }
 
-    logger.info("[brain_curate] evaluating %d chunks with Haiku", len(chunks))
+    logger.info("[brain_curate] evaluating %d chunks with Haiku (parallel=5)", len(chunks))
 
     now = datetime.now(timezone.utc).isoformat()
 
-    for chunk in chunks:
-        chunk_id = chunk["id"]
-        content = (
-            chunk.get("canonical_content")
-            or chunk.get("raw_content")
-            or chunk.get("insight_narrative")
-            or ""
-        ).strip()
+    # Counters shared across coroutines — use a mutable container
+    counters = {"approved": 0, "review": 0, "rejected": 0, "errors": 0}
 
-        if not content:
-            # Empty chunk — reject immediately without an API call
-            new_status = "rejected"
-            score = 0.0
-            reason = "empty content"
-        else:
-            score, reason = await _evaluate_chunk(content)
-            new_status = _score_to_status(score)
+    async def _process_chunk(chunk: dict) -> None:
+        async with _SEMAPHORE:
+            chunk_id = chunk["id"]
+            content = (
+                chunk.get("canonical_content")
+                or chunk.get("raw_content")
+                or chunk.get("insight_narrative")
+                or ""
+            ).strip()
 
-        try:
-            await asyncio.to_thread(
-                lambda cid=chunk_id, ns=new_status, s=score, r=reason: supabase.table("brain_chunks")
-                .update({
-                    "curation_status": ns,
-                    "confidence_score": round(s, 3),
-                    "curation_note": f"[auto] {r}",
-                    "curated_at": now,
-                })
-                .eq("id", cid)
-                .execute()
-            )
-
-            if new_status == "approved":
-                approved += 1
-            elif new_status == "review":
-                review += 1
+            if not content:
+                # Empty chunk — reject immediately without any API call
+                new_status = "rejected"
+                score = 0.0
+                reason = "empty content"
+                embedding = None
             else:
-                rejected += 1
+                # Generate embedding if chunk doesn't have one yet
+                has_embedding = bool(chunk.get("embedding"))
+                if not has_embedding:
+                    embedding = await get_embedding(content)
+                    if embedding:
+                        logger.debug("[brain_curate] chunk=%s — embedding generated", chunk_id)
+                    else:
+                        logger.debug("[brain_curate] chunk=%s — embedding unavailable (no OPENAI_API_KEY or error)", chunk_id)
+                else:
+                    embedding = None  # already present — don't overwrite
 
-            logger.debug(
-                "[brain_curate] chunk=%s score=%.2f → %s (%s)",
-                chunk_id, score, new_status, reason,
-            )
+                score, reason = await _evaluate_chunk(content)
+                new_status = _score_to_status(score)
 
-        except Exception as e:
-            logger.warning("[brain_curate] failed to update chunk %s: %s", chunk_id, e)
-            errors += 1
+                # Ensure approved chunks always have an embedding; demote to review if missing
+                if new_status == "approved" and not has_embedding and embedding is None:
+                    new_status = "review"
+                    reason = f"{reason} | demoted: no embedding"
+                    logger.debug("[brain_curate] chunk=%s demoted approved→review (no embedding)", chunk_id)
+
+            try:
+                update_payload: dict = {
+                    "curation_status": new_status,
+                    "confidence_score": round(score, 3),
+                    "curation_note": f"[auto] {reason}",
+                    "curated_at": now,
+                }
+                if embedding is not None:
+                    update_payload["embedding"] = embedding
+
+                await asyncio.to_thread(
+                    lambda cid=chunk_id, p=update_payload: supabase.table("brain_chunks")
+                    .update(p)
+                    .eq("id", cid)
+                    .execute()
+                )
+
+                counters[new_status] = counters.get(new_status, 0) + 1
+
+                logger.debug(
+                    "[brain_curate] chunk=%s score=%.2f → %s (%s)",
+                    chunk_id, score, new_status, reason,
+                )
+
+            except Exception as e:
+                logger.warning("[brain_curate] failed to update chunk %s: %s", chunk_id, e)
+                counters["errors"] += 1
+
+    results = await asyncio.gather(*[_process_chunk(c) for c in chunks], return_exceptions=True)
+    for r in results:
+        if isinstance(r, Exception):
+            counters["errors"] += 1
+            logger.warning("[brain_curate] chunk error: %s", r)
+
+    approved = counters["approved"]
+    review = counters["review"]
+    rejected = counters["rejected"]
+    errors = counters["errors"]
 
     # Count remaining pending chunks after this batch
     try:

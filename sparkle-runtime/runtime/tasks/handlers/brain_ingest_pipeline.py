@@ -273,10 +273,16 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
                     duplicates_confirmed += 1
                     continue
 
-            # B1-03: resolve brain_owner for this pipeline ingest
-            brain_owner = get_brain_owner_for_ingest(
-                "brain_pipeline", client_id,
-            )
+            # B1-03: resolve brain_owner for this pipeline ingest.
+            # When persona="cliente" and client_id is present, the brain_owner must
+            # be the client_id so that extract_client_dna can find these chunks via
+            # brain_owner filter. Pass "zenya_client" so isolation routes to client_id.
+            if client_id and payload.get("persona") == "cliente":
+                brain_owner = client_id
+            else:
+                brain_owner = get_brain_owner_for_ingest(
+                    "brain_pipeline", client_id,
+                )
 
             # Insere em brain_chunks
             row: dict = {

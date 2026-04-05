@@ -95,6 +95,7 @@ from runtime.reports.router import router as reports_router
 from runtime.cockpit.router import router as cockpit_router
 from runtime.billing.router import router as billing_router
 from runtime.pipeline.router import router as pipeline_router
+from runtime.webhooks.router import router as webhooks_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
@@ -119,6 +120,7 @@ app.include_router(reports_router)
 app.include_router(cockpit_router)
 app.include_router(billing_router)
 app.include_router(pipeline_router, prefix="/pipeline", tags=["pipeline"])
+app.include_router(webhooks_router)
 
 
 # ── Health ─────────────────────────────────────────────────

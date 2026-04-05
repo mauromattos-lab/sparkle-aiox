@@ -1,5 +1,5 @@
 """
-Onboarding service — ONB-1: Pipeline Orquestrador de Onboarding.
+Onboarding service — ONB-1 + ONB-1.7: Pipeline Orquestrador de Onboarding.
 
 Logica de orquestracao central:
 - Cria pipeline de fases (onboarding_workflows)
@@ -7,6 +7,7 @@ Logica de orquestracao central:
 - Gate check por fase
 - Alertas Friday para timeouts
 - Notificacoes WhatsApp para cliente em cada transicao de fase
+- ONB-1.7: client_testing_active, periodo de teste, coleta de feedback, loop de ajustes
 """
 from __future__ import annotations
 
@@ -400,6 +401,78 @@ async def _advance_to_phase(client_id: str, phase: str) -> None:
         except Exception as e:
             print(f"[onboarding/service] WARN: falha ao disparar intake orchestrator: {e}")
 
+    # ONB-3: Auto-trigger onboard_client_v2 when advancing to 'config' phase
+    if phase == "config":
+        try:
+            from runtime.tasks.handlers.onboard_client_v2 import handle_onboard_client_v2
+            config_task = {
+                "id": f"auto-config-{client_id}",
+                "client_id": client_id,
+                "payload": {"client_id": client_id},
+            }
+            # Fire and forget — config runs async, does not block phase transition
+            asyncio.create_task(handle_onboard_client_v2(config_task))
+            print(f"[onboarding/service] onboard_client_v2 disparado para {client_id[:12]}...")
+        except Exception as e:
+            print(f"[onboarding/service] WARN: falha ao disparar onboard_client_v2: {e}")
+
+    # ONB-5: Auto-trigger smoke_test_zenya when advancing to 'test_internal' phase
+    if phase == "test_internal":
+        try:
+            from runtime.tasks.handlers.smoke_test_zenya import handle_smoke_test_zenya
+            smoke_task = {
+                "id": f"auto-smoke-{client_id}",
+                "client_id": client_id,
+                "payload": {"client_id": client_id, "retry_count": 0},
+            }
+            # Fire and forget — smoke test runs async, does not block phase transition
+            asyncio.create_task(handle_smoke_test_zenya(smoke_task))
+            print(f"[onboarding/service] smoke_test_zenya disparado para {client_id[:12]}...")
+        except Exception as e:
+            print(f"[onboarding/service] WARN: falha ao disparar smoke_test_zenya: {e}")
+
+    # ONB-1.7 AC-1.1: Notifica Mauro quando pipeline chega em test_client
+    # (smoke test PASSOU — gate 3 atingido, aguarda aprovacao de Mauro para liberar cliente)
+    if phase == "test_client":
+        try:
+            # Busca nome do cliente para mensagem contextual
+            c_result = await asyncio.to_thread(
+                lambda: supabase.table("clients")
+                .select("name")
+                .eq("id", client_id)
+                .maybe_single()
+                .execute()
+            )
+            client_name = (c_result.data or {}).get("name", client_id[:12]) if c_result else client_id[:12]
+            await _alert_friday(
+                f"[Onboarding] Zenya de {client_name} passou QA interno. "
+                f"Pronto para iniciar teste com cliente. "
+                f"Confirme via POST /onboarding/{client_id}/approve-client-test ou responda SIM."
+            )
+        except Exception as e:
+            print(f"[onboarding/service] WARN: falha ao alertar Friday sobre test_client: {e}")
+
+    # Story 1.8 AC-1.1: Notifica Mauro quando pipeline chega em go_live
+    # (cliente aprovou — gate 4 atingido, aguarda confirmacao explicita de Mauro para go-live)
+    if phase == "go_live":
+        try:
+            c_result = await asyncio.to_thread(
+                lambda: supabase.table("clients")
+                .select("name")
+                .eq("id", client_id)
+                .maybe_single()
+                .execute()
+            )
+            client_name = (c_result.data or {}).get("name", client_id[:12]) if c_result else client_id[:12]
+            await _alert_friday(
+                f"[Onboarding] Zenya de {client_name} esta aprovada pelo cliente e pronta para ir ao ar. "
+                f"Confirme o go-live quando estiver pronto: "
+                f"responda GOLIVE {client_name.split()[0]} ou acesse POST /onboarding/{client_id}/go-live"
+            )
+            print(f"[onboarding/service] Friday alertada sobre go_live para {client_id[:12]}...")
+        except Exception as e:
+            print(f"[onboarding/service] WARN: falha ao alertar Friday sobre go_live: {e}")
+
 
 # ── Cron: Check all gates in progress ─────────────────────────
 
@@ -488,6 +561,20 @@ async def run_onboarding_gate_check() -> dict:
             advanced += 1
             print(f"[onboarding/cron] Gate passed: {client_id[:12]}/{phase} -> {gate_result.get('next_phase')}")
 
+    # ONB-1.7: Also check client test periods (3d/5d business day alerts)
+    try:
+        test_period_result = await check_client_test_periods()
+        alerts_sent += test_period_result.get("alerted", 0)
+    except Exception as e:
+        print(f"[onboarding/cron] check_client_test_periods error: {e}")
+
+    # Story 1.8 AC-1.4: Check go_live pending confirmations (daily reminder after 5 days)
+    try:
+        go_live_reminder_result = await check_go_live_reminders()
+        alerts_sent += go_live_reminder_result.get("alerted", 0)
+    except Exception as e:
+        print(f"[onboarding/cron] check_go_live_reminders error: {e}")
+
     return {
         "checked": checked,
         "advanced": advanced,
@@ -495,3 +582,821 @@ async def run_onboarding_gate_check() -> dict:
         "stale_marked": stale_marked,
         "timestamp": now.isoformat(),
     }
+
+
+# ── ONB-1.7: Client Testing Mode ─────────────────────────────
+
+def _business_days_elapsed(start_iso: str, now: datetime) -> int:
+    """Returns number of business days (Mon-Fri) elapsed since start_iso."""
+    from datetime import timedelta
+    try:
+        start = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+    except Exception:
+        return 0
+    count = 0
+    # Walk day by day from start date to now
+    cursor = datetime(start.year, start.month, start.day, tzinfo=start.tzinfo)
+    end = datetime(now.year, now.month, now.day, tzinfo=now.tzinfo)
+    while cursor < end:
+        if cursor.weekday() < 5:  # Mon=0 … Fri=4
+            count += 1
+        cursor += timedelta(days=1)
+    return count
+
+
+async def _log_onboarding_event(
+    client_id: str,
+    event_type: str,
+    phase: str = "test_client",
+    payload: Optional[dict] = None,
+) -> None:
+    """Insert a row into onboarding_events."""
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("onboarding_events").insert({
+                "client_id": client_id,
+                "event_type": event_type,
+                "phase": phase,
+                "payload": payload or {},
+            }).execute()
+        )
+    except Exception as e:
+        print(f"[onboarding/service] WARN: log_event '{event_type}' failed: {e}")
+
+
+async def approve_client_test(client_id: str) -> dict:
+    """
+    ONB-1.7 AC-1.2/1.3/1.4/1.5:
+    Mauro aprova inicio do teste com cliente.
+
+    - Busca dados do cliente
+    - Ativa client_testing_active=True em zenya_clients
+    - Garante testing_mode='client_testing'
+    - Salva client_test_started_at no gate_details da fase test_client
+    - Envia WhatsApp de boas-vindas ao cliente (numero de teste)
+    - Alerta Friday confirmando inicio
+    - Insere evento client_test_started em onboarding_events
+    """
+    # Fetch client info
+    try:
+        client_result = await asyncio.to_thread(
+            lambda: supabase.table("clients")
+            .select("id,name,whatsapp")
+            .eq("id", client_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao buscar cliente: {e}"}
+
+    client = client_result.data if client_result else None
+    if not client:
+        return {"status": "error", "error": f"Cliente {client_id} nao encontrado"}
+
+    client_name = client.get("name", "")
+    client_phone = client.get("whatsapp")
+    first_name = (client_name.split()[0] if client_name else "Cliente")
+
+    now_ts = _now()
+
+    # AC-1.3: Ativa client_testing_active e garante testing_mode='client_testing'
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .update({
+                "client_testing_active": True,
+                "testing_mode": "client_testing",
+                "updated_at": now_ts,
+            })
+            .eq("client_id", client_id)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[onboarding/service] approve_client_test: zenya_clients update failed: {e}")
+
+    # AC-1.5: Salva client_test_started_at no gate_details da fase test_client
+    try:
+        wf_result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("gate_details")
+            .eq("client_id", client_id)
+            .eq("phase", "test_client")
+            .maybe_single()
+            .execute()
+        )
+        current_details: dict = {}
+        if wf_result and wf_result.data:
+            current_details = wf_result.data.get("gate_details") or {}
+
+        current_details["client_test_started_at"] = now_ts
+        current_details.setdefault("adjustment_loops", 0)
+
+        await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .update({
+                "gate_details": current_details,
+                "status": "in_progress",
+                "started_at": now_ts,
+                "updated_at": now_ts,
+            })
+            .eq("client_id", client_id)
+            .eq("phase", "test_client")
+            .execute()
+        )
+    except Exception as e:
+        print(f"[onboarding/service] approve_client_test: gate_details update failed: {e}")
+
+    # AC-1.4: Envia WhatsApp para o cliente
+    client_msg = (
+        f"Ola {first_name}! Sua Zenya esta pronta para teste. "
+        f"Pode conversar com ela neste numero para avaliar. "
+        f"Conta pra gente o que achou!"
+    )
+    await _send_whatsapp(client_phone, client_msg)
+    print(f"[onboarding/service] approve_client_test: WhatsApp enviado para {client_name}")
+
+    # Alerta Friday
+    await _alert_friday(
+        f"[Onboarding] Teste com cliente iniciado para {client_name} ({client_id[:12]}...). "
+        f"Periodo: 3-5 dias uteis a partir de agora."
+    )
+
+    # Evento
+    await _log_onboarding_event(
+        client_id,
+        "client_test_started",
+        payload={"client_name": client_name, "started_at": now_ts},
+    )
+
+    return {
+        "status": "ok",
+        "client_id": client_id,
+        "client_testing_active": True,
+        "testing_mode": "client_testing",
+        "client_test_started_at": now_ts,
+        "message": f"Teste com cliente iniciado para {client_name}. Periodo de 3-5 dias uteis.",
+    }
+
+
+async def register_client_feedback(
+    client_id: str,
+    approved: bool,
+    feedback_text: str = "",
+) -> dict:
+    """
+    ONB-1.7 AC-3.x / AC-4.x:
+    Registra feedback do cliente apos periodo de teste.
+
+    - Se approved=True: define gate client_approved=True → gate check → avanca para go_live
+    - Se approved=False: registra feedback, incrementa adjustment_loops
+      - Se loops < 3: volta fase para 'config' (reinicia pipeline)
+      - Se loops >= 3: alerta Friday para intervencao manual
+    """
+    now_ts = _now()
+
+    # Busca gate_details atual da fase test_client
+    try:
+        wf_result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("gate_details,status")
+            .eq("client_id", client_id)
+            .eq("phase", "test_client")
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao buscar workflow: {e}"}
+
+    wf = wf_result.data if wf_result else None
+    if not wf:
+        return {"status": "error", "error": f"Fase test_client nao encontrada para {client_id}"}
+
+    gate_details: dict = wf.get("gate_details") or {}
+    adjustment_loops: int = int(gate_details.get("adjustment_loops", 0))
+
+    if approved:
+        # AC-3.2: Gate 4 passa — client_approved=True
+        gate_details["client_approved"] = True
+        gate_details["client_feedback"] = feedback_text
+        gate_details["feedback_registered_at"] = now_ts
+
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("onboarding_workflows")
+                .update({
+                    "gate_details": gate_details,
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .eq("phase", "test_client")
+                .execute()
+            )
+        except Exception as e:
+            print(f"[onboarding/service] register_client_feedback: gate_details update failed: {e}")
+
+        # AC-3.5: Evento
+        await _log_onboarding_event(
+            client_id,
+            "client_approved",
+            payload={"feedback_text": feedback_text, "approved": True},
+        )
+
+        # Dispara gate check — deve avançar para go_live automaticamente
+        gate_result = await check_gate(client_id, "test_client", ["client_approved"])
+
+        # AC-1.4 (go_live): Alerta Friday
+        await _alert_friday(
+            f"[Onboarding] Cliente {client_id[:12]}... APROVOU a Zenya! "
+            f"Feedback: '{feedback_text[:100]}'. Gate test_client PASSOU. Avancando para go_live."
+        )
+
+        return {
+            "status": "ok",
+            "approved": True,
+            "gate_result": gate_result,
+            "message": "Cliente aprovou! Gate test_client passou. Pipeline avancando para go_live.",
+        }
+
+    else:
+        # AC-3.3 / AC-3.4: Cliente pediu ajustes
+        adjustment_loops += 1
+        gate_details["adjustment_loops"] = adjustment_loops
+        gate_details["client_feedback"] = feedback_text
+        gate_details["feedback_registered_at"] = now_ts
+
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("onboarding_workflows")
+                .update({
+                    "gate_details": gate_details,
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .eq("phase", "test_client")
+                .execute()
+            )
+        except Exception as e:
+            print(f"[onboarding/service] register_client_feedback: loops update failed: {e}")
+
+        # AC-3.5: Evento
+        await _log_onboarding_event(
+            client_id,
+            "client_requested_adjustments",
+            payload={
+                "feedback_text": feedback_text,
+                "adjustment_loops": adjustment_loops,
+            },
+        )
+
+        # AC-4.3: Maximo de loops atingido
+        if adjustment_loops >= 3:
+            await _alert_friday(
+                f"[Onboarding] ATENCAO: Cliente {client_id[:12]}... ja passou por 3 rodadas de ajuste "
+                f"e ainda nao aprovou. Ultimo feedback: '{feedback_text[:150]}'. "
+                f"Intervencao manual necessaria."
+            )
+            return {
+                "status": "max_loops_reached",
+                "adjustment_loops": adjustment_loops,
+                "message": (
+                    "Maximo de 3 loops de ajuste atingido. "
+                    "Friday foi alertada para intervencao manual."
+                ),
+            }
+
+        # AC-4.1: Volta pipeline para fase config (reinicia ONB-3)
+        try:
+            # Reseta fase test_client para pending
+            await asyncio.to_thread(
+                lambda: supabase.table("onboarding_workflows")
+                .update({
+                    "status": "pending",
+                    "gate_passed": False,
+                    "started_at": None,
+                    "completed_at": None,
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .eq("phase", "test_client")
+                .execute()
+            )
+
+            # Reseta fase test_internal para pending
+            await asyncio.to_thread(
+                lambda: supabase.table("onboarding_workflows")
+                .update({
+                    "status": "pending",
+                    "gate_passed": False,
+                    "started_at": None,
+                    "completed_at": None,
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .eq("phase", "test_internal")
+                .execute()
+            )
+
+            # Reseta client_testing_active
+            await asyncio.to_thread(
+                lambda: supabase.table("zenya_clients")
+                .update({
+                    "client_testing_active": False,
+                    "testing_mode": "off",
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .execute()
+            )
+        except Exception as e:
+            print(f"[onboarding/service] register_client_feedback: reset phases failed: {e}")
+
+        # AC-4.1: Alerta Mauro e re-dispara config
+        await _alert_friday(
+            f"[Onboarding] Cliente {client_id[:12]}... pediu ajustes (loop {adjustment_loops}/3): "
+            f"'{feedback_text[:150]}'. Configuracao reiniciada — ONB-3 sera re-executado."
+        )
+
+        # Re-avanca para fase config (dispara handle_onboard_client_v2 automaticamente)
+        await _advance_to_phase(client_id, "config")
+
+        return {
+            "status": "adjustments_requested",
+            "adjustment_loops": adjustment_loops,
+            "message": (
+                f"Ajuste registrado (loop {adjustment_loops}/3). "
+                f"Pipeline reiniciado a partir da fase config."
+            ),
+        }
+
+
+async def check_client_test_periods() -> dict:
+    """
+    ONB-1.7 AC-2.1/2.2: Verifica clientes em fase test_client in_progress.
+
+    - Se >= 3 dias uteis sem feedback: alerta Mauro pedindo feedback
+    - Se >= 5 dias uteis sem feedback: segundo alerta mais urgente
+
+    Chamado pelo cron onboarding_check_gates (a cada hora).
+    """
+    now = datetime.now(timezone.utc)
+    checked = 0
+    alerted = 0
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("client_id,gate_details,started_at")
+            .eq("phase", "test_client")
+            .eq("status", "in_progress")
+            .execute()
+        )
+        in_progress = result.data or []
+    except Exception as e:
+        print(f"[onboarding/service] check_client_test_periods: fetch failed: {e}")
+        return {"error": str(e), "checked": 0}
+
+    for wf in in_progress:
+        checked += 1
+        client_id = wf["client_id"]
+        gate_details: dict = wf.get("gate_details") or {}
+
+        # Se já foi aprovado, skip
+        if gate_details.get("client_approved"):
+            continue
+
+        started_at = gate_details.get("client_test_started_at") or wf.get("started_at")
+        if not started_at:
+            continue
+
+        # Calcula dias uteis decorridos
+        bdays = _business_days_elapsed(started_at, now)
+
+        # Busca nome do cliente para alertas mais contextuais
+        try:
+            c_result = await asyncio.to_thread(
+                lambda cid=client_id: supabase.table("clients")
+                .select("name")
+                .eq("id", cid)
+                .maybe_single()
+                .execute()
+            )
+            client_name = (c_result.data or {}).get("name", client_id[:12]) if c_result else client_id[:12]
+        except Exception:
+            client_name = client_id[:12]
+
+        # AC-2.2: >= 3 dias uteis sem feedback — primeiro alerta
+        # AC-2.3: >= 5 dias uteis — segundo alerta mais urgente
+        alert_3d_sent = gate_details.get("alert_3d_sent", False)
+        alert_5d_sent = gate_details.get("alert_5d_sent", False)
+
+        if bdays >= 5 and not alert_5d_sent:
+            alerted += 1
+            await _alert_friday(
+                f"[Onboarding] URGENTE: {client_name} testou a Zenya por {bdays} dias uteis "
+                f"sem dar feedback formal. Pronto para go-live ou deseja mais tempo? "
+                f"Responda SIM para go-live ou MAIS TEMPO para estender o periodo."
+            )
+            gate_details["alert_5d_sent"] = True
+            try:
+                await asyncio.to_thread(
+                    lambda cid=client_id, gd=gate_details: supabase.table("onboarding_workflows")
+                    .update({"gate_details": gd, "updated_at": now.isoformat()})
+                    .eq("client_id", cid)
+                    .eq("phase", "test_client")
+                    .execute()
+                )
+            except Exception as e:
+                print(f"[onboarding/service] check_client_test_periods: alert_5d update failed: {e}")
+
+        elif bdays >= 3 and not alert_3d_sent:
+            alerted += 1
+            await _alert_friday(
+                f"[Onboarding] {client_name} testou a Zenya por {bdays} dias uteis. "
+                f"Nao houve feedback formal ainda. "
+                f"Pronto para go-live ou deseja mais tempo?"
+            )
+            gate_details["alert_3d_sent"] = True
+            try:
+                await asyncio.to_thread(
+                    lambda cid=client_id, gd=gate_details: supabase.table("onboarding_workflows")
+                    .update({"gate_details": gd, "updated_at": now.isoformat()})
+                    .eq("client_id", cid)
+                    .eq("phase", "test_client")
+                    .execute()
+                )
+            except Exception as e:
+                print(f"[onboarding/service] check_client_test_periods: alert_3d update failed: {e}")
+
+    return {"checked": checked, "alerted": alerted, "timestamp": now.isoformat()}
+
+
+# ── Story 1.8: Go-Live ────────────────────────────────────────
+
+async def pre_go_live_checklist(client_id: str) -> dict:
+    """
+    Story 1.8 AC-4.1/4.3: Verifica checklist automatico antes do go-live.
+
+    Verifica:
+    - zenya_clients.soul_prompt_generated nao esta vazio
+    - zenya_knowledge_base tem >= 15 itens ativos para o client_id
+    - Gate 4 (client_approved) marcado como True na fase test_client
+    - Z-API conectada (Fase 1: log warning apenas, nao bloqueia)
+
+    Retorna:
+    {
+        can_go_live: bool,
+        checks: {
+            soul_prompt: bool,
+            kb_items: int,
+            gate4: bool,
+            zapi_connected: "skipped" | bool,
+        },
+        blocking_issues: list[str]
+    }
+    """
+    checks: dict = {
+        "soul_prompt": False,
+        "kb_items": 0,
+        "gate4": False,
+        "zapi_connected": "skipped",  # Fase 1: nao bloqueia
+    }
+    blocking_issues: list[str] = []
+
+    # 1. Verifica soul_prompt_generated em zenya_clients
+    try:
+        zc_result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("soul_prompt_generated")
+            .eq("client_id", client_id)
+            .maybe_single()
+            .execute()
+        )
+        zc = zc_result.data if zc_result else None
+        soul_prompt_val = (zc or {}).get("soul_prompt_generated", "") or ""
+        checks["soul_prompt"] = bool(soul_prompt_val.strip())
+    except Exception as e:
+        print(f"[onboarding/go-live] pre_go_live_checklist: soul_prompt check failed: {e}")
+
+    if not checks["soul_prompt"]:
+        blocking_issues.append("soul_prompt_generated esta vazio — execute a configuracao (ONB-3) primeiro")
+
+    # 2. Verifica zenya_knowledge_base (>= 15 itens ativos)
+    try:
+        kb_result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_knowledge_base")
+            .select("id", count="exact")
+            .eq("client_id", client_id)
+            .eq("active", True)
+            .execute()
+        )
+        kb_count = kb_result.count if kb_result and kb_result.count is not None else len(kb_result.data or [])
+        checks["kb_items"] = kb_count
+    except Exception as e:
+        print(f"[onboarding/go-live] pre_go_live_checklist: kb check failed: {e}")
+        checks["kb_items"] = 0
+
+    if checks["kb_items"] < 15:
+        blocking_issues.append(
+            f"zenya_knowledge_base tem apenas {checks['kb_items']} itens ativos — minimo e 15"
+        )
+
+    # 3. Verifica Gate 4 (client_approved) em onboarding_workflows fase test_client
+    try:
+        wf_result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("gate_details,gate_passed")
+            .eq("client_id", client_id)
+            .eq("phase", "test_client")
+            .maybe_single()
+            .execute()
+        )
+        wf = wf_result.data if wf_result else None
+        gate_details: dict = (wf or {}).get("gate_details") or {}
+        checks["gate4"] = bool(gate_details.get("client_approved", False))
+    except Exception as e:
+        print(f"[onboarding/go-live] pre_go_live_checklist: gate4 check failed: {e}")
+
+    if not checks["gate4"]:
+        blocking_issues.append(
+            "Gate 4 nao foi aprovado — cliente ainda nao confirmou a Zenya via /client-feedback"
+        )
+
+    # 4. Z-API: Fase 1 — apenas log warning, nao bloqueia
+    print(
+        f"[onboarding/go-live] WARN: verificacao Z-API nao implementada (Fase 1) "
+        f"para client_id={client_id[:12]}..."
+    )
+    checks["zapi_connected"] = "skipped"
+
+    can_go_live = len(blocking_issues) == 0
+
+    return {
+        "can_go_live": can_go_live,
+        "checks": checks,
+        "blocking_issues": blocking_issues,
+    }
+
+
+async def execute_go_live(client_id: str) -> dict:
+    """
+    Story 1.8 AC-2.1/2.2/3.x/3.4:
+    Executa transicao atomica de testing -> live.
+
+    Sequencia:
+    1. zenya_clients.testing_mode = 'live'
+    2. zenya_clients.active = True
+    3. zenya_clients.client_testing_active = False
+    4. onboarding_workflows go_live: status=completed, gate_passed=True
+    5. onboarding_workflows post_go_live: status=in_progress (via _advance_to_phase)
+    6. clients.status = 'active'
+
+    Em caso de falha: rollback best-effort (restaura testing_mode='client_testing').
+    """
+    now_ts = _now()
+    rollback_needed = False
+    rollback_reason = ""
+
+    # Busca dados do cliente para notificacoes
+    try:
+        client_result = await asyncio.to_thread(
+            lambda: supabase.table("clients")
+            .select("id,name,whatsapp")
+            .eq("id", client_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        return {"status": "error", "error": f"Falha ao buscar cliente: {e}"}
+
+    client = client_result.data if client_result else None
+    if not client:
+        return {"status": "error", "error": f"Cliente {client_id} nao encontrado"}
+
+    client_name = client.get("name", "")
+    client_phone = client.get("whatsapp")
+    first_name = (client_name.split()[0] if client_name else "Cliente")
+
+    # ── Passo 1-3: Atualiza zenya_clients ────────────────────────
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .update({
+                "testing_mode": "live",
+                "active": True,
+                "client_testing_active": False,
+                "updated_at": now_ts,
+            })
+            .eq("client_id", client_id)
+            .execute()
+        )
+        print(f"[onboarding/go-live] zenya_clients atualizado para LIVE: {client_id[:12]}...")
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Falha ao atualizar zenya_clients: {e}",
+            "rollback": "nao necessario — nada foi alterado",
+        }
+
+    # ── Passo 4: Marca fase go_live como completed ────────────────
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .update({
+                "status": "completed",
+                "gate_passed": True,
+                "completed_at": now_ts,
+                "updated_at": now_ts,
+            })
+            .eq("client_id", client_id)
+            .eq("phase", "go_live")
+            .execute()
+        )
+        print(f"[onboarding/go-live] fase go_live marcada completed: {client_id[:12]}...")
+    except Exception as e:
+        rollback_needed = True
+        rollback_reason = f"Falha ao completar fase go_live: {e}"
+
+    # ── Passo 5: Avanca para post_go_live ─────────────────────────
+    if not rollback_needed:
+        try:
+            await _advance_to_phase(client_id, "post_go_live")
+            print(f"[onboarding/go-live] fase post_go_live iniciada: {client_id[:12]}...")
+        except Exception as e:
+            # post_go_live start failure — nao critico, log e continua
+            print(f"[onboarding/go-live] WARN: falha ao iniciar post_go_live: {e}")
+
+    # ── Passo 6: Atualiza clients.status = 'active' ───────────────
+    if not rollback_needed:
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("clients")
+                .update({"status": "active"})
+                .eq("id", client_id)
+                .execute()
+            )
+            print(f"[onboarding/go-live] clients.status=active: {client_id[:12]}...")
+        except Exception as e:
+            # Non-fatal — clients table update failure should not block go-live
+            print(f"[onboarding/go-live] WARN: falha ao atualizar clients.status (non-fatal): {e}")
+
+    # ── Rollback best-effort se falhou ────────────────────────────
+    if rollback_needed:
+        print(f"[onboarding/go-live] ROLLBACK: {rollback_reason}")
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("zenya_clients")
+                .update({
+                    "testing_mode": "client_testing",
+                    "active": False,
+                    "client_testing_active": True,
+                    "updated_at": now_ts,
+                })
+                .eq("client_id", client_id)
+                .execute()
+            )
+            print(f"[onboarding/go-live] ROLLBACK executado: testing_mode restaurado para client_testing")
+        except Exception as rb_e:
+            print(f"[onboarding/go-live] ERRO CRITICO: rollback falhou: {rb_e}")
+
+        await _alert_friday(
+            f"[Onboarding] ERRO no go-live de {client_name}: {rollback_reason}. "
+            f"Estado revertido para client_testing. Verificar manualmente."
+        )
+        return {
+            "status": "error",
+            "error": rollback_reason,
+            "rollback": "executado — testing_mode restaurado para client_testing",
+        }
+
+    # ── AC-3.3: Evento go_live em onboarding_events ───────────────
+    await _log_onboarding_event(
+        client_id,
+        "go_live",
+        phase="go_live",
+        payload={
+            "client_id": client_id,
+            "event": "activated",
+            "go_live_at": now_ts,
+            "activated_by": "mauro",
+        },
+    )
+
+    # ── AC-3.1: Notifica Friday/Mauro ─────────────────────────────
+    await _alert_friday(
+        f"[Onboarding] Zenya de {client_name} esta LIVE! "
+        f"Monitoramento pos-go-live iniciado."
+    )
+
+    # ── AC-3.2: Notifica cliente via WhatsApp ─────────────────────
+    client_msg = (
+        f"Oi {first_name}! Sua Zenya esta oficialmente no ar! "
+        f"Seus clientes ja podem falar com ela. "
+        f"Qualquer duvida, estamos aqui."
+    )
+    await _send_whatsapp(client_phone, client_msg)
+
+    print(f"[onboarding/go-live] GO-LIVE CONCLUIDO para {client_name} ({client_id[:12]}...)")
+
+    return {
+        "status": "live",
+        "client_id": client_id,
+        "client_name": client_name,
+        "go_live_at": now_ts,
+        "activated_by": "mauro",
+        "message": f"Zenya de {client_name} esta LIVE! Pos-go-live iniciado.",
+    }
+
+
+async def check_go_live_reminders() -> dict:
+    """
+    Story 1.8 AC-1.4: Verifica clientes aguardando confirmacao de go-live.
+
+    - Se fase go_live in_progress por > 5 dias sem confirmar:
+      envia lembrete diario para Mauro (1 por dia, idempotente via go_live_reminder_sent_at)
+
+    Chamado pelo cron run_onboarding_gate_check (a cada hora).
+    """
+    now = datetime.now(timezone.utc)
+    checked = 0
+    alerted = 0
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("client_id,gate_details,started_at")
+            .eq("phase", "go_live")
+            .eq("status", "in_progress")
+            .execute()
+        )
+        in_progress = result.data or []
+    except Exception as e:
+        print(f"[onboarding/service] check_go_live_reminders: fetch failed: {e}")
+        return {"error": str(e), "checked": 0, "alerted": 0}
+
+    for wf in in_progress:
+        checked += 1
+        client_id = wf["client_id"]
+        gate_details: dict = wf.get("gate_details") or {}
+
+        started_at_raw = gate_details.get("go_live_started_at") or wf.get("started_at")
+        if not started_at_raw:
+            continue
+
+        # Calcula dias calendar decorridos desde que fase go_live iniciou
+        try:
+            started_at = datetime.fromisoformat(started_at_raw.replace("Z", "+00:00"))
+            days_elapsed = (now - started_at).days
+        except Exception:
+            continue
+
+        # Apenas se > 5 dias sem confirmacao
+        if days_elapsed <= 5:
+            continue
+
+        # Idempotencia: 1 lembrete por dia via go_live_reminder_sent_at
+        reminder_sent_at_raw = gate_details.get("go_live_reminder_sent_at")
+        if reminder_sent_at_raw:
+            try:
+                reminder_sent_at = datetime.fromisoformat(
+                    reminder_sent_at_raw.replace("Z", "+00:00")
+                )
+                hours_since_reminder = (now - reminder_sent_at).total_seconds() / 3600
+                if hours_since_reminder < 20:  # menos de ~1 dia
+                    continue
+            except Exception:
+                pass
+
+        # Busca nome do cliente
+        try:
+            c_result = await asyncio.to_thread(
+                lambda cid=client_id: supabase.table("clients")
+                .select("name")
+                .eq("id", cid)
+                .maybe_single()
+                .execute()
+            )
+            client_name = (c_result.data or {}).get("name", client_id[:12]) if c_result else client_id[:12]
+        except Exception:
+            client_name = client_id[:12]
+
+        # Envia lembrete
+        alerted += 1
+        await _alert_friday(
+            f"[Onboarding] Go-live de {client_name} aguardando sua confirmacao ha {days_elapsed} dias. "
+            f"Confirme via POST /onboarding/{client_id}/go-live quando estiver pronto."
+        )
+
+        # Salva timestamp do lembrete para idempotencia
+        gate_details["go_live_reminder_sent_at"] = now.isoformat()
+        try:
+            await asyncio.to_thread(
+                lambda cid=client_id, gd=dict(gate_details): supabase.table("onboarding_workflows")
+                .update({"gate_details": gd, "updated_at": now.isoformat()})
+                .eq("client_id", cid)
+                .eq("phase", "go_live")
+                .execute()
+            )
+        except Exception as e:
+            print(f"[onboarding/service] check_go_live_reminders: gate_details update failed: {e}")
+
+    return {"checked": checked, "alerted": alerted, "timestamp": now.isoformat()}

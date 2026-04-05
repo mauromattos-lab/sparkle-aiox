@@ -305,16 +305,14 @@ async def handle_workflow_step(task: dict) -> dict:
             required_gates=step.get("required_gates", []),
         )
 
-        # 5. Update instance context with step result
+        # 5. Update instance context with step result (always — for debugging)
         context[f"step_{step_index}_result"] = result
         context[f"step_{step_index}_name"] = step.get("name", f"step_{step_index}")
-        await _update_instance(instance_id, {
-            "current_step": step_index + 1,
-            "context": context,
-        })
 
         # 6. If step is awaiting gate, don't chain — gate approval will resume
         if isinstance(result, dict) and result.get("status") == "awaiting_gate":
+            # Persist context but don't advance current_step yet
+            await _update_instance(instance_id, {"context": context})
             return {
                 "message": f"Step '{step.get('name')}' aguardando gate approval",
                 "workflow_instance_id": instance_id,
@@ -322,13 +320,14 @@ async def handle_workflow_step(task: dict) -> dict:
                 "awaiting_gates": result.get("gates_pending", []),
             }
 
-        # 7. Determine next step
+        # 7. Determine next step — evaluate on_failure BEFORE updating current_step
         step_failed = isinstance(result, dict) and result.get("status") == "failed"
 
         if step_failed:
             on_failure = step.get("on_failure", {})
             if not on_failure.get("continue", False):
-                # Failure blocks workflow
+                # Failure blocks workflow — persist context but do NOT advance step
+                await _update_instance(instance_id, {"context": context})
                 await _fail_instance(instance_id, f"Step {step_index} ({step.get('name')}) failed")
                 return {
                     "status": "failed",
@@ -340,6 +339,12 @@ async def handle_workflow_step(task: dict) -> dict:
         else:
             on_success = step.get("on_success", {})
             next_step = on_success.get("next_step", step_index + 1)
+
+        # Advance current_step only when the workflow will actually continue
+        await _update_instance(instance_id, {
+            "current_step": step_index + 1,
+            "context": context,
+        })
 
         # 8. No next_step defined (final step)
         if next_step is None or (isinstance(next_step, dict) and not next_step):

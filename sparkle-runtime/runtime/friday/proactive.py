@@ -6,12 +6,15 @@ Anti-spam: max 1 message per trigger_type per day, quiet hours 22h-7h SP.
 Global cap: max 5 proactive messages per day total.
 
 Trigger types:
-  - morning_checkin   : 8-9h  — pending items summary
-  - afternoon_nudge   : 14-15h — stuck tasks / items needing attention
-  - eod_wrap          : 18-19h — day summary
-  - milestone         : on significant events (brain growth, new client DNA, etc.)
-  - anomaly_alert     : error rate spike or unusual system behaviour
-  - idle_detection    : 4h+ without Mauro interaction during work hours
+  - morning_checkin        : 8-9h  — pending items summary (incl. draft content count)
+  - afternoon_nudge        : 14-15h — stuck tasks / items needing attention
+  - eod_wrap               : 18-19h — day summary
+  - milestone              : on significant events (brain growth, new client DNA, etc.)
+  - anomaly_alert          : error rate spike or unusual system behaviour
+  - idle_detection         : 4h+ without Mauro interaction during work hours
+  - billing_blocked        : API billing/credit error detected in last 2h
+  - content_failure_streak : 3+ consecutive generate_content failures
+  - client_vencimento      : client payment due in next 3 days (fires at morning_checkin window)
 """
 from __future__ import annotations
 
@@ -212,6 +215,95 @@ async def _get_brain_chunk_count() -> int:
         return 0
 
 
+async def _get_billing_blocked_tasks() -> list[dict]:
+    """Tasks with billing/credit errors in the last 2h."""
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
+            .select("id,task_type,status,result,created_at")
+            .eq("status", "failed")
+            .gte("created_at", cutoff)
+            .execute()
+        )
+        tasks = res.data or []
+        billing_keywords = ("billing", "credit", "quota", "insufficient_quota",
+                            "payment", "saldo")
+        blocked = []
+        for t in tasks:
+            result_str = str(t.get("result") or "").lower()
+            if any(kw in result_str for kw in billing_keywords):
+                blocked.append(t)
+        return blocked
+    except Exception as e:
+        logger.error("proactive: _get_billing_blocked_tasks failed: %s", e)
+        return []
+
+
+async def _get_content_failure_streak() -> int:
+    """
+    Count consecutive generate_content failures (latest N tasks of that type).
+    Returns streak count — stops counting when a 'done' is found.
+    """
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks")
+            .select("id,status")
+            .eq("task_type", "generate_content")
+            .in_("status", ["failed", "done", "running", "pending"])
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        tasks = res.data or []
+        streak = 0
+        for t in tasks:
+            status = t.get("status")
+            if status in ("running", "pending"):
+                return 0  # streak indeterminado — não alertar enquanto algo está em execução
+            if status == "failed":
+                streak += 1
+            else:  # done
+                break
+        return streak
+    except Exception as e:
+        logger.error("proactive: _get_content_failure_streak failed: %s", e)
+        return 0
+
+
+async def _get_clients_due_soon(days_ahead: int = 3) -> list[dict]:
+    """Clients with payment due (due_day) within the next `days_ahead` days."""
+    try:
+        now = _now_sp()
+        upcoming_days = [(now + timedelta(days=d)).day for d in range(1, days_ahead + 1)]
+        res = await asyncio.to_thread(
+            lambda: supabase.table("clients")
+            .select("id,name,company,due_day,mrr")
+            .eq("status", "active")
+            .in_("due_day", upcoming_days)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        logger.error("proactive: _get_clients_due_soon failed: %s", e)
+        return []
+
+
+async def _get_draft_content_count() -> int:
+    """Count generated_content records with status='draft'."""
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("generated_content")
+            .select("id", count="exact")
+            .eq("status", "draft")
+            .execute()
+        )
+        return res.count if res.count is not None else len(res.data or [])
+    except Exception as e:
+        logger.error("proactive: _get_draft_content_count failed: %s", e)
+        return 0
+
+
 async def _get_last_mauro_interaction() -> datetime | None:
     """Timestamp of Mauro's last message to Friday."""
     try:
@@ -240,15 +332,18 @@ async def _get_last_mauro_interaction() -> datetime | None:
 # ── Trigger evaluators ───────────────────────────────────────
 
 async def _eval_morning_checkin() -> str | None:
-    """Morning check-in: summary of what's pending."""
+    """Morning check-in: summary of what's pending (incl. draft content count)."""
     now = _now_sp()
     if not (8 <= now.hour < 9):
         return None
 
-    pending = await _get_pending_tasks()
+    pending, drafts = await asyncio.gather(
+        _get_pending_tasks(),
+        _get_draft_content_count(),
+    )
     completed_yesterday = await _get_completed_today()  # will be 0 early morning, that's fine
 
-    if not pending and completed_yesterday == 0:
+    if not pending and completed_yesterday == 0 and drafts == 0:
         return "Bom dia! Tudo limpo por aqui, sem tasks pendentes. Dia tranquilo pra frente."
 
     parts = ["Bom dia!"]
@@ -261,6 +356,9 @@ async def _eval_morning_checkin() -> str | None:
         parts.append(f"{len(pending)} tasks pendentes ({summary}).")
     else:
         parts.append("Nenhuma task pendente.")
+
+    if drafts > 0:
+        parts.append(f"{drafts} conteudo(s) aguardando review.")
 
     return " ".join(parts)
 
@@ -356,6 +454,54 @@ async def _eval_idle_detection() -> str | None:
     return None
 
 
+async def _eval_billing_blocked() -> str | None:
+    """Alert when API billing/credit errors blocked tasks in the last 2h."""
+    blocked = await _get_billing_blocked_tasks()
+    if not blocked:
+        return None
+    task_types = list({t.get("task_type", "unknown") for t in blocked})
+    types_str = ", ".join(task_types[:4])
+    return (
+        f"Alerta: {len(blocked)} task(s) falharam com erro de saldo/billing nas ultimas 2h "
+        f"({types_str}). Verifique o credito da API — pode ter coisa parada esperando."
+    )
+
+
+async def _eval_content_failure_streak() -> str | None:
+    """Alert when 3+ consecutive generate_content tasks have failed."""
+    streak = await _get_content_failure_streak()
+    if streak < 3:
+        return None
+    return (
+        f"Atenção: {streak} gerações de conteudo falharam em sequencia (sem nenhum sucesso entre elas). "
+        f"Vale investigar o handler de generate_content."
+    )
+
+
+async def _eval_client_vencimento() -> str | None:
+    """Alert at morning window when a client has payment due in the next 3 days."""
+    now = _now_sp()
+    if not (8 <= now.hour < 9):
+        return None
+
+    due_soon = await _get_clients_due_soon(days_ahead=3)
+    if not due_soon:
+        return None
+
+    lines = []
+    for c in due_soon:
+        label = c.get("company") or c.get("name", "?")
+        due_day = c.get("due_day", "?")
+        mrr = c.get("mrr")
+        mrr_str = f" (R${mrr:.0f})" if mrr else ""
+        lines.append(f"  - {label}: vencimento dia {due_day}{mrr_str}")
+
+    clients_str = "\n".join(lines)
+    return (
+        f"Lembrete: {len(due_soon)} cliente(s) com vencimento nos proximos 3 dias:\n{clients_str}"
+    )
+
+
 # ── Main check ───────────────────────────────────────────────
 
 _TRIGGER_EVALUATORS: list[tuple[str, callable]] = [
@@ -365,6 +511,9 @@ _TRIGGER_EVALUATORS: list[tuple[str, callable]] = [
     ("milestone", _eval_milestone),
     ("anomaly_alert", _eval_anomaly_alert),
     ("idle_detection", _eval_idle_detection),
+    ("billing_blocked", _eval_billing_blocked),
+    ("content_failure_streak", _eval_content_failure_streak),
+    ("client_vencimento", _eval_client_vencimento),
 ]
 
 
