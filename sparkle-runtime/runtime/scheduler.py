@@ -2,9 +2,10 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (13 total):
+Jobs (14 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
+- cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
 - daily_decision_moment   : todo dia às 9h de Brasília (S9-P5)
 - weekly_briefing         : todo domingo às 8h de Brasília
 - observer_gap_analysis   : toda segunda às 8h de Brasília (SYS-5, substitui gap_report)
@@ -72,6 +73,10 @@ async def _run_health_check() -> None:
 
 async def _run_daily_briefing() -> None:
     await _run_and_execute("daily_briefing", priority=6)
+
+
+async def _run_cockpit_summary() -> None:
+    await _run_and_execute("cockpit_summary", priority=7)
 
 
 async def _run_weekly_briefing() -> None:
@@ -313,6 +318,14 @@ def start_scheduler() -> None:
         _run_daily_briefing,
         trigger=CronTrigger(hour=8, minute=0, timezone=_TZ),
         id="daily_briefing",
+        replace_existing=True,
+    )
+
+    # Cockpit Summary às 8h de Brasília (11h UTC) — TIER 1 executive view
+    _scheduler.add_job(
+        _run_cockpit_summary,
+        trigger=CronTrigger(hour=11, minute=0, timezone="UTC"),
+        id="cockpit_summary",
         replace_existing=True,
     )
 

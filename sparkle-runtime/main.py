@@ -67,6 +67,7 @@ from runtime.content.router import router as content_router
 from runtime.observer.router import router as observer_router
 from runtime.onboarding.router import router as onboarding_router
 from runtime.reports.router import router as reports_router
+from runtime.cockpit.router import router as cockpit_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
@@ -88,6 +89,7 @@ app.include_router(content_router, prefix="/content", tags=["content"])
 app.include_router(observer_router, prefix="/observer", tags=["observer"])
 app.include_router(onboarding_router, prefix="/onboarding", tags=["onboarding"])
 app.include_router(reports_router)
+app.include_router(cockpit_router)
 
 
 # ── Health ─────────────────────────────────────────────────

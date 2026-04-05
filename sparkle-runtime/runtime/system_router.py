@@ -41,9 +41,18 @@ _AGENTS = sorted(["analyst", "architect", "dev", "qa", "pm", "trafego"])
 _CRONS = [
     {"name": "health_check",          "schedule": "every 15min"},
     {"name": "daily_briefing",        "schedule": "daily 8h Brasilia"},
+    {"name": "cockpit_summary",       "schedule": "daily 8h Brasilia (11h UTC)"},
     {"name": "weekly_briefing",       "schedule": "sunday 8h Brasilia"},
-    {"name": "gap_report",            "schedule": "monday 8h Brasilia"},
+    {"name": "observer_gap_analysis", "schedule": "monday 8h Brasilia"},
     {"name": "daily_decision_moment", "schedule": "daily 9h Brasilia"},
+    {"name": "billing_risk",          "schedule": "daily 8h45 Brasilia"},
+    {"name": "risk_alert",            "schedule": "daily 9h30 Brasilia"},
+    {"name": "upsell_opportunity",    "schedule": "monday 7h30 Brasilia"},
+    {"name": "brain_weekly_digest",   "schedule": "sunday 23h Brasilia"},
+    {"name": "content_weekly_batch",  "schedule": "monday 7h Brasilia"},
+    {"name": "brain_archival",        "schedule": "daily 3h Brasilia"},
+    {"name": "brain_curate",          "schedule": "daily 2h UTC"},
+    {"name": "client_reports_monthly","schedule": "day 1 of month 10h UTC"},
 ]
 
 _VERSION = "sprint9"
