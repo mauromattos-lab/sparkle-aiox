@@ -16,11 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-
-import httpx
 
 from runtime.brain.dedup import check_duplicate_insight, confirm_existing_insight
+from runtime.brain.embedding import get_embedding
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -76,24 +74,6 @@ REGRAS:
 - Maximo 3 insights por trecho. Menos e melhor se forem mais densos.
 - confidence: 0.9+ para afirmacao clara e atribuivel, 0.7 para inferencia, 0.5 para fragmento ambiguo
 - Responda APENAS com JSON valido, sem markdown"""
-
-
-async def _get_embedding(text: str) -> list[float] | None:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
 
 
 def _clean_json(text: str) -> str:
@@ -208,7 +188,7 @@ async def handle_extract_insights(task: dict) -> dict:
 
             # 3. Embedding do insight
             embed_text = f"{insight.get('title', '')}: {insight.get('content', '')}. Aplicacao: {insight.get('application', '')}"
-            embedding = await _get_embedding(embed_text)
+            embedding = await get_embedding(embed_text)
 
             # 3b. Dedup: verifica se insight similar ja existe
             if embedding:

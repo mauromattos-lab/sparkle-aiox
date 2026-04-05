@@ -14,12 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from collections import Counter
 from datetime import datetime, timezone
 
-import httpx
-
+from runtime.brain.embedding import get_embedding
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -68,24 +66,6 @@ REGRAS:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-async def _get_embedding(text: str) -> list[float] | None:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
 
 
 def _clean_json(text: str) -> str:
@@ -210,7 +190,7 @@ async def handle_cross_source_synthesis(task: dict) -> dict:
 
         # 7. Embedding da sintese
         summary = parsed.get("summary", "")
-        embedding = await _get_embedding(summary[:3000])
+        embedding = await get_embedding(summary[:3000])
 
         # 8. Insere nova sintese
         insight_ids = [ins["id"] for ins in insights]

@@ -19,7 +19,8 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from runtime.brain.ingest_url import _chunk_text, _get_embedding
+from runtime.brain.embedding import get_embedding
+from runtime.brain.ingest_url import _chunk_text
 from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.brain.namespace import resolve_namespace
 from runtime.db import supabase
@@ -146,7 +147,7 @@ async def ingest_file(
         chunk_ids = []
 
         for i, chunk in enumerate(chunks):
-            embedding = await _get_embedding(chunk)
+            embedding = await get_embedding(chunk)
 
             # Dedup: verifica se chunk similar ja existe
             if embedding:

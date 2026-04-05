@@ -18,10 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 
-import httpx
-
+from runtime.brain.embedding import get_embedding
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
@@ -78,24 +76,6 @@ async def _classify_chunk_dna(chunk_content: str, task_id: str | None) -> dict |
         return None
 
 
-async def _get_embedding(text: str) -> list[float] | None:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text[:8000]},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
-
-
 async def handle_extract_dna(task: dict) -> dict:
     """
     Extrai DNA do corpus do Brain e popula a tabela agent_dna.
@@ -146,7 +126,7 @@ async def handle_extract_dna(task: dict) -> dict:
             continue
 
         # Gera embedding do conteúdo extraído
-        embedding = await _get_embedding(content)
+        embedding = await get_embedding(content)
 
         row: dict = {
             "agent_id": target_agent_id,

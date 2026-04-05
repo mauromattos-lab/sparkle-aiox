@@ -14,10 +14,8 @@ Day 1-7 do 30 Day Proof: provar que o Brain existe como ativo consultável.
 from __future__ import annotations
 
 import asyncio
-import os
 
-import httpx
-
+from runtime.brain.embedding import get_embedding
 from runtime.brain.isolation import get_brain_owner_filter
 from runtime.brain.usage import track_chunk_usage
 from runtime.config import settings
@@ -108,7 +106,7 @@ async def _search_knowledge_base(
     """
     # Tenta vector search via pgvector RPC
     try:
-        embedding = await _get_embedding(query)
+        embedding = await get_embedding(query)
         if embedding:
             rpc_params: dict = {
                 "query_embedding": embedding,
@@ -202,29 +200,6 @@ async def _text_search(
         except Exception as e2:
             print(f"[brain_query] text search failed: {e2}")
             return []
-
-
-async def _get_embedding(text: str) -> list[float] | None:
-    """
-    Gera embedding via OpenAI (se disponível) para busca vetorial.
-    Retorna None se não configurado — faz fallback para text search.
-    """
-    try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return None
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "text-embedding-3-small", "input": text},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-    except Exception:
-        return None
 
 
 # ── Formatação ─────────────────────────────────────────────────────────────────

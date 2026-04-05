@@ -20,9 +20,9 @@ from typing import Optional
 from runtime.brain.isolation import get_brain_owner_for_ingest
 from runtime.config import settings
 from runtime.db import supabase
+from runtime.brain.embedding import get_embedding
 from runtime.brain.ingest_url import (
     _chunk_text,
-    _get_embedding,
     _get_youtube_transcript,
     _get_url_content,
     _is_youtube,
@@ -258,7 +258,7 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
             )
 
             # Fase 4: Embedding
-            embedding = await _get_embedding(canonical or chunk_text)
+            embedding = await get_embedding(canonical or chunk_text)
 
             # Dedup: verifica se chunk similar ja existe
             if embedding:
@@ -372,12 +372,25 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
         ),
     }
 
-    # SYS-4: quando persona=cliente + client_id, handoff para extract_client_dna
-    if client_id and payload.get("persona") == "cliente":
-        result["handoff_to"] = "extract_client_dna"
-        result["handoff_payload"] = {
-            "client_id": client_id,
-            "regenerate_prompt": True,
-        }
+    # SYS-4: quando persona=cliente + client_id, run extract_client_dna inline
+    client_dna_stats = None
+    if client_id and payload.get("persona") == "cliente" and chunk_ids:
+        try:
+            from runtime.tasks.handlers.extract_client_dna import handle_extract_client_dna
+            dna_task = {
+                "id": task_id,
+                "payload": {
+                    "client_id": client_id,
+                    "regenerate_prompt": True,
+                },
+            }
+            client_dna_stats = await handle_extract_client_dna(dna_task)
+            print(f"[brain_pipeline] SYS-4 client DNA extracted: {client_dna_stats.get('items_extracted', 0)} items")
+        except Exception as e:
+            print(f"[brain_pipeline] SYS-4 client DNA extraction failed: {e}")
+            client_dna_stats = {"error": str(e)[:200]}
+
+    if client_dna_stats:
+        result["client_dna"] = client_dna_stats
 
     return result
