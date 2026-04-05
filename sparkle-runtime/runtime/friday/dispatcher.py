@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
+
+logger = logging.getLogger(__name__)
 
 # Intent enum — add new intents here as Friday grows
 INTENTS = [
@@ -251,6 +255,76 @@ async def _handle_gap_approval(text: str) -> dict | None:
     return None
 
 
+# ── C2-B1: Auto-ingest noise filter + fire-and-forget ──────────────────────
+
+# Intents that should NOT be auto-ingested (noise)
+_SKIP_INGEST_INTENTS = frozenset({"echo", "chat"})
+
+# Minimum word count for casual messages to be worth ingesting
+_MIN_WORDS_FOR_INGEST = 10
+
+
+def _should_auto_ingest(text: str, intent: str) -> bool:
+    """Determine if a transcribed message should be auto-ingested into the brain.
+
+    Returns False for:
+      - echo intent (test messages)
+      - chat intent with fewer than _MIN_WORDS_FOR_INGEST words
+      - Very short messages regardless of intent
+    """
+    if intent == "echo":
+        return False
+
+    word_count = len(text.split())
+
+    # Short casual chat — not worth storing
+    if intent == "chat" and word_count < _MIN_WORDS_FOR_INGEST:
+        return False
+
+    # Very short messages in general — likely greetings
+    if word_count < 5:
+        return False
+
+    return True
+
+
+async def _fire_auto_ingest(text: str, intent: str) -> None:
+    """Fire-and-forget: ingest transcribed audio into mauro-personal namespace.
+
+    This MUST be non-blocking. All errors are caught and logged.
+    Never delays Friday's response to Mauro.
+    """
+    try:
+        task_record = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "brain_ingest",
+                "payload": {
+                    "content": text,
+                    "source_agent": "mauro",
+                    "ingest_type": "mauro_audio",
+                    "target_namespace": "mauro-personal",
+                    "metadata": {
+                        "source": "friday-audio",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "intent": intent,
+                    },
+                },
+                "status": "pending",
+                "priority": 2,  # low priority — never compete with Friday response
+            }).execute()
+        )
+        record = task_record.data[0] if task_record.data else {}
+        if record:
+            from runtime.tasks.worker import execute_task
+            asyncio.create_task(execute_task(record))
+        logger.info("[friday/auto-ingest] queued brain_ingest for mauro-personal (intent=%s)", intent)
+    except Exception as e:
+        # Never let auto-ingest errors propagate — Friday response must not be affected
+        logger.error("[friday/auto-ingest] failed to queue brain_ingest: %s", e)
+
+
 async def classify_and_dispatch(
     text: str,
     from_number: str = "",
@@ -486,6 +560,11 @@ async def classify_and_dispatch(
     task_type = intent
     if intent == "chat" and domain not in ("geral", ""):
         task_type = "specialist_chat"
+
+    # C2-B1: Auto-ingest transcribed audio into mauro-personal namespace
+    # Fire-and-forget — never blocks Friday's response
+    if from_audio and _should_auto_ingest(text, intent):
+        asyncio.create_task(_fire_auto_ingest(text, intent))
 
     task = await asyncio.to_thread(
         lambda: supabase.table("runtime_tasks").insert({

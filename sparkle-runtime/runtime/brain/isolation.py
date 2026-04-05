@@ -24,6 +24,14 @@ UNRESTRICTED_AGENTS = frozenset({"system", "orion"})
 # Agents whose brain_owner is always their own slug (not client-scoped)
 SELF_SCOPED_AGENTS = frozenset({"friday", "brain"})
 
+# C2-B1: Named namespaces — valid brain_owner values beyond agent slugs
+# and client UUIDs. Used for organizational knowledge domains.
+NAMED_NAMESPACES = frozenset({
+    "mauro-personal",   # Mauro's strategic vision, decisions, session summaries
+    "sparkle-lore",     # Character IP: Zenya lore, SOUL, character bibles
+    "sparkle-ops",      # Operational rules: pipeline, feedback, SOP
+})
+
 
 def get_brain_owner_filter(
     agent_slug: str,
@@ -79,9 +87,21 @@ def validate_brain_access(
     return allowed_owner == requested_owner
 
 
+def is_valid_namespace(brain_owner: str) -> bool:
+    """Check if a brain_owner value is a recognized named namespace.
+
+    Named namespaces are organizational domains (mauro-personal, sparkle-lore,
+    sparkle-ops) that exist beyond agent slugs and client UUIDs.
+
+    Returns True for any value in NAMED_NAMESPACES.
+    """
+    return brain_owner in NAMED_NAMESPACES
+
+
 def get_brain_owner_for_ingest(
     agent_slug: str,
     client_id: str | None = None,
+    target_namespace: str | None = None,
 ) -> str:
     """Return the brain_owner value to set when an agent ingests data.
 
@@ -89,7 +109,15 @@ def get_brain_owner_for_ingest(
     ingest always requires a concrete brain_owner value.
 
     System/orion ingests default to "system" so they are explicitly tagged.
+
+    C2-B1: If target_namespace is provided and is a valid named namespace,
+    it takes priority. This allows the seed script and auto-ingest to write
+    to organizational namespaces (mauro-personal, sparkle-lore, sparkle-ops).
     """
+    # C2-B1: explicit namespace override
+    if target_namespace and target_namespace in NAMED_NAMESPACES:
+        return target_namespace
+
     slug = (agent_slug or "").lower().strip()
 
     if slug in UNRESTRICTED_AGENTS:

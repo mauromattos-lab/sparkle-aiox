@@ -45,6 +45,8 @@ BRAIN_EXEMPT_TASK_TYPES = frozenset({
     "auto_implement_gap",     # SYS-5: implementacao automatica de gaps
     "extract_insights",       # Brain Fase 5: extrai insights de chunks
     "cross_source_synthesis", # Brain Fase 6: sintese cruzada por dominio
+    "pipeline_gate",              # C2-B2: pipeline enforcement gate step
+    "pipeline_violation_alert",   # C2-B2: pipeline violation notification
 })
 
 
@@ -134,6 +136,53 @@ async def execute_task(task: dict) -> None:
                 })
             return
     # ── fim Brain Gate ──
+
+    # ── C2-B2 Pipeline Enforcement ──────────────────────────────
+    # If this task has a workflow_run_id linked to an aios_pipeline,
+    # verify the pipeline allows execution at the current step.
+    workflow_run_id = task.get("workflow_run_id")
+    if workflow_run_id and task_type not in BRAIN_EXEMPT_TASK_TYPES:
+        try:
+            from runtime.workflows.pipeline_enforcement import check_gates, notify_violation, get_step_name
+            wr_result = await asyncio.to_thread(
+                lambda: supabase.table("workflow_runs")
+                .select("workflow_type,current_step")
+                .eq("id", workflow_run_id)
+                .single()
+                .execute()
+            )
+            wr = wr_result.data if wr_result.data else None
+            if wr and wr.get("workflow_type") == "aios_pipeline":
+                target_step = task.get("payload", {}).get("pipeline_target_step")
+                if target_step is None:
+                    # Tasks linked to aios_pipeline MUST declare their target step
+                    await _update_task(task_id, {
+                        "status": "failed",
+                        "error": "Pipeline violation: task linked to aios_pipeline but missing pipeline_target_step in payload",
+                        "completed_at": _now(),
+                    })
+                    print(f"[worker] Task {task_id} blocked: missing pipeline_target_step for aios_pipeline")
+                    return
+                gate_check = await check_gates(workflow_run_id, target_step)
+                if not gate_check["allowed"]:
+                    item_id = task.get("payload", {}).get("item_id", str(task_id))
+                    agent = task.get("agent_id", "unknown")
+                    await notify_violation(
+                        item_id=item_id,
+                        current_step=wr.get("current_step", 0),
+                        attempted_step=target_step,
+                        agent=agent,
+                    )
+                    await _update_task(task_id, {
+                        "status": "failed",
+                        "error": f"Pipeline violation: {gate_check['reason']}",
+                        "completed_at": _now(),
+                    })
+                    print(f"[worker] Task {task_id} blocked by pipeline enforcement: {gate_check['reason']}")
+                    return
+        except Exception as e:
+            print(f"[worker] Pipeline check error (non-blocking): {e}")
+    # ── fim Pipeline Enforcement ──
 
     # ── Gate Enforcement ──────────────────────────────────────
     required_gates: list = task.get("required_gates") or []

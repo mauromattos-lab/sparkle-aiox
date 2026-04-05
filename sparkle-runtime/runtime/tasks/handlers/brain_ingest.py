@@ -123,8 +123,16 @@ async def handle_brain_ingest(task: dict) -> dict:
     if payload.get("source_title"):
         metadata["source_title"] = payload["source_title"]
 
-    # B1-03: resolve brain_owner for this ingest based on agent + client
-    brain_owner = get_brain_owner_for_ingest(source_agent, client_id)
+    # C2-B1: merge caller-provided metadata (e.g. from auto-ingest or seed)
+    extra_metadata = payload.get("metadata")
+    if extra_metadata and isinstance(extra_metadata, dict):
+        metadata.update(extra_metadata)
+
+    # B1-03 + C2-B1: resolve brain_owner — explicit namespace takes priority
+    target_namespace = payload.get("target_namespace")
+    brain_owner = get_brain_owner_for_ingest(
+        source_agent, client_id, target_namespace=target_namespace,
+    )
 
     # Insere em brain_chunks (schema produção: raw_content, chunk_metadata, sem entity_tags)
     try:
