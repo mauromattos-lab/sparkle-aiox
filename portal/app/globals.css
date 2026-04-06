@@ -8,6 +8,19 @@
   --bg: #020208;
   --accent: #7c3aed;
   --cyan: #00e5ff;
+
+  /* HQ Workstation density variables */
+  --card-padding: 12px;
+  --gap: 12px;
+  --text-sm: 0.8125rem;
+  --text-xs: 0.6875rem;
+
+  /* Status colors — consistent across all HQ views */
+  --status-green: #22c55e;
+  --status-yellow: #eab308;
+  --status-red: #ef4444;
+  --status-blue: #3b82f6;
+  --status-gray: #6b7280;
 }
 
 * {
@@ -127,4 +140,81 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── HQ Workstation layout utilities ───────────────────────────── */
+
+.hq-density {
+  --card-padding: 12px;
+  --gap: 12px;
+  --text-sm: 0.8125rem;
+  --text-xs: 0.6875rem;
+}
+
+/* HQ main content fade transition */
+@keyframes hqFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.hq-page-enter {
+  animation: hqFadeIn 0.15s ease-out;
+}
+
+/* Detail panel slide-in from right */
+@keyframes hqSlideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.hq-panel-slide-in {
+  animation: hqSlideInRight 0.2s ease-out;
+}
+
+/* Shimmer for loading skeletons */
+.hq-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hq-skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+
+/* Active nav item left border accent */
+.hq-nav-active {
+  background: rgba(255, 255, 255, 0.1);
+  border-left: 2px solid #7c3aed;
+  color: #a855f7;
+}
+
+/* Shimmer animation for skeleton loaders */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Activity feed — new item highlight fade */
+@keyframes highlightFade {
+  0%   { background-color: rgba(124, 58, 237, 0.12); }
+  100% { background-color: transparent; }
 }
