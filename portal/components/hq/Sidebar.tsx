@@ -9,6 +9,7 @@ import {
   Bot,
   GitBranch,
   Brain,
+  Sparkles,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -27,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Bot,             label: 'Agentes',        href: '/hq/agents' },
   { icon: GitBranch,       label: 'Workflows',      href: '/hq/workflows' },
   { icon: Brain,           label: 'Brain',          href: '/hq/brain' },
+  { icon: Sparkles,        label: 'Conteúdo',       href: '/hq/content' },
   { icon: Settings,        label: 'Settings',       href: '/hq/settings' },
 ]
 
