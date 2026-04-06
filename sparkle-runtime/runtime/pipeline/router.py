@@ -24,6 +24,7 @@ from runtime.workflows.pipeline_enforcement import (
     record_transition,
     check_gates,
     notify_violation,
+    verify_state_persisted,
     get_violations_recent,
 )
 
@@ -130,6 +131,30 @@ async def pipeline_advance(item_id: str, req: AdvanceRequest):
                 "current_step": current_name,
                 "attempted_step": target_name,
                 "agent": req.agent,
+            },
+        )
+
+    # [AC7] Verificar state persistence (Story 1.2)
+    sprint_item = (run.get("context") or {}).get("sprint_item")
+    schema_ver = (run.get("context") or {}).get("schema_version", 1)
+    current_step_name = get_step_name(current_step)
+    state_result = await verify_state_persisted(sprint_item, current_step_name, schema_ver)
+
+    if not state_result["allowed"]:
+        await notify_violation(
+            item_id=item_id,
+            current_step=current_step,
+            attempted_step=target_index,
+            agent=req.agent,
+            violation_type="state_missing",
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": state_result["error_code"],
+                "message": state_result["reason"],
+                "sprint_item": sprint_item,
+                "action_required": f"POST /system/state com sprint_item={sprint_item!r} e verified=true",
             },
         )
 
