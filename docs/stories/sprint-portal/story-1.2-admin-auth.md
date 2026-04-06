@@ -1,7 +1,7 @@
 # Story 1.2 — Admin Auth
 
 **Sprint:** Portal Workstation v1 — Epic 1
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 2 de 4 — depende de 1.1 (layout deve existir antes do middleware proteger rotas)
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 9
 **UX spec:** `docs/stories/sprint-portal/ux-spec-epic1.md` — Secao 5.1

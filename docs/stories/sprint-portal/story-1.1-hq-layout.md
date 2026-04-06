@@ -1,7 +1,7 @@
 # Story 1.1 — HQ Layout System
 
 **Sprint:** Portal Workstation v1 — Epic 1
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 1 de 4 — deve ser implementada ANTES de 1.2, 1.3 e 1.4
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 2
 **UX spec:** `docs/stories/sprint-portal/ux-spec-epic1.md` — Secoes 3, 4, 5

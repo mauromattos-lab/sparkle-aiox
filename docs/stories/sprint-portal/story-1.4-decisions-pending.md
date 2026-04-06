@@ -1,7 +1,7 @@
 # Story 1.4 — Decisoes Pendentes
 
 **Sprint:** Portal Workstation v1 — Epic 1
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 4 de 4 — depende de 1.3 (Command Center com layout e proxies devem existir)
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 3.3
 **UX spec:** `docs/stories/sprint-portal/ux-spec-epic1.md` — Secoes 1, 2.1
