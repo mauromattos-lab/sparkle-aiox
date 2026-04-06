@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.4
 title: Notificação Friday — Alerta Mauro quando lead qualificado pede contato
-status: Done
+status: Closed
 priority: Alta
 executor: "@dev (n8n WF01 + WF05) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 1-2)
@@ -99,10 +99,10 @@ _Zenya está no chat — use /abertura-handoff para entrar_
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] Testado com número de teste (não número real do Mauro sem autorização)
-- [ ] WF01 e WF05 atualizados e salvos
-- [ ] `work_log.md` atualizado
+- [x] Todos os ACs passando
+- [x] Testado com número de teste (não número real do Mauro sem autorização)
+- [x] WF01 e WF05 atualizados e salvos
+- [x] `work_log.md` atualizado
 
 ---
 

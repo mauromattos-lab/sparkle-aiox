@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.1
 title: Zenya Vendedora — Instância + System Prompt de Vendas
-status: Done
+status: Closed
 priority: Alta
 executor: "@dev (configuração) -> @qa (smoke test) -> @devops (deploy)"
 sprint: Sprint Pipeline (Semana 1)
@@ -84,12 +84,12 @@ O soul prompt deve cobrir 4 zonas:
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] Soul prompt revisado e aprovado pelo Mauro antes de ativar
-- [ ] Smoke test de isolamento: nenhum cliente ativo impactado
-- [ ] `soul_prompt` salvo em `docs/zenya/zenya-vendedora-soul.md` (versionado no repo)
-- [ ] `work_log.md` atualizado
-- [ ] Deploy confirmado pelo @devops
+- [x] Todos os ACs passando
+- [x] Soul prompt revisado e aprovado pelo Mauro antes de ativar (verificado por aprovação em sessão)
+- [x] Smoke test de isolamento: nenhum cliente ativo impactado
+- [x] `soul_prompt` salvo em `docs/zenya/zenya-vendedora-soul.md` (versionado no repo)
+- [x] `work_log.md` atualizado
+- [x] Deploy confirmado pelo @devops
 
 ---
 

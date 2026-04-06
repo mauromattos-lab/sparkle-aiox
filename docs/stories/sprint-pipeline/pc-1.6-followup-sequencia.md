@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.6
 title: Follow-up D0→D+7 — Sequência pós-demo automática
-status: Done
+status: Closed
 priority: Alta
 executor: "@dev (n8n novo WF) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 2)
@@ -109,10 +109,10 @@ Trigger (webhook/schedule)
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] Workflow salvo e ativo no n8n
-- [ ] Testado com número de teste — nenhum cliente real impactado
-- [ ] `work_log.md` atualizado com ID do novo workflow
+- [x] Todos os ACs passando
+- [x] Workflow salvo e ativo no n8n (ID: `ui80HRvfgrYLQXbR`)
+- [x] Testado com número de teste — nenhum cliente real impactado
+- [x] `work_log.md` atualizado com ID do novo workflow
 
 ---
 

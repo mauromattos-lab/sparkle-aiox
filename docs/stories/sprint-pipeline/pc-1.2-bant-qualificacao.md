@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.2
 title: Qualificação BANT — Extração e persistência no Supabase
-status: Done
+status: Closed
 priority: Alta
 executor: "@dev (n8n WF01 + Supabase) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 1)
@@ -95,10 +95,10 @@ arch_decision: |
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] Nenhum lead de teste visível no Supabase (usar número de teste, limpar após)
-- [ ] WF01 atualizado e salvo no n8n
-- [ ] `work_log.md` atualizado com node ID do novo nó de extração
+- [x] Todos os ACs passando
+- [x] Nenhum lead de teste visível no Supabase (usar número de teste, limpar após)
+- [x] WF01 atualizado e salvo no n8n
+- [x] `work_log.md` atualizado com node ID do novo nó de extração
 
 ---
 

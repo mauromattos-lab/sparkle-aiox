@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.5b
 title: Template de Proposta Padrão — 1 página, enviada via WhatsApp
-status: Done
+status: Closed
 priority: Alta
 executor: "@pm (draft) -> Mauro (aprovação) -> @dev (automatizar envio em PC-1.6)"
 sprint: Sprint Pipeline (Semana 2 — pré-requisito para PC-1.6 D0)
@@ -99,9 +99,9 @@ Qualquer dúvida, pode perguntar 🙂
 
 ## Definition of Done
 
-- [ ] AC-1 a AC-5 passando
-- [ ] Template adicionado ao playbook existente
-- [ ] PC-1.6 pode referenciar este template como entregável
+- [x] AC-1 a AC-5 passando
+- [x] Template adicionado ao playbook existente
+- [x] PC-1.6 pode referenciar este template como entregável
 
 ---
 
