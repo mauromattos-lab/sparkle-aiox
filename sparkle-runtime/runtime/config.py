@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     runtime_version: str = "0.1.0"
     sparkle_internal_client_id: str = "sparkle-internal"
     mauro_whatsapp: str = os.environ.get("MAURO_WHATSAPP", "")
+    zapi_allowed_phones: str = os.environ.get("ZAPI_ALLOWED_PHONES", "")
 
     # ElevenLabs (TTS)
     elevenlabs_api_key: str = os.environ.get("ELEVENLABS_API_KEY", "")
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
     asaas_api_key: str = os.environ.get("ASAAS_API_KEY", "")
     asaas_sandbox: bool = os.getenv("ASAAS_SANDBOX", "true").lower() in ("true", "1", "yes")
     asaas_webhook_token: str = os.environ.get("ASAAS_WEBHOOK_TOKEN", "")
+    asaas_webhook_secret: str = os.environ.get("ASAAS_WEBHOOK_SECRET", "")
 
     # Brain — S8-P3 Embeddings
     # BRAIN_EMBEDDINGS_ENABLED=false por padrão. Orion habilita após validar custo e comportamento.

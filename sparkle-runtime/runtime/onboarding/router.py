@@ -160,8 +160,9 @@ async def get_onboarding_status(client_id: str):
     Retorna: status, phase atual, steps executados,
     soul_prompt gerado, character_slug e workflows por fase.
     """
+    from runtime.onboarding.service import get_client_milestones as _get_milestones
     try:
-        session_result, workflows_result = await asyncio.gather(
+        session_result, workflows_result, milestones = await asyncio.gather(
             asyncio.to_thread(
                 lambda: supabase.table("onboarding_sessions")
                 .select("*")
@@ -176,6 +177,7 @@ async def get_onboarding_status(client_id: str):
                 .order("created_at")
                 .execute()
             ),
+            _get_milestones(client_id),
         )
     except Exception as e:
         raise HTTPException(
@@ -185,8 +187,28 @@ async def get_onboarding_status(client_id: str):
 
     data = session_result.data if session_result else None
     workflows = workflows_result.data if workflows_result else []
+    # milestones fetched via get_client_milestones (handles zenya_clients.id FK translation)
 
     if not data and not workflows:
+        # BUG-2 fix: fallback — if client exists, return milestones even without session
+        if milestones:
+            ttv_days = None
+            for m in milestones:
+                if m.get("milestone_type") == "first_real_message" and m.get("ttv_days") is not None:
+                    ttv_days = m["ttv_days"]
+                    break
+            return {
+                "status": "no_onboarding_session",
+                "phase": "unknown",
+                "client_id": client_id,
+                "character_slug": "",
+                "soul_prompt": "",
+                "steps": [],
+                "workflows": [],
+                "milestones": milestones,
+                "ttv_days": ttv_days,
+                "updated_at": "",
+            }
         raise HTTPException(
             status_code=404,
             detail=f"Nenhum onboarding encontrado para client_id={client_id}",
@@ -225,6 +247,13 @@ async def get_onboarding_status(client_id: str):
     elif data:
         derived_status = data.get("status", "unknown") or "unknown"
 
+    # Extract ttv_days from first_real_message milestone if present
+    ttv_days = None
+    for m in milestones:
+        if m.get("milestone_type") == "first_real_message" and m.get("ttv_days") is not None:
+            ttv_days = m["ttv_days"]
+            break
+
     return {
         "status": derived_status,
         "phase": data.get("phase", "contract") if data else "contract",
@@ -233,6 +262,8 @@ async def get_onboarding_status(client_id: str):
         "soul_prompt": data.get("soul_prompt", "") if data else "",
         "steps": steps,
         "workflows": workflows,
+        "milestones": milestones,
+        "ttv_days": ttv_days,
         "updated_at": data.get("updated_at", "") if data else "",
     }
 
@@ -710,3 +741,91 @@ async def generate_contract(client_id: str):
             status_code=500,
             detail=f"Falha ao gerar contrato: {e}",
         ) from e
+
+
+
+
+# ── POST /onboarding/{client_id}/milestone — LIFECYCLE-1.4 ───
+
+class MilestoneRequest(BaseModel):
+    """LIFECYCLE-1.4: payload para POST /onboarding/{client_id}/milestone"""
+    milestone_type: str  # zenya_active | first_real_message | first_week_report | aha_moment_30d
+    metadata: Optional[dict] = None
+
+
+@router.post("/{client_id}/milestone")
+async def track_client_milestone(client_id: str, body: MilestoneRequest):
+    """
+    LIFECYCLE-1.4: Registra (ou atualiza) um milestone para o cliente.
+
+    Idempotente — chamar duas vezes com o mesmo milestone_type nao duplica.
+    Para milestone_type=first_real_message calcula TTV automaticamente.
+    Para zenya_active e first_real_message envia notificacao ao Mauro via Friday.
+
+    milestone_type validos:
+      - zenya_active          — go-live confirmado
+      - first_real_message    — primeira mensagem real de cliente (calcula TTV)
+      - first_week_report     — relatorio de 7 dias com volume > 0
+      - aha_moment_30d        — 30 dias de uso com health >= 60
+    """
+    from runtime.onboarding.service import track_milestone
+
+    try:
+        result = await track_milestone(
+            client_id=client_id,
+            milestone_type=body.milestone_type,
+            metadata=body.metadata,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao registrar milestone: {e}",
+        ) from e
+
+# ── POST /onboarding/{client_id}/qr-confirmed — ONB-1.5a ─────
+
+# -- POST /onboarding/{client_id}/qr-confirmed -- ONB-1.5a
+
+@router.post('/{client_id}/qr-confirmed')
+async def qr_confirmed(client_id: str):
+    from datetime import datetime, timezone
+    try:
+        row = await asyncio.to_thread(
+            lambda: supabase.table('onboarding_sessions')
+            .select('gates_passed')
+            .eq('client_id', client_id)
+            .order('created_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+        session = (row.data or [{}])[0]
+        gates = session.get('gates_passed') or {}
+        gates['zapi_connected'] = True
+        # Fetch business_name from zenya_clients
+        try:
+            cn_row = supabase.table('zenya_clients').select('business_name').eq('client_id', client_id).limit(1).execute()
+            client_name = ((cn_row.data or [{}])[0]).get('business_name', client_id)
+        except Exception:
+            client_name = client_id
+        await asyncio.to_thread(
+            lambda: supabase.table('onboarding_sessions')
+            .update({'gates_passed': gates, 'updated_at': datetime.now(timezone.utc).isoformat()})
+            .eq('client_id', client_id)
+            .execute()
+        )
+        try:
+            from runtime.integrations.zapi import send_text
+            import os as _os, asyncio as _asyncio
+            mauro = _os.environ.get('MAURO_WHATSAPP', '')
+            if mauro:
+                await _asyncio.to_thread(send_text, mauro, f'[Friday] WhatsApp conectado para {client_name} — avancando para testes internos.')
+        except Exception:
+            pass
+        return {'status': 'ok', 'zapi_connected': True, 'client_id': client_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'qr-confirmed falhou: {e}') from e

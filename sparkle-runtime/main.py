@@ -96,6 +96,10 @@ from runtime.cockpit.router import router as cockpit_router
 from runtime.billing.router import router as billing_router
 from runtime.pipeline.router import router as pipeline_router
 from runtime.webhooks.router import router as webhooks_router
+from runtime.client_health.router import router as client_health_router
+from runtime.advocacy.router import router as advocacy_router
+from runtime.expansion.router import router as expansion_router
+from runtime.lifecycle.router import router as lifecycle_router
 
 app.include_router(friday_router, prefix="/friday", tags=["friday"])
 app.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
@@ -121,6 +125,10 @@ app.include_router(cockpit_router)
 app.include_router(billing_router)
 app.include_router(pipeline_router, prefix="/pipeline", tags=["pipeline"])
 app.include_router(webhooks_router)
+app.include_router(client_health_router, prefix="/health", tags=["client-health"])
+app.include_router(advocacy_router, prefix="/advocacy", tags=["advocacy"])
+app.include_router(expansion_router, prefix="/expansion", tags=["expansion"])
+app.include_router(lifecycle_router, prefix="/lifecycle", tags=["lifecycle"])
 
 
 # ── Health ─────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (18 total):
+Jobs (21 total):
 - health_check              : a cada 15 minutos
 - daily_briefing            : todo dia às 8h de Brasília
 - cockpit_summary           : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
@@ -21,6 +21,11 @@ Jobs (18 total):
 - client_reports_monthly    : dia 1 de cada mês às 10h UTC (7h BRT)
 - onboarding_check_gates    : a cada hora (ONB-1: verifica gates de onboarding em progresso)
 - post_golive_health_check  : 2x/dia 08h e 20h BRT (ONB-1.9: health check pos-go-live)
+- health_score_weekly       : toda segunda às 8h10 BRT (LIFECYCLE-1.2: Health Score Engine)
+- client_report_weekly      : toda segunda às 9h10 BRT (LIFECYCLE-1.3: Relatório Semanal)
+- intervention_check        : todo dia às 10h BRT (LIFECYCLE-1.3: Intervenção por Inatividade)
+- stale_proposal_check      : todo dia às 11h BRT (LIFECYCLE-2.3: Stale Proposal Detection)
+- nps_quarterly             : dia 1 de Jan/Abr/Jul/Out as 10h BRT (LIFECYCLE-2.4: NPS Trimestral)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -365,6 +370,110 @@ async def _run_post_golive_health_check() -> None:
     await _run_and_execute("post_golive_health", priority=5)
 
 
+# ── LIFECYCLE-1.3: Weekly Client Report ─────────────────────────
+
+@log_cron("client_report_weekly")
+async def _run_client_report_weekly() -> None:
+    """
+    LIFECYCLE-1.3: Gera e envia relatório semanal de cada cliente ativo para o Mauro.
+    Roda toda segunda às 9h10 BRT (60 min após health_score_weekly às 8h10).
+    """
+    from runtime.client_health.reporter import generate_and_send_reports
+    try:
+        results = await generate_and_send_reports()
+        print(
+            f"[scheduler] client_report_weekly: total={results.get('total', 0)} "
+            f"sent={results.get('sent', 0)} skipped={results.get('skipped', 0)} "
+            f"errors={results.get('errors', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] client_report_weekly: erro — {e}")
+
+
+# ── LIFECYCLE-1.3: Intervention Check (daily) ────────────────────
+
+@log_cron("intervention_check")
+async def _run_intervention_check() -> None:
+    """
+    LIFECYCLE-1.3: Detecta clientes inativos e dispara intervenção automática.
+    - 21-27 dias sem mensagem: envia reativação para WhatsApp do cliente
+    - 28+ dias sem mensagem: cria friday_alert para Friday/Mauro
+    Roda todo dia às 10h BRT.
+    """
+    from runtime.client_health.intervention import check_and_intervene
+    try:
+        results = await check_and_intervene()
+        print(
+            f"[scheduler] intervention_check: total={results.get('total_checked', 0)} "
+            f"reactivated={results.get('reactivated', 0)} escalated={results.get('escalated', 0)} "
+            f"skipped={results.get('skipped', 0)} errors={results.get('errors', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] intervention_check: erro — {e}")
+
+
+# ── LIFECYCLE-1.2: Health Score Weekly (toda segunda) ────────────
+
+@log_cron("health_score_weekly")
+async def _run_health_score_weekly() -> None:
+    """
+    LIFECYCLE-1.2: Calcula Health Score de todos os clientes ativos.
+    Roda toda segunda às 8h de Brasília.
+    """
+    from runtime.client_health.calculator import calculate_all_health_scores
+    try:
+        results = await calculate_all_health_scores()
+        healthy = sum(1 for r in results if r.get("classification") == "healthy")
+        attention = sum(1 for r in results if r.get("classification") == "attention")
+        risk = sum(1 for r in results if r.get("classification") in ("risk", "critical"))
+        print(f"[scheduler] health_score_weekly: {len(results)} clients — healthy={healthy} attention={attention} risk={risk}")
+    except Exception as e:
+        print(f"[scheduler] health_score_weekly: erro — {e}")
+
+
+# -- LIFECYCLE-2.3: Stale Proposal Check (daily 11h BRT) -----------------
+
+@log_cron("stale_proposal_check")
+async def _run_stale_proposal_check() -> None:
+    """
+    LIFECYCLE-2.3: Detects stale proposals daily at 11h BRT.
+    - 7-9 days without response: sends last-attempt WhatsApp via Z-API
+    - 10+ days without response: marks lead as lost (loss_reason=no_response)
+    """
+    from runtime.pipeline.stale_detector import run_stale_detection
+    try:
+        result = await run_stale_detection()
+        print(
+            f"[scheduler] stale_proposal_check: total_stale={result.get('total_stale', 0)} "
+            f"last_attempt_sent={result.get('last_attempt_sent', 0)} "
+            f"marked_lost={result.get('marked_lost', 0)} "
+            f"errors={result.get('errors', 0)}"
+        )
+    except Exception as exc:
+        print(f"[scheduler] stale_proposal_check: erro -- {exc}")
+
+
+
+# -- LIFECYCLE-2.4: NPS Quarterly -----------------------------------------------
+
+@log_cron("nps_quarterly")
+async def _run_nps_quarterly() -> None:
+    """
+    LIFECYCLE-2.4: Coleta NPS de clientes elegiveis.
+    Roda no dia 1 de Jan/Abr/Jul/Out as 10h BRT (13h UTC).
+    """
+    from runtime.advocacy.nps import collect_nps_eligible
+    try:
+        results = await collect_nps_eligible()
+        print(
+            f"[scheduler] nps_quarterly: total={results.get("total_checked", 0)} "
+            f"sent={results.get("sent", 0)} skipped={results.get("skipped", 0)} "
+            f"errors={results.get("errors", 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] nps_quarterly: erro — {e}")
+
+
 def start_scheduler() -> None:
     """Inicia o scheduler — chamado no lifespan startup do FastAPI."""
     # Health check a cada 15 minutos
@@ -523,6 +632,39 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # LIFECYCLE-1.2: health_score_weekly toda segunda às 8h10 BRT (10 min após daily briefing)
+    _scheduler.add_job(
+        _run_health_score_weekly,
+        trigger=CronTrigger(day_of_week="mon", hour=8, minute=10, timezone=_TZ),
+        id="health_score_weekly",
+        replace_existing=True,
+    )
+
+    # LIFECYCLE-1.3: client_report_weekly toda segunda às 9h10 BRT (após health_score_weekly)
+    _scheduler.add_job(
+        _run_client_report_weekly,
+        trigger=CronTrigger(day_of_week="mon", hour=9, minute=10, timezone=_TZ),
+        id="client_report_weekly",
+        replace_existing=True,
+    )
+
+    # LIFECYCLE-1.3: intervention_check todo dia às 10h BRT
+    _scheduler.add_job(
+        _run_intervention_check,
+        trigger=CronTrigger(hour=10, minute=0, timezone=_TZ),
+        id="intervention_check",
+        replace_existing=True,
+    )
+
+
+    # LIFECYCLE-2.4: nps_quarterly — dia 1 de Jan/Abr/Jul/Out as 10h BRT (13h UTC)
+    _scheduler.add_job(
+        _run_nps_quarterly,
+        trigger=CronTrigger(month="1,4,7,10", day=1, hour=13, minute=0, timezone="UTC"),
+        id="nps_quarterly",
+        replace_existing=True,
+    )
+
     # ── B2-02: Character Orchestrator periodic jobs ──────────
     from runtime.characters.scheduler import register_character_jobs
     register_character_jobs(_scheduler)
@@ -531,6 +673,29 @@ def start_scheduler() -> None:
     from runtime.friday.proactive_scheduler import register_proactive_jobs
     register_proactive_jobs(_scheduler)
 
+    # ── LIFECYCLE-2.3: Stale proposal detection (daily 11h BRT) ──
+    _scheduler.add_job(
+        log_cron("stale_proposal_check")(_run_stale_proposal_check),
+        trigger=CronTrigger(hour=11, minute=0, timezone=_TZ),
+        id="stale_proposal_check",
+        replace_existing=True,
+    )
+
+    # LIFECYCLE-2.1: upsell_detection_weekly — Monday 11h10 BRT
+    _scheduler.add_job(
+        log_cron("upsell_detection_weekly")(_run_upsell_detection_weekly),
+        trigger=CronTrigger(day_of_week="mon", hour=11, minute=10, timezone=_TZ),
+        id="upsell_detection_weekly",
+        replace_existing=True,
+    )
+
+    # LIFECYCLE-2.2: nurturing_daily_process — daily 09h BRT
+    _scheduler.add_job(
+        log_cron("nurturing_daily_process")(_run_nurturing_daily),
+        trigger=CronTrigger(hour=9, minute=0, timezone=_TZ),
+        id="nurturing_daily_process",
+        replace_existing=True,
+    )
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     job_names = ", ".join(j.id for j in jobs)
@@ -542,3 +707,55 @@ def stop_scheduler() -> None:
     if _scheduler.running:
         _scheduler.shutdown()
         print("[scheduler] APScheduler parado")
+
+
+# ── LIFECYCLE-2.1 & 2.2: Upsell detection + Nurturing crons ──
+
+@log_cron("upsell_detection_weekly")
+
+
+async def _run_first_message_check() -> None:
+    """LIFECYCLE-3.2: Check all clients for first real message."""
+    from runtime.lifecycle.first_message_detector import check_all_clients
+    result = await check_all_clients()
+    return result
+
+
+async def _run_case_generation() -> None:
+    """LIFECYCLE-3.4: Generate cases for eligible clients."""
+    from runtime.expansion.case_generator import generate_all_eligible_cases
+    result = await generate_all_eligible_cases()
+    return result
+
+
+async def _run_referral_propose() -> None:
+    """LIFECYCLE-3.4: Propose referral to all promoters."""
+    from runtime.expansion.referral import propose_to_all_promoters
+    result = await propose_to_all_promoters()
+    return result
+
+async def _run_upsell_detection_weekly() -> None:
+    """LIFECYCLE-2.1: Detect upsell opportunities weekly (Monday 11h10 BRT)."""
+    try:
+        from runtime.expansion.detector import detect_all_opportunities
+        result = await detect_all_opportunities()
+        print(
+            f"[scheduler] upsell_detection: clients={result.get('total_clients', 0)} "
+            f"detected={result.get('opportunities_detected', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] upsell_detection: erro — {e}")
+
+
+@log_cron("nurturing_daily_process")
+async def _run_nurturing_daily() -> None:
+    """LIFECYCLE-2.2: Process nurturing queue daily (09h BRT)."""
+    try:
+        from runtime.pipeline.nurturing import process_nurturing_queue
+        result = await process_nurturing_queue()
+        print(
+            f"[scheduler] nurturing_daily: processed={result.get('processed', 0)} "
+            f"sent={result.get('sent', 0)} archived={result.get('archived', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] nurturing_daily: erro — {e}")

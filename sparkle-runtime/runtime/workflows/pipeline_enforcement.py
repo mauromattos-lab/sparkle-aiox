@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 from runtime.db import supabase
@@ -23,17 +24,66 @@ logger = logging.getLogger(__name__)
 
 # ── Step definitions ──────────────────────────────────────────────────
 
+SCHEMA_VERSION = 2  # v2: items com schema_version >= 2 tem enforcement completo
+
 PIPELINE_STEPS: list[dict] = [
-    {"step": 0, "name": "story_created",     "agent": "@architect/@pm"},
-    {"step": 1, "name": "dev_implementing",   "agent": "@dev"},
-    {"step": 2, "name": "qa_validating",      "agent": "@qa"},
-    {"step": 3, "name": "devops_deploying",   "agent": "@devops"},
-    {"step": 4, "name": "done",               "agent": "system"},
+    {"step": 0, "name": "prd_approved",    "agent": "@pm"},
+    {"step": 1, "name": "spec_approved",   "agent": "@architect"},
+    {"step": 2, "name": "stories_ready",   "agent": "@sm"},
+    {"step": 3, "name": "dev_complete",    "agent": "@dev"},
+    {"step": 4, "name": "qa_approved",     "agent": "@qa"},
+    {"step": 5, "name": "po_accepted",     "agent": "@po"},
+    {"step": 6, "name": "devops_deployed", "agent": "@devops"},
+    {"step": 7, "name": "done",            "agent": "system"},
 ]
 
 STEP_NAMES: dict[int, str] = {s["step"]: s["name"] for s in PIPELINE_STEPS}
 NAME_TO_STEP: dict[str, int] = {s["name"]: s["step"] for s in PIPELINE_STEPS}
 MAX_STEP = max(STEP_NAMES.keys())
+
+# Aliases legados — strings v1 continuam funcionando
+NAME_TO_STEP.update({
+    "story_created":    2,
+    "dev_implementing": 3,
+    "qa_validating":    4,
+    "devops_deploying": 6,
+})
+
+# Mapeamento de steps v1 -> v2 para workflow_runs legados
+LEGACY_STEP_MAP: dict[int, int] = {
+    0: 2,  # story_created     -> stories_ready
+    1: 3,  # dev_implementing  -> dev_complete
+    2: 4,  # qa_validating     -> qa_approved
+    3: 6,  # devops_deploying  -> devops_deployed
+    4: 7,  # done              -> done
+}
+
+def is_legacy_run(run: dict) -> bool:
+    """Detecta se workflow_run foi criado com schema v1 (sem schema_version)."""
+    context = run.get("context") or {}
+    return context.get("schema_version", 1) < SCHEMA_VERSION
+
+def normalize_step(run: dict) -> int:
+    """Retorna o step normalizado para v2, independente do schema do run."""
+    current = run.get("current_step", 0)
+    if is_legacy_run(run):
+        return LEGACY_STEP_MAP.get(current, current)
+    return current
+
+
+
+
+# ── Deduplicação de notificações (NFR3) — cache TTL 5 min ────────────
+
+_violation_cache: dict[str, float] = {}
+
+def _should_notify(item_id: str, violation_type: str) -> bool:
+    key = f"{item_id}:{violation_type}"
+    now = time.time()
+    if key in _violation_cache and now - _violation_cache[key] < 300:
+        return False
+    _violation_cache[key] = now
+    return True
 
 
 def _now() -> str:
@@ -119,6 +169,10 @@ async def record_transition(
     history.append(transition_record)
     context["pipeline_history"] = history
 
+    # AC8: garantir schema_version >= 2 em novos runs
+    if context.get("schema_version", 1) < SCHEMA_VERSION:
+        context["schema_version"] = SCHEMA_VERSION
+
     # Determine new status
     new_status = "completed" if step_index >= MAX_STEP else "running"
 
@@ -154,6 +208,47 @@ async def record_transition(
     }
 
 
+async def verify_state_persisted(
+    sprint_item: str | None,
+    step_name: str,
+    schema_version: int = 1,
+) -> dict:
+    """
+    Verifica se agent_work_items tem registro verified=True para o sprint_item.
+    Para runs legados (schema_version < 2): skip com skipped=True.
+    """
+    if not sprint_item or schema_version < SCHEMA_VERSION:
+        return {"allowed": True, "reason": "legacy_run_skipped", "skipped": True}
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("agent_work_items")
+            .select("sprint_item,status,verified,handoff_to,updated_at")
+            .eq("sprint_item", sprint_item)
+            .single()
+            .execute()
+        )
+    except Exception:
+        result = None
+
+    if not result or not result.data:
+        return {
+            "allowed": False,
+            "reason": f"Estado nao persistido. Execute POST /system/state com sprint_item='{sprint_item}' antes de avancar.",
+            "error_code": "state_missing",
+        }
+
+    record = result.data
+    if not record.get("verified", False):
+        return {
+            "allowed": False,
+            "reason": "verified=false em agent_work_items. Confirme a entrega antes de avancar.",
+            "error_code": "state_unverified",
+        }
+
+    return {"allowed": True, "reason": "State verified", "record": record}
+
+
 async def check_gates(workflow_run_id: str, target_step: int | str) -> dict:
     """
     Check if a workflow_run can advance to the target step.
@@ -180,7 +275,7 @@ async def check_gates(workflow_run_id: str, target_step: int | str) -> dict:
         }
 
     run = result.data
-    current_step = run.get("current_step", 0)
+    current_step = normalize_step(run)  # AC5: suporte legacy + v2
     current_name = get_step_name(current_step)
     status = run.get("status", "unknown")
 
@@ -232,6 +327,7 @@ async def notify_violation(
     current_step: int,
     attempted_step: int | str,
     agent: str,
+    violation_type: str = "gate_skip",  # gate_skip | state_missing | handoff_invalid
 ) -> None:
     """
     Notify Friday/Mauro about a pipeline violation via proactive WhatsApp.
@@ -244,18 +340,32 @@ async def notify_violation(
     current_name = get_step_name(current_step)
     attempted_name = get_step_name(attempted_index)
 
-    message = (
-        f"Pipeline violation bloqueada! "
-        f"Item {item_id} tentou ir de {current_name} (step {current_step}) "
-        f"para {attempted_name} (step {attempted_index}). "
-        f"Agente: {agent}. Transicao bloqueada."
-    )
+    if violation_type == "state_missing":
+        message = (
+            f"Gate bloqueado! Estado nao persistido no Supabase antes do avanco. "
+            f"Item {item_id} tentou ir de {current_name} para {attempted_name}. "
+            f"Agente: {agent}. Execute POST /system/state antes de avancar."
+        )
+    elif violation_type == "handoff_invalid":
+        message = (
+            f"Gate bloqueado! Handoff com campos obrigatorios ausentes. "
+            f"Item {item_id} tentou ir de {current_name} para {attempted_name}. "
+            f"Agente: {agent}."
+        )
+    else:
+        message = (
+            f"Pipeline violation bloqueada! "
+            f"Item {item_id} tentou ir de {current_name} (step {current_step}) "
+            f"para {attempted_name} (step {attempted_index}). "
+            f"Agente: {agent}. Transicao bloqueada."
+        )
 
-    # Send proactive WhatsApp notification
-    try:
-        await send_proactive(message, trigger_type="pipeline_violation")
-    except Exception as e:
-        logger.error("[pipeline] failed to send violation notification: %s", e)
+    # Send proactive WhatsApp notification (com deduplicacao)
+    if _should_notify(item_id, violation_type):
+        try:
+            await send_proactive(message, trigger_type="pipeline_violation")
+        except Exception as e:
+            logger.error("[pipeline] failed to send violation notification: %s", e)
 
     # Log violation as runtime_task for audit
     try:
@@ -271,7 +381,7 @@ async def notify_violation(
                     "attempted_step": attempted_index,
                     "attempted_step_name": attempted_name,
                     "agent": agent,
-                    "violation_type": "step_skip",
+                    "violation_type": violation_type,
                 },
                 "status": "done",
                 "result": {"message": message, "blocked": True},
