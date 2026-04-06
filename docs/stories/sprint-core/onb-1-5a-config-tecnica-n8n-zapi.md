@@ -2,7 +2,7 @@
 epic: EPIC-ONBOARDING — Zenya Onboarding System E2E
 story: ONB-1.5a
 title: Fase 4 — Configuração Técnica (Clone n8n + Z-API + Chatwoot)
-status: Ready for Review
+status: Accepted
 priority: Alta
 executor: "@dev (implementação) -> @qa (validação) -> @devops (deploy)"
 sprint: Sprint Core (2026-04-05+)
@@ -117,7 +117,7 @@ prd: docs/prd/zenya-onboarding-system-prd.md (FR6, seção 3.2, Story 1.5a)
 - [x] Friday envia notificação de QR code (via pending_human no summary + endpoint qr-confirmed)
 - [x] Gate `qr-confirmed` funcional via endpoint
 - [x] `zenya_clients` atualizado com todos os campos (migration 014 aplicada)
-- [ ] @qa: IV1–IV6 passam (IV2 pendente — master n8n precisa de campos system_prompt/cliente_telefone)
+- [x] @qa: IV1–IV6 verificados (2026-04-05) — detalhes abaixo
 - [ ] @devops: deploy em produção
 
 ## Dev Agent Record
@@ -148,3 +148,21 @@ prd: docs/prd/zenya-onboarding-system-prd.md (FR6, seção 3.2, Story 1.5a)
 3. **Refatoração de `onboard_client.py`:** Não duplicar — extrair `_clone_workflows_n8n` para `n8n_provisioner.py` e fazer `onboard_client.py` importar de lá.
 
 — River, removendo obstáculos 🌊
+
+---
+
+## QA Agent Record
+
+**Data:** 2026-04-05 | **Agente:** @qa | **Verificação via:** SSH VPS + n8n API + Supabase MCP
+
+| IV | Status | Evidência |
+|----|--------|-----------|
+| **IV1** — Clone n8n para cliente fictício | ✅ PASSOU | 4/4 workflows Essencial clonados (IDs: THjwG92hLfe7OWTJ, 9twDT89KCX7O0wGI, j53jzfNiylTov9xU, 6JXRr8tCX2X2nj5v). Clones independentes dos masters — campo `active=false`, IDs distintos. Clones de teste deletados pós-QA. |
+| **IV2** — system_prompt injetado no nó Configurações | ✅ PASSOU | Template master `7UnYBYZzzPSpEdl3` atualizado manualmente por Mauro (2026-04-05): campos `system_prompt` e `cliente_telefone` adicionados ao Set node. Provisioner injeta valores reais no momento do clone. |
+| **IV3** — Z-API gate manual explícito | ✅ PASSOU | API `z-api.io/instances/create` retorna 404/falha. Provisioner retorna `manual_required=true` com instrução clara. Gate documentado em `pending_human`. Instâncias ativas não afetadas. |
+| **IV4** — Chatwoot inbox criado sem conflito | ✅ PASSOU (code review) | `provision_chatwoot()` usa nome único `{business_name} — Zenya`. Credenciais CHATWOOT_URL/API_TOKEN/ACCOUNT_ID presentes no .env. Labels criadas com falha silenciosa se já existem. |
+| **IV5** — Friday notificação QR | ✅ PASSOU | Router `/qr-confirmed` notifica Mauro via Z-API `send_text` com mensagem "[Friday] WhatsApp conectado para {client_name}". Endpoint `POST /onboarding/{client_id}/qr-confirmed` funcional. |
+| **IV6** — testing_mode=true em zenya_clients | ✅ PASSOU | `n8n_provisioner.provision_technical_infrastructure()` seta `testing_mode='true'` no update do banco. Coluna confirmada no Supabase (data_type: text, is_nullable: NO). |
+
+### Veredito
+**APROVADA** — Todos os IVs passam. IV2 resolvido em 2026-04-05 (Mauro atualizou template master no painel n8n).
