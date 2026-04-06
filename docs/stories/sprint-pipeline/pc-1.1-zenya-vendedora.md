@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.1
 title: Zenya Vendedora — Instância + System Prompt de Vendas
-status: Ready for Review
+status: Done
 priority: Alta
 executor: "@dev (configuração) -> @qa (smoke test) -> @devops (deploy)"
 sprint: Sprint Pipeline (Semana 1)

@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.5
 title: Script do Mauro — Playbook Canal B (Lead Frio) + Canal B2 (Handoff da Zenya)
-status: Ready for Review
+status: Done
 priority: Alta
 executor: "@pm + Mauro (conteúdo) -> @qa (revisão) -> Mauro (aprovação final)"
 sprint: Sprint Pipeline (Semana 1 — paralelo com PC-1.1)

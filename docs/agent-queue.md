@@ -434,11 +434,10 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `AGUARDANDO_QA` — smoke test 10 mensagens (AC-12) pendente |
-| **Responsável** | @qa |
-| **Implementado** | WF01 configurado com soul prompt Zenya Vendedora. Z-API +5512982201239 exclusivo. Encoding + conexões + model params corrigidos. |
+| **Status** | `FUNCIONAL` — smoke test 10/10 PASS @qa 2026-04-05 |
+| **Implementado** | WF01 ativo com soul prompt Zenya Vendedora. Z-API +5512982201239 exclusivo. 10 cenários aprovados: identidade IA, nichos âncora + fora âncora, BANT fluindo, preço padrão, handoff, sem overpromise, Calendly, não-ICP elegante. |
 | **Story** | `docs/stories/sprint-pipeline/pc-1.1-zenya-vendedora.md` |
-| **Pendente** | Smoke test formal 10 mensagens — @qa |
+| **Bug não-bloqueante** | "Output inválido" na extração BANT pós-resposta — issue para @dev |
 
 ---
 
@@ -446,11 +445,10 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | Adicionar nó de extração BANT ao WF01. Upsert em `leads` (bant_score, bant_summary, channel, status). Condicional has_sufficient_data. |
+| **Status** | `AGUARDANDO_QA` |
+| **Responsável** | @qa |
+| **Implementado** | 4 nós em branch paralelo no WF01. OpenAI gpt-4o-mini extrai BANT → upsert Supabase `leads` (on_conflict=phone). Migrations aplicadas: UNIQUE(phone), name nullable, bant_score lowercase, channel=whatsapp. |
 | **Story** | `docs/stories/sprint-pipeline/pc-1.2-bant-qualificacao.md` |
-| **Depende de** | PC-1.1 funcional |
 
 ---
 
@@ -468,11 +466,10 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | Melhorar WF05 com contexto BANT. Adicionar trigger automático quando score = "Alto". Deduplicação de notificação. |
+| **Status** | `AGUARDANDO_QA` |
+| **Responsável** | @qa |
+| **Implementado** | WF05 com template BANT completo (trigger_type: alto_score / human_request). WF01 +6 nós: IF score=alto → checar dup → notificar → marcar notificado. Deduplicação via `notes`. |
 | **Story** | `docs/stories/sprint-pipeline/pc-1.4-notificacao-friday.md` |
-| **Depende de** | PC-1.2 (score no Supabase) |
 
 ---
 
@@ -480,11 +477,11 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `AGUARDANDO_MAURO` — revisão e aprovação final (AC-13) |
-| **Responsável** | Mauro (30min revisão) |
+| **Status** | `FUNCIONAL` — aprovado por Mauro 2026-04-05 |
+| **Responsável** | Mauro (configurar WA Business quando possível) |
 | **Implementado** | `docs/playbooks/pipeline-comercial-script-mauro.md` — Canal B + B2 + 8 respostas rápidas |
 | **Story** | `docs/stories/sprint-pipeline/pc-1.5-script-mauro.md` |
-| **Pendente** | Mauro: (1) ler playbook, (2) configurar respostas rápidas no WA Business, (3) criar 6 etiquetas |
+| **Pendente** | Mauro: configurar respostas rápidas + etiquetas no WA Business (não bloqueia nada) |
 
 ---
 
