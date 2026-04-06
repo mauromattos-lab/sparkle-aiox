@@ -122,6 +122,11 @@ export interface ClientRecord {
   plan?: string
   last_interaction?: string
   notes?: string
+  empresa?: string
+  service_type?: string
+  onboarding_status?: string
+  zenya_active?: boolean
+  health_reason?: string
   [key: string]: unknown
 }
 
@@ -138,6 +143,11 @@ export interface PipelineLead {
   notes?: string
   phone?: string
   source?: string
+  empresa?: string
+  bant_score?: string | number
+  last_contact?: string
+  created_at?: string
+  updated_at?: string
   [key: string]: unknown
 }
 

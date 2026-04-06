@@ -75,6 +75,76 @@ export function SystemHealthSkeleton() {
   )
 }
 
+/** Skeleton for pipeline kanban — AC10: 6 columns, 3 cards each */
+export function PipelineSkeleton() {
+  return (
+    <div
+      className="grid gap-3 flex-1 min-h-0"
+      style={{ gridTemplateColumns: 'repeat(6, minmax(220px, 1fr))' }}
+      aria-label="Loading pipeline"
+    >
+      {Array.from({ length: 6 }).map((_, col) => (
+        <div key={col} className="flex flex-col gap-2 min-w-[220px]">
+          {/* Column header skeleton */}
+          <div className="glass rounded-lg px-3 py-2 flex items-center justify-between">
+            <SkeletonBox className="h-3 w-20" />
+            <SkeletonBox className="h-4 w-6 rounded-full" />
+          </div>
+          {/* Card skeletons */}
+          {Array.from({ length: 3 }).map((_, card) => (
+            <div key={card} className="glass rounded-lg p-3 flex flex-col gap-2 min-h-[80px]">
+              <div className="flex items-center justify-between">
+                <SkeletonBox className="h-3 w-24" />
+                <SkeletonBox className="h-4 w-4 rounded-full" />
+              </div>
+              <SkeletonBox className="h-2.5 w-16" />
+              <SkeletonBox className="h-2 w-20" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Skeleton for a single client card */
+export function ClientCardSkeleton() {
+  return (
+    <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-lg p-3 flex flex-col gap-2 min-h-[120px]">
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-1.5 flex-1">
+          <SkeletonBox className="h-3 w-24" />
+          <SkeletonBox className="h-2.5 w-16" />
+        </div>
+        <SkeletonBox className="h-4 w-12" />
+      </div>
+      <div className="flex gap-1.5">
+        <SkeletonBox className="h-4 w-14 rounded" />
+        <SkeletonBox className="h-4 w-12 rounded" />
+      </div>
+      <div className="flex items-center justify-between mt-auto pt-1 border-t border-white/[0.04]">
+        <SkeletonBox className="h-3 w-20" />
+        <SkeletonBox className="h-2.5 w-12" />
+      </div>
+    </div>
+  )
+}
+
+/** Skeleton for the clients grid (6 cards) — AC12 */
+export function ClientsSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div
+      className="grid gap-3"
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+      aria-label="Loading clients"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <ClientCardSkeleton key={i} />
+      ))}
+    </div>
+  )
+}
+
 /** Skeleton for the decisions pending section */
 export function DecisionsSkeleton({ lines = 3 }: { lines?: number }) {
   return (

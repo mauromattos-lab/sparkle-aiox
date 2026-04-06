@@ -36,6 +36,20 @@ body {
 }
 
 @layer utilities {
+  /* AC12: Pipeline kanban responsive grid */
+  .kanban-board-grid {
+    grid-template-columns: repeat(6, minmax(220px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+  @media (max-width: 1199px) {
+    .kanban-board-grid {
+      grid-template-columns: 1fr;
+      overflow-x: visible;
+      scroll-snap-type: none;
+    }
+  }
+
   .glass {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
