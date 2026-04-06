@@ -441,6 +441,28 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 ---
 
+### EPIC-ONBOARDING — FUNCIONAL ✅ (2026-04-06)
+
+| Story | Status | Entregável |
+|-------|--------|-----------|
+| ONB-S0.1/S0.2 | `FUNCIONAL` | Spike clone n8n + pipeline E2E |
+| ONB-1.1 | `FUNCIONAL` | Modelo de dados (migration 014) |
+| ONB-1.2 | `FUNCIONAL` | Contrato Autentique — generate + sign + webhook |
+| ONB-1.4 | `FUNCIONAL` | Intake / Brain DNA / onboard_client orquestrador 8 fases |
+| ONB-1.5a | `FUNCIONAL` | Clone n8n por tier, Chatwoot inbox, Z-API gate manual, qr-confirmed |
+| ONB-1.5b | `FUNCIONAL` | Google Drive + Calendar via webhooks n8n, Loja Integrada + Nuvemshop |
+| ONB-1.6 | `FUNCIONAL` | Teste interno QA — 10 perguntas, threshold 80% |
+| ONB-1.7 | `FUNCIONAL` | Teste com cliente |
+| ONB-1.8 | `FUNCIONAL` | Go-live execution |
+| ONB-1.9 | `FUNCIONAL` | Pós go-live health monitoring |
+
+**IDs críticos:**
+- Workflows Essencial n8n: `7UnYBYZzzPSpEdl3` (Config), `IY9g1qHAv1FV8I5D` (Secretária), `cdqNUH8xoJCT` (Escalar), `X2QGanrmQ94sjmWk` (Quebrar)
+- Drive webhook: `7w4uDx1h3Vf0feUP` | Calendar webhook: `AVbmzj48oOeMeKDi`
+- Commit final: `dd98c1d` | Pipeline completo: @dev→@qa→@po→@devops
+
+---
+
 ### Sprint PIPELINE COMERCIAL — FUNCIONAL ✅
 
 | Story | Status | Entregável |
