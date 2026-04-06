@@ -1531,3 +1531,174 @@ async def check_condition_timeouts() -> dict:
                 alerted += 1
 
     return {"alerted": alerted}
+
+
+# ── LIFECYCLE-1.4: Milestone & TTV Tracking ──────────────────
+
+MILESTONE_TYPES = frozenset([
+    'zenya_active',
+    'first_real_message',
+    'first_week_report',
+    'aha_moment_30d',
+])
+
+
+async def track_milestone(
+    client_id: str,
+    milestone_type: str,
+    metadata: Optional[dict] = None,
+) -> dict:
+    '''
+    LIFECYCLE-1.4: Track a client milestone.
+
+    Upserts into client_milestones (UNIQUE on client_id + milestone_type).
+    Calling twice for the same type updates metadata but never duplicates.
+
+    milestone_type: zenya_active | first_real_message | first_week_report | aha_moment_30d
+
+    If milestone_type == first_real_message:
+      - Fetches zenya_clients.created_at (contract date proxy)
+      - Calculates TTV = days between created_at and now()
+      - Stores in ttv_days field
+
+    Sends congratulations WhatsApp (to Mauro via Friday) for:
+      - zenya_active
+      - first_real_message
+    '''
+    if milestone_type not in MILESTONE_TYPES:
+        raise ValueError(
+            f'milestone_type invalido: {milestone_type!r}. '
+            f'Validos: {sorted(MILESTONE_TYPES)}'
+        )
+
+    now_ts = _now()
+    ttv_days: Optional[int] = None
+    business_name: str = client_id  # fallback
+
+    # Fetch zenya_clients row — try client_id column first, then UUID PK (BUG-3 fix)
+    try:
+        zc_result = await asyncio.to_thread(
+            lambda: supabase.table('zenya_clients')
+            .select('id,business_name,created_at')
+            .eq('client_id', client_id)
+            .maybe_single()
+            .execute()
+        )
+        zc_data = zc_result.data if zc_result else None
+        if not zc_data:
+            # Fallback: try by UUID PK (zenya_clients.id)
+            zc_result2 = await asyncio.to_thread(
+                lambda: supabase.table('zenya_clients')
+                .select('id,business_name,created_at')
+                .eq('id', client_id)
+                .maybe_single()
+                .execute()
+            )
+            zc_data = zc_result2.data if zc_result2 else None
+        if not zc_data:
+            raise ValueError(f'Cliente nao encontrado em zenya_clients: {client_id}')
+        business_name = zc_data.get('business_name') or client_id
+    except ValueError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f'Falha ao buscar zenya_clients para {client_id}: {e}') from e
+
+    # Calculate TTV for first_real_message
+    if milestone_type == 'first_real_message':
+        try:
+            raw_created_at = zc_data.get('created_at')
+            if raw_created_at:
+                if isinstance(raw_created_at, str):
+                    raw = raw_created_at.replace('Z', '+00:00')
+                    created_at_dt = datetime.fromisoformat(raw)
+                    if created_at_dt.tzinfo is None:
+                        created_at_dt = created_at_dt.replace(tzinfo=timezone.utc)
+                else:
+                    created_at_dt = raw_created_at
+                now_dt = datetime.now(timezone.utc)
+                ttv_days = (now_dt - created_at_dt).days
+        except Exception as e:
+            print(f'[milestone] WARN: falha ao calcular TTV para {client_id}: {e}')
+            ttv_days = None
+
+    # Build upsert row — client_milestones.client_id FK references zenya_clients.id (not zenya_clients.client_id)
+    zc_id = zc_data.get('id') or client_id  # zenya_clients PK
+    milestone_row: dict = {
+        'client_id': zc_id,
+        'milestone_type': milestone_type,
+        'achieved_at': now_ts,
+        'metadata': metadata or {},
+    }
+    if ttv_days is not None:
+        milestone_row['ttv_days'] = ttv_days
+
+    # Upsert — UNIQUE(client_id, milestone_type) prevents duplicates
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table('client_milestones')
+            .upsert(milestone_row, on_conflict='client_id,milestone_type')
+            .execute()
+        )
+    except Exception as e:
+        raise RuntimeError(f'Falha ao upsert client_milestones: {e}') from e
+
+    print(f'[milestone] {milestone_type} registrado para {client_id[:12]}... ({business_name})')
+
+    # Send congratulations via Friday (Mauro WhatsApp) for key milestones
+    if milestone_type == 'zenya_active':
+        msg = (
+            '🎉 *Go-Live confirmado!*\n\n'
+            f'A Zenya de {business_name} esta ativa e respondendo!\n'
+            'Primeiro marco alcancado. 🚀'
+        )
+        await _alert_friday(msg)
+
+    elif milestone_type == 'first_real_message':
+        ttv_str = f'{ttv_days} dias' if ttv_days is not None else 'N/A'
+        msg = (
+            '🎯 *Primeiro contato real!*\n\n'
+            f'{business_name} recebeu a primeira mensagem real de um cliente.\n'
+            f'TTV: {ttv_str} do contrato ao primeiro uso real.'
+        )
+        await _alert_friday(msg)
+
+    return {
+        'status': 'ok',
+        'client_id': client_id,
+        'milestone_type': milestone_type,
+        'achieved_at': now_ts,
+        'ttv_days': ttv_days,
+        'business_name': business_name,
+    }
+
+
+async def get_client_milestones(client_id: str) -> list:
+    '''
+    LIFECYCLE-1.4: Fetch all milestones for a client, ordered by achieved_at.
+    client_id here is zenya_clients.client_id — we translate to zenya_clients.id for the FK.
+    Returns empty list if none found (milestones are optional).
+    '''
+    try:
+        # Translate zenya_clients.client_id -> zenya_clients.id (FK used in client_milestones)
+        zc_result = await asyncio.to_thread(
+            lambda: supabase.table('zenya_clients')
+            .select('id')
+            .eq('client_id', client_id)
+            .maybe_single()
+            .execute()
+        )
+        zc_data = zc_result.data if zc_result else None
+        if not zc_data:
+            return []
+        zc_id = zc_data['id']
+        result = await asyncio.to_thread(
+            lambda: supabase.table('client_milestones')
+            .select('milestone_type,achieved_at,ttv_days,metadata')
+            .eq('client_id', zc_id)
+            .order('achieved_at')
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f'[milestone] WARN: falha ao buscar milestones para {client_id}: {e}')
+        return []
