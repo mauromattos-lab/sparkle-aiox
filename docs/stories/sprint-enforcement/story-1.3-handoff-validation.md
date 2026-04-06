@@ -126,4 +126,54 @@ PROMPT_PARA_PRÓXIMO: |
 
 ---
 
+## QA Results
+
+**Revisor:** @qa (Quinn)
+**Data:** 2026-04-06
+**Gate Decision:** `PASS ✅`
+
+### Verificação dos ACs
+
+| AC | Status | Evidência |
+|----|--------|-----------|
+| AC1: handoff_validator.py criado com HandoffPayload, validate_handoff, store_handoff | ✅ PASS | Arquivo presente, todas as funções implementadas com assinaturas corretas |
+| AC2: validate_handoff() valida entrega, supabase_atualizado, prompt ≥ 100, proximo com @ | ✅ PASS | Lógica em duas fases: campos ausentes primeiro, regras de negócio depois |
+| AC3: store_handoff() salva em runtime_tasks com task_type: "handoff_validation" e consumed: False | ✅ PASS | Payload inclui consumed: False, task_type correto, UUID v4 gerado |
+| AC4: consume_handoff() marca consumed: True e rejeita reuso | ✅ PASS | Itera runtime_tasks por handoff_validation_id, bloqueia segunda chamada |
+| AC5: POST /pipeline/validate-handoff adicionado em router.py | ✅ PASS | Endpoint presente, retorna handoff_validation_id em 200 |
+| AC6: AdvanceRequest atualizado com handoff_validation_id: Optional[str] | ✅ PASS | Campo Optional correto, legacy passa sem ele |
+| AC7: POST /pipeline/advance exige handoff_validation_id para schema_version >= 2 | ✅ PASS | Enforcement em router.py linha 171, legacy (schema_version < 2) isento |
+| AC8: Violação handoff_invalid gera notificação Friday com violation_type: "handoff_invalid" | ✅ PASS | notify_violation chamado com violation_type="handoff_invalid" no caminho de erro |
+
+### Verificação dos IVs
+
+| IV | Status | Resultado observado |
+|----|--------|---------------------|
+| IV1: validate-handoff sem prompt_para_proximo → 422 missing_or_invalid_fields | ✅ PASS | `{"missing_or_invalid_fields": ["prompt_para_proximo"], "error": "handoff_invalid"}` |
+| IV2: Handoff completo e válido → 200 com handoff_validation_id (UUID) | ✅ PASS | UUID v4 retornado: `2986be6b-150a-4758-a7d1-8ba8dad26db3` |
+| IV3: advance com handoff_validation_id válido avança pipeline (200 OK) | ✅ PASS | step 0→1 (prd_approved→spec_approved) com HTTP 200 |
+| IV4: Segunda tentativa com mesmo handoff_validation_id → 422 handoff_consumed | ✅ PASS | `{"error": "handoff_consumed", "message": "handoff_validation_id ja foi utilizado"}` |
+
+### Testes adicionais executados por QA
+
+- **Regressão Story 1.1:** normalize_step() para legacy (current_step=2) → mapeado para step 4 (qa_approved) — comportamento preservado
+- **Regressão Story 1.2:** verify_state_persisted() não afetada pela adição do handoff
+- **Compatibilidade legacy:** run sem schema_version no context → avança sem handoff_validation_id (schema_ver=1 < SCHEMA_VERSION=2)
+- **Fluxo e2e:** POST /system/state → POST /pipeline/validate-handoff → POST /pipeline/advance funcional
+
+### Observações (não-bloqueantes)
+
+- **Obs-1 (INFO):** consume_handoff() itera todos os registros handoff_validation via linear scan. Para volume pequeno (< 1000 handoffs/dia) sem impacto. Index em payload->>'handoff_validation_id' pode ser adicionado se necessário no futuro.
+- **Obs-2 (INFO):** prompt_para_proximo é truncado para 200 chars no storage mas validado no tamanho original — comportamento correto e intencional conforme design spec seção 4.
+
+### Conclusão
+
+Implementação correta. Validação em duas fases (campos ausentes + regras de negócio) garante mensagens de erro precisas. One-time use via `consumed` flag funcional. Compatibilidade legacy preservada. Regressão Stories 1.1 e 1.2 limpa. Todos os 8 ACs e 4 IVs verificados.
+
+**STATUS: `qa_approved` → próximo: @po**
+
+*— Quinn, guardião da qualidade 🛡️*
+
+---
+
 *Story 1.3 — Process Enforcement v1 | River 🌊*

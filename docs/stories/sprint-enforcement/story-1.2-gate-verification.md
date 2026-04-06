@@ -113,4 +113,56 @@ PROMPT_PARA_PRÓXIMO: |
 
 ---
 
+---
+
+## QA Results
+
+**Revisor:** @qa (Quinn)
+**Data:** 2026-04-06
+**Gate Decision:** `PASS ✅`
+
+### Verificação dos ACs
+
+| AC | Status | Evidência |
+|----|--------|-----------|
+| AC1: verify_state_persisted() em pipeline_enforcement.py | ✅ PASS | Função presente, signature correta com 3 params |
+| AC2: Runs legados (schema_version < 1) retornam skipped=True | ✅ PASS | `{'allowed': True, 'reason': 'legacy_run_skipped', 'skipped': True}` confirmado |
+| AC3: state_missing → 422 + action_required | ✅ PASS | error_code, mensagem e action_required presentes na função |
+| AC4: state_unverified → 422 + mensagem | ✅ PASS | `verified=false` check + error_code state_unverified implementados |
+| AC5: notify_violation() com violation_type param | ✅ PASS | Default `'gate_skip'`, aceita gate_skip/state_missing/handoff_invalid |
+| AC6: _should_notify() com cache TTL 5min | ✅ PASS | Dedup funcional: 2a chamada mesma chave retorna False |
+| AC7: verify_state_persisted() inserido em router.py | ✅ PASS | Inserido após check_gates(), antes de record_transition() |
+| AC8: Violação state_missing gera log runtime_tasks | ✅ PASS | `"violation_type": violation_type` em payload, `task_type: pipeline_violation_alert` |
+
+### Verificação dos IVs
+
+| IV | Status | Resultado observado |
+|----|--------|---------------------|
+| IV1: advance sem /system/state → 422 state_missing | ✅ PASS | `{"error": "state_missing", "action_required": "POST /system/state..."}` |
+| IV2: advance após /system/state verified=true → 200 | ✅ PASS | HTTP 200, step avançou corretamente |
+| IV3: Friday recebe notificação state_missing | ✅ WAIVED | Verificação por inspeção de código — `send_proactive` chamado após `_should_notify` retornar True |
+| IV4: 2a tentativa dentro de 5min não gera 2a notificação | ✅ PASS | `_should_notify` retorna False na 2a chamada com mesma chave — confirmado em teste unitário |
+
+### Testes adicionais executados por QA
+
+- **Regressão Story 1.1:** Skip de gate ainda retorna violação (comportamento preservado)
+- **Compatibilidade legacy:** `schema_version=1` → `skipped=True`, sem query no Supabase
+- **sprint_item=None:** Retorna `skipped=True` (graceful para runs sem context)
+- **Item inexistente no banco:** Retorna `state_missing` com mensagem clara
+
+### Observações (não-bloqueantes)
+
+- **Obs-1 (LOW):** `current_step` passado para `notify_violation` em router.py ainda usa `run.get("current_step", 0)` sem normalizar (herdado da Obs-1 da Story 1.1) — cosmético, não impacta lógica
+- **Obs-2 (INFO):** IV3 não foi testado em produção (requer WhatsApp real ativo) — waivado por inspeção de código que confirma o caminho de execução
+
+### Conclusão
+
+Implementação correta e segura. Compatibilidade com runs legados preservada. Deduplicação de notificações funcional. Todos os 8 ACs verificados. Regressão Story 1.1 limpa.
+
+**STATUS: `qa_approved` → próximo: @po**
+
+*— Quinn, guardião da qualidade 🛡️*
+
+---
+
 *Story 1.2 — Process Enforcement v1 | River 🌊*

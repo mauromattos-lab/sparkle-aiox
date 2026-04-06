@@ -123,4 +123,55 @@ PROMPT_PARA_PRÓXIMO: |
 
 ---
 
+---
+
+## QA Results
+
+**Revisor:** @qa (Quinn)
+**Data:** 2026-04-06
+**Gate Decision:** `PASS ✅`
+
+### Verificação dos ACs
+
+| AC | Status | Evidência |
+|----|--------|-----------|
+| AC1: 8 PIPELINE_STEPS (steps 0-7) | ✅ PASS | `len(PIPELINE_STEPS) == 8`, steps 0-7 confirmados |
+| AC2: SCHEMA_VERSION = 2 | ✅ PASS | Linha 26: `SCHEMA_VERSION = 2` |
+| AC3: LEGACY_STEP_MAP implementado | ✅ PASS | `{0:2, 1:3, 2:4, 3:6, 4:7}` conforme spec |
+| AC4: is_legacy_run() + normalize_step() | ✅ PASS | Funções implementadas, comportamento correto |
+| AC5: check_gates() usa normalize_step() | ✅ PASS | Linha 222: `current_step = normalize_step(run)` |
+| AC6: Aliases legados em NAME_TO_STEP | ✅ PASS | story_created→2, dev_implementing→3, qa_validating→4, devops_deploying→6 |
+| AC7: template aios_pipeline v2 com 8 steps | ✅ PASS | templates.py versão 2, 8 steps corretos |
+| AC8: record_transition injeta schema_version:2 | ✅ PASS | Linhas 157-159, conditional upgrade |
+
+### Verificação dos IVs
+
+| IV | Status | Resultado observado |
+|----|--------|---------------------|
+| IV1: legacy step 2 → step 4 qa_approved | ✅ PASS | normalize_step retornou 4 (qa_approved) |
+| IV2: advance prd_approved → 200 OK | ✅ PASS | HTTP 200, step_name: prd_approved |
+| IV3: skip prd_approved→dev_complete → 422 | ✅ PASS | HTTP 422, "Step dev_complete requer spec_approved concluido" |
+| IV4: GET /pipeline/status retorna 8 steps | ✅ PASS | total_steps: 8, todos os step names corretos |
+
+### Testes adicionais executados por QA
+
+- **Matriz completa de transição (9 pares):** todos corretos (7 válidos + 2 skips rejeitados)
+- **Legacy step mapping completo (steps 0-4):** todos mapeados corretamente para v2
+- **Runs v2 não afetados por normalize_step:** confirmado (is_legacy=False, step preservado)
+
+### Observações (não-bloqueantes)
+
+- **Obs-1 (LOW):** Em `pipeline_advance` no router.py, a variável `current_step` usada em `notify_violation` vem de `run.get("current_step", 0)` sem normalizar — para legacy items, a mensagem de violação pode exibir o step antigo. Não bloqueia; impacto apenas cosmético em mensagens WhatsApp.
+- **Obs-2 (INFO):** `normalize_step` para step -1 (estado inicial de testes) retorna -1 sem mapear — comportamento esperado pois -1 não está no LEGACY_STEP_MAP.
+
+### Conclusão
+
+Implementação sólida. Backward compatibility preservada por código sem migration SQL. Todos os 8 ACs e 4 IVs verificados com evidências. Regressão não detectada.
+
+**STATUS: `qa_approved` → próximo: @po**
+
+*— Quinn, guardião da qualidade 🛡️*
+
+---
+
 *Story 1.1 — Process Enforcement v1 | River 🌊*
