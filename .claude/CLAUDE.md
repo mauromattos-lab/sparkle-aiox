@@ -2,6 +2,149 @@
 
 You are working with Synkra AIOS, an AI-Orchestrated System for Full Stack Development.
 
+---
+
+## 🎯 REGRA DO POST-IT — INVIOLÁVEL (leia antes de qualquer outra coisa)
+
+**Precise do Mauro o mínimo possível.**
+
+Mauro toma decisões de negócio e aprova o que é dele (personagem, estratégia, dinheiro). Tudo o resto — técnico, operacional, configuração, deploy, SQL, acesso — é responsabilidade dos agentes. Cada vez que um agente pede algo técnico pro Mauro, falhou.
+
+O único momento em que Mauro deve ser acionado:
+- Decisão estratégica que só ele pode tomar
+- Aprovação de mudança em IP de personagem (Lei do protocolo)
+- Credencial que genuinamente não existe em nenhum sistema acessível
+
+Tudo o mais: resolva, acesse, execute, descubra — sem pedir.
+
+---
+
+## 🔑 ACESSO PROATIVO — REGRA INVIOLÁVEL (leia antes de qualquer outra coisa)
+
+**Nunca deixe Mauro fazer manualmente o que você pode fazer com acesso adequado.**
+
+Antes de qualquer tarefa que envolva sistema externo:
+1. Verificar se já há acesso (MCP disponível, SSH key em `~/.ssh/sparkle_vps`, variável de ambiente)
+2. Se não houver → pedir o acesso ANTES de apresentar comandos para Mauro executar
+3. NUNCA apresentar "rode esse SQL", "execute esse comando no terminal" sem antes checar se pode fazer direto
+4. Frase padrão: "Posso fazer isso diretamente se você me passar acesso a X — quer configurar agora?"
+
+**Acessos já configurados (usar diretamente, sem pedir):**
+- Supabase: MCP `mcp__supabase__execute_sql` / `apply_migration` — disponível nesta sessão
+- VPS SSH: `ssh -i ~/.ssh/sparkle_vps root@187.77.37.88` — chave configurada em 2026-04-01
+
+**Por que:** Mauro ficou rodando SQL no Supabase e comandos de deploy no terminal por várias sessões sem necessidade. Nunca mais.
+
+---
+
+## 🎯 ROTEAMENTO OBRIGATÓRIO DE ESPECIALISTAS — REGRA INVIOLÁVEL
+
+**Orion nunca executa sozinho o que é de especialista.**
+
+Antes de qualquer entrega técnica ou analítica, verificar: existe um agente especialista para isso?
+Se sim → ativar o agente. Orion orquestra, não executa.
+
+### Tabela de roteamento obrigatório
+
+| Situação | Agente obrigatório |
+|----------|--------------------|
+| Decisão arquitetural, design de sistema, escolha de stack | `@architect (Aria)` |
+| Implementação de código, deploy, debug, infraestrutura | `@dev` |
+| Pesquisa de mercado, análise competitiva, benchmarks | `@analyst` |
+| Validação, testes, checklist de qualidade, edge cases | `@qa` |
+| Estratégia de produto, requisitos, backlog | `@pm` |
+| Meta Ads, Google Ads, performance de campanha | `@squad-trafego` |
+| Análise multi-domínio, decisão complexa | `@architect` + Conclave via Runtime |
+| Criação de conteúdo, copywriting, Instagram | `@dev` (trigger generate_content no Runtime) |
+
+### Regras de execução
+
+1. **Orion lê e orienta** — nunca gera código de produção diretamente sem passar por @dev
+2. **Orion analisa e sintetiza** — nunca faz pesquisa de mercado sem passar por @analyst
+3. **Orion decide com especialistas** — decisões arquiteturais passam por @architect
+4. **Paralelo sempre** — se há 3 tarefas desbloqueadas para especialistas diferentes, lança os 3 simultaneamente
+5. **Runtime primeiro** — antes de responder diretamente, verificar se o Runtime já tem um handler para isso (consultar GET https://runtime.sparkleai.tech/system/capabilities)
+
+### Quando Orion age diretamente (sem especialista)
+- Resposta estratégica de negócio (só Mauro decide)
+- Síntese de entregas já feitas por especialistas
+- Leitura de contexto e memória no início de sessão
+- Comunicação com Mauro sobre status, bloqueios, próximos passos
+
+**Por que:** Mauro identificou que Orion executava sem chamar especialistas, gerando respostas genéricas onde havia especialização disponível. O sistema tem agentes reais — eles precisam ser usados.
+
+---
+
+## 💾 REGRA DE PERSISTÊNCIA — ANTI-PERDA DE CONTEXTO (leia antes de qualquer outra coisa)
+
+**Toda entrega concluída deve ser gravada IMEDIATAMENTE no sistema — não no final da sessão.**
+
+### Fonte de verdade: Supabase, não markdown
+
+O `agent-queue.md` é leitura humana. A fonte de verdade real é `agent_work_items` no Supabase, acessível via:
+
+```
+GET  https://runtime.sparkleai.tech/system/state               — consulta estado atual
+GET  https://runtime.sparkleai.tech/system/state?sprint_item=X — consulta item específico
+POST https://runtime.sparkleai.tech/system/state               — grava conclusão
+```
+
+**Protocolo obrigatório para todo agente ao concluir trabalho:**
+
+```json
+POST https://runtime.sparkleai.tech/system/state
+{
+  "sprint_item": "SPRINT8-P3",
+  "status": "funcional",
+  "verified": true,
+  "verification_source": "o que foi verificado para confirmar",
+  "notes": "resumo do que foi feito",
+  "handoff_to": "@próximo-agente",
+  "completed": true
+}
+```
+
+**Antes de reportar qualquer status para Mauro ou outro agente:**
+1. Consultar `GET /system/state?sprint_item=X` — não ler o markdown
+2. Se o estado no banco divergir da realidade observada → corrigir o banco, não o markdown
+3. Só então reportar
+
+**O work_log.md continua sendo usado para** decisões de configuração, credenciais, valores exatos (voz ElevenLabs, workflow IDs) — coisas que não têm campo estruturado no banco.
+
+**Por que:** agentes reportavam estado de markdown desatualizado. Z-API redirect foi pedido 4x quando já estava feito. Banco é observável e verificável — arquivo não é.
+
+---
+
+## ⚡ OPERAÇÃO PARALELA — REGRA INVIOLÁVEL (leia antes de qualquer outra coisa)
+
+**Sparkle opera como empresa com departamentos, não como fila sequencial.**
+
+Ao iniciar qualquer sessão ou receber qualquer entrega de agente:
+1. Leia `docs/agent-queue.md`
+2. Identifique TODOS os itens desbloqueados
+3. Lance TODOS em paralelo — imediatamente, sem pedir confirmação
+4. Não existe "vou começar com 3 e ver como vai" — tudo que pode rodar, roda
+
+**Se há 8 itens desbloqueados → 8 agentes em paralelo. Não 3.**
+
+Orion não é gargalo. Orion orquestra o plano inicial e reage a entregas. Cada agente indica o próximo no handoff — sem Orion no meio de cada passo.
+
+**Por que isso importa:** Mauro teve que explicar esta regra 3+ vezes na mesma sessão. Ela se perde com compactação. Esta seção existe para que nunca precise ser explicada de novo.
+
+Gates obrigatórios (QA, PO, SM) também rodam em paralelo em itens diferentes — não bloqueiam uns aos outros.
+
+---
+
+## CONTEXTO OBRIGATÓRIO — Leia antes de qualquer ação
+
+**AGENT_CONTEXT.md** na raiz do projeto contém: toolkit de ferramentas, agentes disponíveis, protocolo de handoff, processos e regras invioláveis. Todo agente lê este arquivo ao ser ativado.
+
+- Processos completos: `docs/operations/sparkle-os-process-v2.md` ← **V2 OBRIGATÓRIO**
+- Toolkit por agente: `docs/operations/agent-toolkit-standard.md`
+- Fila ativa: `docs/agent-queue.md`
+
+**Nunca opere sem conhecer o ecossistema. Nunca ative sem QA. Nunca generalize.**
+
 <!-- AIOS-MANAGED-START: core-framework -->
 ## Core Framework Understanding
 

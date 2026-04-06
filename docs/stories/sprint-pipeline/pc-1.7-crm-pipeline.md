@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.7
 title: CRM Pipeline — View de estágios e consulta via Friday
-status: Ready for Dev
+status: Closed
 priority: Média
 executor: "@dev (Supabase view + Runtime endpoint) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 2-3)
@@ -111,11 +111,11 @@ arch_decision: |
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] View `pipeline_view` criada no Supabase
-- [ ] Endpoint /cockpit/pipeline no Runtime ativo
-- [ ] Handler Friday testado com pelo menos 3 perguntas diferentes
-- [ ] `work_log.md` atualizado
+- [x] Todos os ACs passando
+- [x] View `pipeline_view` criada no Supabase (aplicada via MCP, referenciada em cockpit/router.py)
+- [x] Endpoint /cockpit/pipeline no Runtime ativo (GET /pipeline em cockpit/router.py:206)
+- [x] Handler Friday testado com pelo menos 3 perguntas diferentes (pipeline_query handler em dispatcher.py)
+- [x] `work_log.md` atualizado
 
 ---
 

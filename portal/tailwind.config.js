@@ -7,6 +7,12 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        // 1440px breakpoint — Detail Panel push vs overlay threshold
+        'xl': '1440px',
+        // 1200px — sidebar auto-collapse threshold (handled in JS)
+        '2xl': '1536px',
+      },
       colors: {
         background: '#020208',
         accent: '#7c3aed',
@@ -16,6 +22,12 @@ module.exports = {
         surface: 'rgba(255,255,255,0.04)',
         'surface-hover': 'rgba(255,255,255,0.07)',
         border: 'rgba(255,255,255,0.08)',
+        // HQ status colors
+        'status-green': '#22c55e',
+        'status-yellow': '#eab308',
+        'status-red': '#ef4444',
+        'status-blue': '#3b82f6',
+        'status-gray': '#6b7280',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -49,9 +61,14 @@ module.exports = {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(200%)' },
         },
+        slideInRight: {
+          '0%': { transform: 'translateX(100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
       },
       animation: {
         'slide-in': 'slideIn 0.3s ease-out',
+        'slide-in-right': 'slideInRight 0.2s ease-out',
         'pulse-glow': 'pulse_glow 2s ease-in-out infinite',
         'gradient-shift': 'gradient_shift 6s ease infinite',
         'heartbeat': 'heartbeat 1.4s ease-in-out infinite',

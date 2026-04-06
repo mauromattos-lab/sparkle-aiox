@@ -441,72 +441,47 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 ---
 
-### [PC-1.2] Qualificação BANT — Extração + Supabase
+### EPIC-ONBOARDING — FUNCIONAL ✅ (2026-04-06)
 
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_QA` |
-| **Responsável** | @qa |
-| **Implementado** | 4 nós em branch paralelo no WF01. OpenAI gpt-4o-mini extrai BANT → upsert Supabase `leads` (on_conflict=phone). Migrations aplicadas: UNIQUE(phone), name nullable, bant_score lowercase, channel=whatsapp. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.2-bant-qualificacao.md` |
+| Story | Status | Entregável |
+|-------|--------|-----------|
+| ONB-S0.1/S0.2 | `FUNCIONAL` | Spike clone n8n + pipeline E2E |
+| ONB-1.1 | `FUNCIONAL` | Modelo de dados (migration 014) |
+| ONB-1.2 | `FUNCIONAL` | Contrato Autentique — generate + sign + webhook |
+| ONB-1.4 | `FUNCIONAL` | Intake / Brain DNA / onboard_client orquestrador 8 fases |
+| ONB-1.5a | `FUNCIONAL` | Clone n8n por tier, Chatwoot inbox, Z-API gate manual, qr-confirmed |
+| ONB-1.5b | `FUNCIONAL` | Google Drive + Calendar via webhooks n8n, Loja Integrada + Nuvemshop |
+| ONB-1.6 | `FUNCIONAL` | Teste interno QA — 10 perguntas, threshold 80% |
+| ONB-1.7 | `FUNCIONAL` | Teste com cliente |
+| ONB-1.8 | `FUNCIONAL` | Go-live execution |
+| ONB-1.9 | `FUNCIONAL` | Pós go-live health monitoring |
 
----
-
-### [PC-1.3] Showcase Dinâmico
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Implementado** | Via soul prompt PC-1.1. Showcase dinâmico + exemplos âncora (confeitaria/clínica/escola) + Calendly CTA já no soul prompt. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.3-showcase-dinamico.md` |
-
----
-
-### [PC-1.4] Notificação Friday — Lead Qualificado
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_QA` |
-| **Responsável** | @qa |
-| **Implementado** | WF05 com template BANT completo (trigger_type: alto_score / human_request). WF01 +6 nós: IF score=alto → checar dup → notificar → marcar notificado. Deduplicação via `notes`. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.4-notificacao-friday.md` |
+**IDs críticos:**
+- Workflows Essencial n8n: `7UnYBYZzzPSpEdl3` (Config), `IY9g1qHAv1FV8I5D` (Secretária), `cdqNUH8xoJCT` (Escalar), `X2QGanrmQ94sjmWk` (Quebrar)
+- Drive webhook: `7w4uDx1h3Vf0feUP` | Calendar webhook: `AVbmzj48oOeMeKDi`
+- Commit final: `dd98c1d` | Pipeline completo: @dev→@qa→@po→@devops
 
 ---
 
-### [PC-1.5] Script do Mauro — Playbook Canal B + B2
+### Sprint PIPELINE COMERCIAL — FUNCIONAL ✅
 
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` — aprovado por Mauro 2026-04-05 |
-| **Responsável** | Mauro (configurar WA Business quando possível) |
-| **Implementado** | `docs/playbooks/pipeline-comercial-script-mauro.md` — Canal B + B2 + 8 respostas rápidas |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.5-script-mauro.md` |
-| **Pendente** | Mauro: configurar respostas rápidas + etiquetas no WA Business (não bloqueia nada) |
+| Story | Status | Entregável |
+|-------|--------|-----------|
+| PC-1.1 | `FUNCIONAL` | Zenya Vendedora — WF01 + soul prompt + Z-API +1239. 10/10 QA PASS |
+| PC-1.2 | `FUNCIONAL` | BANT extração → Supabase `leads`. Branch paralelo, normalização defensiva |
+| PC-1.3 | `FUNCIONAL` | Showcase dinâmico via soul prompt |
+| PC-1.4 | `FUNCIONAL` | Notificação Friday score Alto. WF05 template BANT. Dedup via `notes` |
+| PC-1.5 | `FUNCIONAL` | Playbook Canal B + B2. Aprovado Mauro. WA Business: Mauro configura quando puder |
+| PC-1.5b | `FUNCIONAL` | Template proposta D0 R$497. Aprovado Mauro |
+| PC-1.6 | `FUNCIONAL` | Follow-up D0→D+7. WF `ui80HRvfgrYLQXbR`. Webhooks trigger + stop |
+| PC-1.7 | `FUNCIONAL` | View `pipeline_view`. GET /cockpit/pipeline. Friday responde consultas. Trigger fechamento |
 
----
-
-### [PC-1.6] Follow-up D0→D+7 — Sequência Pós-Demo
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | Novo workflow n8n "PC-1.6 Follow-up Pipeline". 4 mensagens: D0 (proposta), D+2 (valor), D+4 (prova social nicho), D+7 (encerramento). Personalização via bant_summary. Parada quando lead responde. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.6-followup-sequencia.md` |
-| **Depende de** | PC-1.2 (leads com bant_summary) |
-
----
-
-### [PC-1.7] CRM Pipeline — View + Consulta Friday
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | View SQL `pipeline_view` no Supabase. Endpoint GET /cockpit/pipeline. Handler Friday para perguntas do tipo "quais leads aguardando proposta?". Notificação de fechamento → acionar onboarding. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.7-crm-pipeline.md` |
-| **Nota** | `leads` table já tem TODOS os campos necessários (bant_score, demo_scheduled_at, proposal_sent, etc.). Sem necessidade de tabela `commercial_pipeline` separada. |
-| **Depende de** | PC-1.2, PC-1.4 |
+**Ressalvas abertas (não bloqueantes):**
+- PC-1.2: latência e2e medir com mensagem real quando houver número disponível
+- PC-1.6: validar escrita `notes` com lead real com `demo_completed_at` preenchido
+- WF01: verificar que `channel` enviado é `"zenya"` e não `"A"` (correção minor @dev)
+- FR7: Calendly link ativo, integração real com calendário → sprint futura
+- FR3: routing explícito Médio/Baixo → sprint futura
 
 ---
 
@@ -525,6 +500,22 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 ---
 
 ## Itens FUNCIONAIS — Concluídos (referência)
+
+### Sprint PIPELINE COMERCIAL v1 (2026-04-05)
+
+| Item | O que faz | QA | Data |
+|------|-----------|-----|------|
+| PC-1.1 Zenya Vendedora | WF01 + soul prompt + Z-API +5512982201239. Qualifica leads ao vivo | 10/10 PASS | 2026-04-05 |
+| PC-1.2 BANT → Supabase | Extração BANT via gpt-4o-mini + upsert `leads` (branch paralelo, sem atraso) | APROVADO | 2026-04-05 |
+| PC-1.3 Showcase Dinâmico | Soul prompt com exemplos âncora + convite teste ao vivo + Calendly | APROVADO | 2026-04-05 |
+| PC-1.4 Notificação Friday | WF05 template BANT. Trigger score=alto com deduplicação via `notes` | APROVADO | 2026-04-05 |
+| PC-1.5 Script Mauro | Playbook Canal B + B2. 8 respostas rápidas. Aprovado Mauro | APROVADO | 2026-04-05 |
+| PC-1.5b Template Proposta | D0 R$497 no playbook. Placeholders para personalização automática | APROVADO | 2026-04-05 |
+| PC-1.6 Follow-up D0→D+7 | WF `ui80HRvfgrYLQXbR`. 4 ângulos via OpenAI. Stop por resposta | APROVADO | 2026-04-05 |
+| PC-1.7 CRM + Friday | `pipeline_view` + GET /cockpit/pipeline + handler 5 queries + trigger fechamento | APROVADO | 2026-04-05 |
+
+**Devops:** Runtime ativo (10e486c), n8n WF01 + WF PC-1.6 ativos, todos os health checks OK.
+**Pendente sem bloqueio:** latência e2e real (aguarda número Z-API), WA Business etiquetas (Mauro), FR7 Calendly integrado + FR3 routing Médio/Baixo → sprint futura.
 
 ### Sprint SYSTEM + Infra (2026-04-04)
 

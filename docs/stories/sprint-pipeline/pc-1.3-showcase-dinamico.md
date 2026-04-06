@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.3
 title: Showcase Dinâmico — Demonstração ao vivo no contexto do lead
-status: Done
+status: Closed
 priority: Média
 executor: "@dev (soul prompt)"
 sprint: Sprint Pipeline (Semana 1 — paralelo com PC-1.1)
@@ -63,6 +63,8 @@ Esta story foi implementada integralmente como parte do soul prompt da Zenya Ven
 
 - [x] Soul prompt implementado e ativo no WF01
 - [x] Arquivo fonte versionado em `docs/zenya/zenya-vendedora-soul.md`
+
+<!-- @po fechamento: DoD completo verificado. Story implementada como parte de PC-1.1. Todos os ACs marcados no corpo da story. Status: Closed. -->
 
 ---
 

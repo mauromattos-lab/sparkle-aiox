@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.5
 title: Script do Mauro — Playbook Canal B (Lead Frio) + Canal B2 (Handoff da Zenya)
-status: Done
+status: Closed
 priority: Alta
 executor: "@pm + Mauro (conteúdo) -> @qa (revisão) -> Mauro (aprovação final)"
 sprint: Sprint Pipeline (Semana 1 — paralelo com PC-1.1)
@@ -110,12 +110,12 @@ CANAL B2 — Handoff da Zenya
 
 ## Definition of Done
 
-- [ ] Todos os ACs passando
-- [ ] `docs/playbooks/pipeline-comercial-script-mauro.md` criado e salvo no repo
-- [ ] Respostas rápidas configuradas e testadas no celular do Mauro
-- [ ] Etiquetas criadas e testadas no WhatsApp Business
-- [ ] Mauro aprovou (AC-13)
-- [ ] `work_log.md` atualizado
+- [x] Todos os ACs passando
+- [x] `docs/playbooks/pipeline-comercial-script-mauro.md` criado e salvo no repo
+- [x] Respostas rápidas configuradas e testadas no celular do Mauro (verificado por aprovação em sessão)
+- [x] Etiquetas criadas e testadas no WhatsApp Business (verificado por aprovação em sessão)
+- [x] Mauro aprovou (AC-13) (verificado por aprovação em sessão)
+- [x] `work_log.md` atualizado
 
 ---
 
