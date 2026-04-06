@@ -34,6 +34,7 @@ INTENTS = [
     "repurpose_audio",       # "transforma esse áudio em post", "usa meu áudio pra criar conteúdo"
     "conclave",              # deliberação multi-agente — pergunta multi-domínio ou decisão complexa
     "echo",                  # teste — retorna o que foi dito
+    "pipeline_query",        # consultas ao pipeline comercial: leads, follow-ups, propostas, fechamentos
 ]
 
 # Domain enum — domínios de especialização para roteamento especializado
@@ -48,7 +49,7 @@ DOMAINS = [
     "geral",          # padrão quando não se encaixa em nenhum domínio
 ]
 
-_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, gap_report, generate_content, repurpose_audio, conclave, echo
+_CLASSIFY_SYSTEM = """Classifique a mensagem do Mauro em uma dessas intencoes: status_report, status_mrr, chat, create_note, activate_agent, weekly_briefing, onboard_client, brain_query, brain_ingest, loja_integrada_query, gap_report, generate_content, repurpose_audio, conclave, echo, pipeline_query
 
 REGRAS DE CLASSIFICACAO (intent):
 - status_mrr: menciona MRR, faturamento, quanto fatura, receita mensal
@@ -66,6 +67,7 @@ REGRAS DE CLASSIFICACAO (intent):
 - repurpose_audio: "transforma em post", "usa esse audio", "faz um post desse audio", "repurpose", "transforma meu audio em conteudo" — para quando o audio foi transcrito e deve virar conteudo
 - conclave: pergunta que envolve multiplos dominios simultaneamente, decisao estrategica complexa, "o que devo fazer com X considerando Y e Z", analise completa de situacao, planejamento de proximos passos amplo, quando a pergunta cruzar trafego+conteudo, negocio+estrategia, financeiro+crescimento ou qualquer combinacao de 2+ dominios distintos
 - echo: apenas para testes com a palavra "echo"
+- pipeline_query: qualquer consulta sobre o pipeline comercial de leads — "pipeline completo", "leads qualificados", "follow-up de hoje", "quem fechou", "leads aguardando proposta", "visão do pipeline", "status do pipeline", "tem follow-up pra fazer hoje", "quantos leads qualificados", "quem fechou recentemente", "quem recebeu proposta" — extrai param: pipeline_query_type (full|proposals|followups|qualified|closed)
 
 CLASSIFICACAO DE DOMINIO (domain) — classifique SEMPRE, mesmo quando intent != chat:
 - trafego_pago: Meta Ads, Google Ads, campanhas, criativos, metricas de anuncios, ROI, CPM, CTR, ROAS, trafego pago
@@ -546,6 +548,11 @@ async def classify_and_dispatch(
         task_payload["format"] = params.get("format", "instagram_post")
         task_payload["persona"] = params.get("persona", "zenya")
         task_payload["source_type"] = "manual"
+
+    if intent == "pipeline_query":
+        # Extrai tipo de consulta se o classificador já definiu; senão, handler detecta pelo texto
+        if params.get("pipeline_query_type"):
+            task_payload["pipeline_query_type"] = params["pipeline_query_type"]
 
     if intent == "repurpose_audio":
         # Áudio transcrito → gerar post (source_type=repurpose_audio)

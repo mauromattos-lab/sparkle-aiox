@@ -55,6 +55,8 @@ from runtime.tasks.handlers.post_golive_health import handle_post_golive_health
 # Story 1.2: Contrato automatizado via Autentique
 from runtime.tasks.handlers.generate_contract import handle_generate_contract
 from runtime.tasks.handlers.mark_contract_signed import handle_mark_contract_signed
+# PC-1.7: Pipeline comercial
+from runtime.tasks.handlers.pipeline_query import handle_pipeline_query
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -114,6 +116,8 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     # Story 1.2: Contrato automatizado via Autentique
     "generate_contract":        handle_generate_contract,
     "mark_contract_signed":     handle_mark_contract_signed,
+    # PC-1.7: Pipeline comercial
+    "pipeline_query":           handle_pipeline_query,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }
