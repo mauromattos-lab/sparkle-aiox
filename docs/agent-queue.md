@@ -31,9 +31,25 @@ updated: 2026-04-04
 AIOS (sistema nervoso)  +  Mega Brain (cérebro)  +  Runtime (corpo)  =  SISTEMA
      ✅ documentado            ✅ pipeline no Runtime   ✅ rodando
      ⚠️ vive em sessões       ✅ SYS-1 ingestão        ✅ produção
-                               ⚠️ SYS-4 DNA pendente
+                               ✅ SYS-4 DNA funcional
+                               ✅ Brain curadoria 3x/dia (02h/10h/18h)
+                               ✅ Content fallback billing
+                               ✅ Onboarding pipeline fix (brain_owner + template)
+                               ✅ Friday triggers de negócio (3 novos)
+                               ✅ Sentry error tracking (aguarda DSN)
+                               ✅ Cron logging (17 crons monitorados)
+                               ✅ Relatório mensal honesto
+                               ✅ .env permissions hardened
      
-PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloqueados
+PLANO PONTE: Semana 0 ✅ | Semana 1 ✅ | Semana 2 ✅ | Camada 2 ✅
+                               
+CAMADA 2 CONSOLIDADA (2026-04-05):
+  ✅ C2-B1: 3 namespaces (mauro-personal 82, sparkle-lore 50, sparkle-ops 55)
+  ✅ C2-B1: Friday auto-ingere áudios do Mauro
+  ✅ C2-B2: Pipeline enforcement com gates (HTTP 422 + Friday notification)
+  ✅ C2-B3: Consulta prioritária (Friday, agentes, Zenya)
+
+PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 ```
 
 ---
@@ -146,6 +162,30 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 
 ---
 
+## Sprint VERTICAL — Migração Clientes n8n → Runtime
+
+### [VERT1-F0] Fase 0 — Pré-requisitos do Sistema
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @dev |
+| **Impacto** | 5 ações de sistema concluídas: client_id padronizado UUID, registros zenya_clients criados (Douglas/Plaka), DNA extraído (Alexsandro 24 items/6 cats, Douglas 51 items/8 cats), brain_chunks órfãos atribuídos (513), conversation_history órfãos atribuídos (146) |
+| **Story** | `docs/stories/sprint-core/vert1-fase0-system-prerequisites.md` |
+| **Fixes** | Constraint `client_dna_dna_type_check` duplicada removida, max_tokens DNA extraction 4096→8192, KB fallback em `_get_client_chunks` |
+
+---
+
+### [VERT1-W1] Wave 1 — Migração Clientes n8n → Runtime
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PARKED` — decisão Mauro 2026-04-05 |
+| **Motivo** | Clientes funcionam no n8n. Migração exige mapear lógica dos workflows n8n e comparar com Runtime. Há prioridades maiores. |
+| **Pré-requisito** | Mapear gaps workflow n8n vs handler Runtime antes de qualquer migração |
+
+---
+
 ## Sprint OPS — Clientes (em andamento)
 
 ### [OPS-3] Zenya Ensinaja — Go-Live
@@ -245,6 +285,228 @@ PRÓXIMO PASSO: SYS-4 (DNA Schema) + SYS-6 (Painel de Comando) — ambos desbloq
 | **Responsável** | @dev |
 | **Implementação** | Thread-local Supabase client proxy. Fix para 502s em chamadas paralelas. |
 | **Arquivos** | `runtime/db.py` |
+
+---
+
+## Sprint SUBSTÂNCIA — Engrossar o que existe (auditoria brownfield)
+
+### [SUB-1] Brain Curadoria Acelerada (Gap 1)
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Curadoria 150 chunks/dia (antes 20). Backlog 487 limpo em ~3 dias. Semaphore(5) paralelo. Embedding obrigatório antes de aprovação. |
+| **Arquivos** | `brain_curate.py`, `scheduler.py` |
+
+---
+
+### [SUB-2] Content Engine Resilience (Gap 2)
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Fallback Haiku quando billing Sonnet falha. quality_tier degraded para rastreabilidade. Setting ANTHROPIC_BILLING_FALLBACK controlável. |
+| **Arquivos** | `llm.py`, `config.py`, `generate_content.py` |
+
+---
+
+### [SUB-3] Onboarding Pipeline Fix (Gap 3)
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Fix cascade on_failure (current_step não avança em falha bloqueante). Validação inputs obrigatórios (client_id, site_url, business_name). 2 camadas de proteção (endpoint + engine). |
+| **Arquivos** | `workflow_step.py`, `friday/router.py`, `workflow/router.py`, `templates.py` |
+
+---
+
+### [SUB-4] Friday Triggers de Negócio (Gap 4)
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa (reprovou 3 P1s) → @dev fix → @qa re-aprovação → @devops |
+| **Impacto** | 3 novos triggers (billing_blocked, content_failure_streak, client_vencimento) + morning_checkin enriquecido com draft count. Anti-spam mantido. |
+| **Arquivos** | `friday/proactive.py` |
+
+---
+
+### [SUB-5] Relatório Mensal Honesto
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | 3 templates texto (Zenya com dados, Zenya sem dados, tráfego-only). Métricas honestas sem inventar números. Dry-run via `?send=false`. Fix bug `sent` em bulk. |
+| **Arquivos** | `client_report.py`, `reports/router.py` |
+
+---
+
+### [SUB-6] Onboarding E2E Fix
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Fix brain_owner bug (pipeline usava "brain_pipeline" em vez de client_id real). Fix template resolution (client_id injetado no context antes de salvar). |
+| **Arquivos** | `brain_ingest_pipeline.py`, `workflow/router.py` |
+
+---
+
+### [SUB-7] Sentry Error Tracking
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | sentry-sdk[fastapi] instalado. Init antes do FastAPI. send_default_pii=False. No-op quando DSN vazio (Mauro precisa criar conta Sentry e adicionar DSN). |
+| **Arquivos** | `main.py`, `config.py`, `requirements.txt` |
+| **Pendente** | Mauro criar conta Sentry e fornecer SENTRY_DSN |
+
+---
+
+### [SUB-8] Cron Logging Estruturado
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Decorator log_cron() em todos os 17 crons. Tabela cron_executions com 3 indexes. Endpoint GET /system/crons. brain_curate split em 3 horários (02h, 10h, 18h). Logging nunca bloqueia execução. |
+| **Arquivos** | `cron_logger.py` (novo), `scheduler.py`, `system_router.py` |
+| **Migration** | `013_cron_executions.sql` aplicada |
+
+---
+
+### [SUB-9] .env Permissions Hardening
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @devops |
+| **Impacto** | chmod 600 em todos os .env na VPS. Deploy script hardened com step 2.5/5 automático. |
+| **Arquivos** | `.github/workflows/deploy-runtime.yml` |
+
+---
+
+## Sprint CAMADA 2 — Brain como Memória do Sistema
+
+### [C2-B1] Brain Namespaces + Auto-Ingestão Friday
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | 3 namespaces: mauro-personal (82 chunks), sparkle-lore (50 chunks), sparkle-ops (55 chunks). Friday auto-ingere áudios do Mauro com metadata. Seed idempotente. Noise filter. |
+| **Arquivos** | `brain/isolation.py`, `brain/seed.py` (novo), `friday/dispatcher.py`, `brain_ingest.py` |
+
+---
+
+### [C2-B2] Pipeline Enforcement no Runtime
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Template aios_pipeline 5 steps. Gate enforcement HTTP 422. Friday notifica violações. Worker bloqueia tasks sem pipeline_target_step. 35 testes. |
+| **Arquivos** | `workflows/pipeline_enforcement.py` (novo), `pipeline/router.py` (novo), `workflows/templates.py`, `tasks/worker.py`, `main.py` |
+
+---
+
+### [C2-B3] Consulta Prioritária por Namespace
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Responsável** | @architect → @dev → @qa → @devops |
+| **Impacto** | Friday consulta mauro-personal antes de responder. Agentes recebem sparkle-ops no bootstrap. Zenya recebe sparkle-lore no prompt. Budget 2000 tokens. Graceful degradation. |
+| **Arquivos** | `brain/namespace_context.py` (novo), `tasks/handlers/chat.py`, `tasks/handlers/activate_agent.py`, `tasks/handlers/send_character_message.py` |
+
+---
+
+## Sprint PIPELINE COMERCIAL — Funil de Vendas Zenya
+
+> PRD aprovado 2026-04-05. Caminho C: Zenya no n8n WF01, dados no Supabase `leads`.
+
+### [PC-1.1] Zenya Vendedora — Instância + Soul Prompt
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` — smoke test 10/10 PASS @qa 2026-04-05 |
+| **Implementado** | WF01 ativo com soul prompt Zenya Vendedora. Z-API +5512982201239 exclusivo. 10 cenários aprovados: identidade IA, nichos âncora + fora âncora, BANT fluindo, preço padrão, handoff, sem overpromise, Calendly, não-ICP elegante. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.1-zenya-vendedora.md` |
+| **Bug não-bloqueante** | "Output inválido" na extração BANT pós-resposta — issue para @dev |
+
+---
+
+### [PC-1.2] Qualificação BANT — Extração + Supabase
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_QA` |
+| **Responsável** | @qa |
+| **Implementado** | 4 nós em branch paralelo no WF01. OpenAI gpt-4o-mini extrai BANT → upsert Supabase `leads` (on_conflict=phone). Migrations aplicadas: UNIQUE(phone), name nullable, bant_score lowercase, channel=whatsapp. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.2-bant-qualificacao.md` |
+
+---
+
+### [PC-1.3] Showcase Dinâmico
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` |
+| **Implementado** | Via soul prompt PC-1.1. Showcase dinâmico + exemplos âncora (confeitaria/clínica/escola) + Calendly CTA já no soul prompt. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.3-showcase-dinamico.md` |
+
+---
+
+### [PC-1.4] Notificação Friday — Lead Qualificado
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_QA` |
+| **Responsável** | @qa |
+| **Implementado** | WF05 com template BANT completo (trigger_type: alto_score / human_request). WF01 +6 nós: IF score=alto → checar dup → notificar → marcar notificado. Deduplicação via `notes`. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.4-notificacao-friday.md` |
+
+---
+
+### [PC-1.5] Script do Mauro — Playbook Canal B + B2
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` — aprovado por Mauro 2026-04-05 |
+| **Responsável** | Mauro (configurar WA Business quando possível) |
+| **Implementado** | `docs/playbooks/pipeline-comercial-script-mauro.md` — Canal B + B2 + 8 respostas rápidas |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.5-script-mauro.md` |
+| **Pendente** | Mauro: configurar respostas rápidas + etiquetas no WA Business (não bloqueia nada) |
+
+---
+
+### [PC-1.6] Follow-up D0→D+7 — Sequência Pós-Demo
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @dev |
+| **Escopo** | Novo workflow n8n "PC-1.6 Follow-up Pipeline". 4 mensagens: D0 (proposta), D+2 (valor), D+4 (prova social nicho), D+7 (encerramento). Personalização via bant_summary. Parada quando lead responde. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.6-followup-sequencia.md` |
+| **Depende de** | PC-1.2 (leads com bant_summary) |
+
+---
+
+### [PC-1.7] CRM Pipeline — View + Consulta Friday
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `PENDENTE` |
+| **Responsável** | @dev |
+| **Escopo** | View SQL `pipeline_view` no Supabase. Endpoint GET /cockpit/pipeline. Handler Friday para perguntas do tipo "quais leads aguardando proposta?". Notificação de fechamento → acionar onboarding. |
+| **Story** | `docs/stories/sprint-pipeline/pc-1.7-crm-pipeline.md` |
+| **Nota** | `leads` table já tem TODOS os campos necessários (bant_score, demo_scheduled_at, proposal_sent, etc.). Sem necessidade de tabela `commercial_pipeline` separada. |
+| **Depende de** | PC-1.2, PC-1.4 |
 
 ---
 

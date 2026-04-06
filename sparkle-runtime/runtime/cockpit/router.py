@@ -203,6 +203,38 @@ async def cockpit_agents() -> dict[str, Any]:
     return {"agents": result, "count": len(result)}
 
 
+@router.get("/pipeline")
+async def get_pipeline() -> dict[str, Any]:
+    """
+    Retorna leads agrupados por estágio do pipeline comercial.
+
+    Inclui também leads com follow-up vencido hoje (status != fechado/perdido).
+    Fonte: view pipeline_view + tabela leads.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    pipeline_res, overdue_res = await asyncio.gather(
+        asyncio.to_thread(
+            lambda: supabase.table("pipeline_view")
+            .select("*")
+            .execute()
+        ),
+        asyncio.to_thread(
+            lambda: supabase.table("leads")
+            .select("name, phone, business_type, next_followup_at, status")
+            .lte("next_followup_at", today)
+            .not_.in_("status", ["fechado", "perdido"])
+            .execute()
+        ),
+    )
+
+    return {
+        "pipeline": pipeline_res.data or [],
+        "followups_vencidos": overdue_res.data or [],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/activity")
 async def cockpit_activity() -> dict[str, Any]:
     """

@@ -47,6 +47,7 @@ BRAIN_EXEMPT_TASK_TYPES = frozenset({
     "cross_source_synthesis", # Brain Fase 6: sintese cruzada por dominio
     "pipeline_gate",              # C2-B2: pipeline enforcement gate step
     "pipeline_violation_alert",   # C2-B2: pipeline violation notification
+    "pipeline_query",             # PC-1.7: consulta pipeline comercial — dados estruturados, sem gate Brain
 })
 
 

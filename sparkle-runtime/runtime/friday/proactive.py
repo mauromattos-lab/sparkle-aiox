@@ -478,6 +478,85 @@ async def _eval_content_failure_streak() -> str | None:
     )
 
 
+async def _get_recently_closed_leads() -> list[dict]:
+    """
+    Leads com status='fechado' nas últimas 2h que ainda não foram notificados.
+    Usamos o campo notes para marcar 'fechamento_notificado' e evitar re-envio.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("leads")
+            .select("id, name, phone, proposal_value, closed_at, notes")
+            .eq("status", "fechado")
+            .gte("closed_at", cutoff)
+            .execute()
+        )
+        leads = res.data or []
+        # Filtrar os que ainda NÃO foram notificados
+        not_notified = []
+        for lead in leads:
+            notes = lead.get("notes") or ""
+            if "fechamento_notificado" not in str(notes):
+                not_notified.append(lead)
+        return not_notified
+    except Exception as e:
+        logger.error("proactive: _get_recently_closed_leads failed: %s", e)
+        return []
+
+
+async def _mark_lead_notified(lead_id: str) -> None:
+    """Marca o lead como notificado adicionando flag em notes."""
+    try:
+        # Busca notes atual
+        res = await asyncio.to_thread(
+            lambda: supabase.table("leads")
+            .select("notes")
+            .eq("id", lead_id)
+            .single()
+            .execute()
+        )
+        current_notes = (res.data or {}).get("notes") or ""
+        flag = f" [fechamento_notificado:{datetime.now(timezone.utc).isoformat()[:10]}]"
+        new_notes = (current_notes + flag).strip()
+        await asyncio.to_thread(
+            lambda: supabase.table("leads")
+            .update({"notes": new_notes})
+            .eq("id", lead_id)
+            .execute()
+        )
+    except Exception as e:
+        logger.error("proactive: _mark_lead_notified failed for %s: %s", lead_id, e)
+
+
+async def _eval_lead_fechado() -> str | None:
+    """
+    FR15: Notifica Mauro quando um lead fecha.
+    Verifica leads com status='fechado' nas últimas 2h ainda não notificados.
+    Marca como notificado para evitar re-envio.
+    """
+    leads = await _get_recently_closed_leads()
+    if not leads:
+        return None
+
+    # Notificar o primeiro (caso haja múltiplos, cada um dispara o trigger
+    # individualmente no próximo ciclo — evita mensagem gigante)
+    lead = leads[0]
+    name = lead.get("name") or "Lead"
+    val = lead.get("proposal_value")
+    val_str = f"R${val:.0f}/mês" if isinstance(val, (int, float)) else (f"R${val}" if val else "valor não registrado")
+
+    # Marcar como notificado antes de enviar (fail-safe: melhor não notificar do que notificar duas vezes)
+    lead_id = lead.get("id")
+    if lead_id:
+        await _mark_lead_notified(lead_id)
+
+    return (
+        f"Fechou! {name} entrou como cliente ({val_str}). "
+        f"Hora de iniciar o onboarding — quer que eu acione o checklist?"
+    )
+
+
 async def _eval_client_vencimento() -> str | None:
     """Alert at morning window when a client has payment due in the next 3 days."""
     now = _now_sp()
@@ -514,6 +593,7 @@ _TRIGGER_EVALUATORS: list[tuple[str, callable]] = [
     ("billing_blocked", _eval_billing_blocked),
     ("content_failure_streak", _eval_content_failure_streak),
     ("client_vencimento", _eval_client_vencimento),
+    ("lead_fechado", _eval_lead_fechado),
 ]
 
 
