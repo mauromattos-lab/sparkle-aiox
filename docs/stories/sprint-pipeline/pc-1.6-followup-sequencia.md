@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.6
 title: Follow-up D0→D+7 — Sequência pós-demo automática
-status: Ready for Dev
+status: Done
 priority: Alta
 executor: "@dev (n8n novo WF) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 2)

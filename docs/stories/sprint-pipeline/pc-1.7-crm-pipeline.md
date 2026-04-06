@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.7
 title: CRM Pipeline — View de estágios e consulta via Friday
-status: Ready for Dev
+status: Done
 priority: Média
 executor: "@dev (Supabase view + Runtime endpoint) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 2-3)

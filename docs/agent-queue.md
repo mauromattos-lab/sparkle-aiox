@@ -441,72 +441,25 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 ---
 
-### [PC-1.2] Qualificação BANT — Extração + Supabase
+### Sprint PIPELINE COMERCIAL — FUNCIONAL ✅
 
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_QA` |
-| **Responsável** | @qa |
-| **Implementado** | 4 nós em branch paralelo no WF01. OpenAI gpt-4o-mini extrai BANT → upsert Supabase `leads` (on_conflict=phone). Migrations aplicadas: UNIQUE(phone), name nullable, bant_score lowercase, channel=whatsapp. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.2-bant-qualificacao.md` |
+| Story | Status | Entregável |
+|-------|--------|-----------|
+| PC-1.1 | `FUNCIONAL` | Zenya Vendedora — WF01 + soul prompt + Z-API +1239. 10/10 QA PASS |
+| PC-1.2 | `FUNCIONAL` | BANT extração → Supabase `leads`. Branch paralelo, normalização defensiva |
+| PC-1.3 | `FUNCIONAL` | Showcase dinâmico via soul prompt |
+| PC-1.4 | `FUNCIONAL` | Notificação Friday score Alto. WF05 template BANT. Dedup via `notes` |
+| PC-1.5 | `FUNCIONAL` | Playbook Canal B + B2. Aprovado Mauro. WA Business: Mauro configura quando puder |
+| PC-1.5b | `FUNCIONAL` | Template proposta D0 R$497. Aprovado Mauro |
+| PC-1.6 | `FUNCIONAL` | Follow-up D0→D+7. WF `ui80HRvfgrYLQXbR`. Webhooks trigger + stop |
+| PC-1.7 | `FUNCIONAL` | View `pipeline_view`. GET /cockpit/pipeline. Friday responde consultas. Trigger fechamento |
 
----
-
-### [PC-1.3] Showcase Dinâmico
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` |
-| **Implementado** | Via soul prompt PC-1.1. Showcase dinâmico + exemplos âncora (confeitaria/clínica/escola) + Calendly CTA já no soul prompt. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.3-showcase-dinamico.md` |
-
----
-
-### [PC-1.4] Notificação Friday — Lead Qualificado
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `AGUARDANDO_QA` |
-| **Responsável** | @qa |
-| **Implementado** | WF05 com template BANT completo (trigger_type: alto_score / human_request). WF01 +6 nós: IF score=alto → checar dup → notificar → marcar notificado. Deduplicação via `notes`. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.4-notificacao-friday.md` |
-
----
-
-### [PC-1.5] Script do Mauro — Playbook Canal B + B2
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `FUNCIONAL` — aprovado por Mauro 2026-04-05 |
-| **Responsável** | Mauro (configurar WA Business quando possível) |
-| **Implementado** | `docs/playbooks/pipeline-comercial-script-mauro.md` — Canal B + B2 + 8 respostas rápidas |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.5-script-mauro.md` |
-| **Pendente** | Mauro: configurar respostas rápidas + etiquetas no WA Business (não bloqueia nada) |
-
----
-
-### [PC-1.6] Follow-up D0→D+7 — Sequência Pós-Demo
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | Novo workflow n8n "PC-1.6 Follow-up Pipeline". 4 mensagens: D0 (proposta), D+2 (valor), D+4 (prova social nicho), D+7 (encerramento). Personalização via bant_summary. Parada quando lead responde. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.6-followup-sequencia.md` |
-| **Depende de** | PC-1.2 (leads com bant_summary) |
-
----
-
-### [PC-1.7] CRM Pipeline — View + Consulta Friday
-
-| Campo | Valor |
-|-------|-------|
-| **Status** | `PENDENTE` |
-| **Responsável** | @dev |
-| **Escopo** | View SQL `pipeline_view` no Supabase. Endpoint GET /cockpit/pipeline. Handler Friday para perguntas do tipo "quais leads aguardando proposta?". Notificação de fechamento → acionar onboarding. |
-| **Story** | `docs/stories/sprint-pipeline/pc-1.7-crm-pipeline.md` |
-| **Nota** | `leads` table já tem TODOS os campos necessários (bant_score, demo_scheduled_at, proposal_sent, etc.). Sem necessidade de tabela `commercial_pipeline` separada. |
-| **Depende de** | PC-1.2, PC-1.4 |
+**Ressalvas abertas (não bloqueantes):**
+- PC-1.2: latência e2e medir com mensagem real quando houver número disponível
+- PC-1.6: validar escrita `notes` com lead real com `demo_completed_at` preenchido
+- WF01: verificar que `channel` enviado é `"zenya"` e não `"A"` (correção minor @dev)
+- FR7: Calendly link ativo, integração real com calendário → sprint futura
+- FR3: routing explícito Médio/Baixo → sprint futura
 
 ---
 

@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.2
 title: Qualificação BANT — Extração e persistência no Supabase
-status: Aguardando QA
+status: Done
 priority: Alta
 executor: "@dev (n8n WF01 + Supabase) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 1)

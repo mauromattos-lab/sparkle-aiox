@@ -2,7 +2,7 @@
 epic: Pipeline Comercial Sparkle v1
 story: PC-1.4
 title: Notificação Friday — Alerta Mauro quando lead qualificado pede contato
-status: Aguardando QA
+status: Done
 priority: Alta
 executor: "@dev (n8n WF01 + WF05) -> @qa -> @po"
 sprint: Sprint Pipeline (Semana 1-2)
