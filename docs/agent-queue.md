@@ -479,6 +479,22 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 ## Itens FUNCIONAIS — Concluídos (referência)
 
+### Sprint PIPELINE COMERCIAL v1 (2026-04-05)
+
+| Item | O que faz | QA | Data |
+|------|-----------|-----|------|
+| PC-1.1 Zenya Vendedora | WF01 + soul prompt + Z-API +5512982201239. Qualifica leads ao vivo | 10/10 PASS | 2026-04-05 |
+| PC-1.2 BANT → Supabase | Extração BANT via gpt-4o-mini + upsert `leads` (branch paralelo, sem atraso) | APROVADO | 2026-04-05 |
+| PC-1.3 Showcase Dinâmico | Soul prompt com exemplos âncora + convite teste ao vivo + Calendly | APROVADO | 2026-04-05 |
+| PC-1.4 Notificação Friday | WF05 template BANT. Trigger score=alto com deduplicação via `notes` | APROVADO | 2026-04-05 |
+| PC-1.5 Script Mauro | Playbook Canal B + B2. 8 respostas rápidas. Aprovado Mauro | APROVADO | 2026-04-05 |
+| PC-1.5b Template Proposta | D0 R$497 no playbook. Placeholders para personalização automática | APROVADO | 2026-04-05 |
+| PC-1.6 Follow-up D0→D+7 | WF `ui80HRvfgrYLQXbR`. 4 ângulos via OpenAI. Stop por resposta | APROVADO | 2026-04-05 |
+| PC-1.7 CRM + Friday | `pipeline_view` + GET /cockpit/pipeline + handler 5 queries + trigger fechamento | APROVADO | 2026-04-05 |
+
+**Devops:** Runtime ativo (10e486c), n8n WF01 + WF PC-1.6 ativos, todos os health checks OK.
+**Pendente sem bloqueio:** latência e2e real (aguarda número Z-API), WA Business etiquetas (Mauro), FR7 Calendly integrado + FR3 routing Médio/Baixo → sprint futura.
+
 ### Sprint SYSTEM + Infra (2026-04-04)
 
 | Item | O que faz | Data |
