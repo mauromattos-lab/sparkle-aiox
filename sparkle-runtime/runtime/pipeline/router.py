@@ -26,6 +26,14 @@ from runtime.workflows.pipeline_enforcement import (
     notify_violation,
     verify_state_persisted,
     get_violations_recent,
+    SCHEMA_VERSION,
+)
+from runtime.pipeline.handoff_validator import (
+    HandoffPayload,
+    validate_handoff,
+    store_handoff,
+    consume_handoff,
+    REQUIRED_FIELDS,
 )
 
 router = APIRouter()
@@ -36,6 +44,7 @@ router = APIRouter()
 class AdvanceRequest(BaseModel):
     target_step: str | int
     agent: str
+    handoff_validation_id: Optional[str] = None  # obrigatorio para schema_version >= 2
 
 
 # ── GET /pipeline/status/{item_id} ───────────────────────────────────
@@ -158,6 +167,25 @@ async def pipeline_advance(item_id: str, req: AdvanceRequest):
             },
         )
 
+    # [AC6] Handoff validation (Story 1.3)
+    if schema_ver >= SCHEMA_VERSION and not req.handoff_validation_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "handoff_required",
+                "message": "handoff_validation_id obrigatorio. Execute POST /pipeline/validate-handoff primeiro.",
+                "action_required": "POST /pipeline/validate-handoff",
+            }
+        )
+
+    if req.handoff_validation_id:
+        consume_result = await consume_handoff(req.handoff_validation_id)
+        if not consume_result["allowed"]:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "handoff_consumed", "message": consume_result["reason"]}
+            )
+
     # Advance pipeline
     result = await record_transition(
         workflow_run_id=workflow_run_id,
@@ -188,6 +216,40 @@ async def pipeline_violations(hours: int = 24):
 
 
 # ── Helper ────────────────────────────────────────────────────────────
+
+
+# ── POST /pipeline/validate-handoff ──────────────────────────────────
+
+@router.post("/validate-handoff")
+async def pipeline_validate_handoff(payload: HandoffPayload):
+    """
+    Valida o bloco de handoff do processo v2.
+    Retorna handoff_validation_id se valido.
+    """
+    valid, errors = validate_handoff(payload)
+
+    if not valid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "handoff_invalid",
+                "valid": False,
+                "errors": errors,
+                "missing_or_invalid_fields": [e.split(":")[0] for e in errors],
+                "required_fields": REQUIRED_FIELDS,
+            }
+        )
+
+    validation_id = await store_handoff(payload)
+
+    return {
+        "valid": True,
+        "handoff_validation_id": validation_id,
+        "sprint_item": payload.sprint_item,
+        "proximo": payload.proximo,
+        "message": "Handoff valido. Use handoff_validation_id no POST /pipeline/advance.",
+    }
+
 
 async def _get_pipeline_run(item_id: str) -> dict | None:
     """
