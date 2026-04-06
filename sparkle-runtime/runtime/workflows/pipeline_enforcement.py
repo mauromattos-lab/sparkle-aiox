@@ -23,17 +23,52 @@ logger = logging.getLogger(__name__)
 
 # ── Step definitions ──────────────────────────────────────────────────
 
+SCHEMA_VERSION = 2  # v2: items com schema_version >= 2 tem enforcement completo
+
 PIPELINE_STEPS: list[dict] = [
-    {"step": 0, "name": "story_created",     "agent": "@architect/@pm"},
-    {"step": 1, "name": "dev_implementing",   "agent": "@dev"},
-    {"step": 2, "name": "qa_validating",      "agent": "@qa"},
-    {"step": 3, "name": "devops_deploying",   "agent": "@devops"},
-    {"step": 4, "name": "done",               "agent": "system"},
+    {"step": 0, "name": "prd_approved",    "agent": "@pm"},
+    {"step": 1, "name": "spec_approved",   "agent": "@architect"},
+    {"step": 2, "name": "stories_ready",   "agent": "@sm"},
+    {"step": 3, "name": "dev_complete",    "agent": "@dev"},
+    {"step": 4, "name": "qa_approved",     "agent": "@qa"},
+    {"step": 5, "name": "po_accepted",     "agent": "@po"},
+    {"step": 6, "name": "devops_deployed", "agent": "@devops"},
+    {"step": 7, "name": "done",            "agent": "system"},
 ]
 
 STEP_NAMES: dict[int, str] = {s["step"]: s["name"] for s in PIPELINE_STEPS}
 NAME_TO_STEP: dict[str, int] = {s["name"]: s["step"] for s in PIPELINE_STEPS}
 MAX_STEP = max(STEP_NAMES.keys())
+
+# Aliases legados — strings v1 continuam funcionando
+NAME_TO_STEP.update({
+    "story_created":    2,
+    "dev_implementing": 3,
+    "qa_validating":    4,
+    "devops_deploying": 6,
+})
+
+# Mapeamento de steps v1 -> v2 para workflow_runs legados
+LEGACY_STEP_MAP: dict[int, int] = {
+    0: 2,  # story_created     -> stories_ready
+    1: 3,  # dev_implementing  -> dev_complete
+    2: 4,  # qa_validating     -> qa_approved
+    3: 6,  # devops_deploying  -> devops_deployed
+    4: 7,  # done              -> done
+}
+
+def is_legacy_run(run: dict) -> bool:
+    """Detecta se workflow_run foi criado com schema v1 (sem schema_version)."""
+    context = run.get("context") or {}
+    return context.get("schema_version", 1) < SCHEMA_VERSION
+
+def normalize_step(run: dict) -> int:
+    """Retorna o step normalizado para v2, independente do schema do run."""
+    current = run.get("current_step", 0)
+    if is_legacy_run(run):
+        return LEGACY_STEP_MAP.get(current, current)
+    return current
+
 
 
 def _now() -> str:
@@ -119,6 +154,10 @@ async def record_transition(
     history.append(transition_record)
     context["pipeline_history"] = history
 
+    # AC8: garantir schema_version >= 2 em novos runs
+    if context.get("schema_version", 1) < SCHEMA_VERSION:
+        context["schema_version"] = SCHEMA_VERSION
+
     # Determine new status
     new_status = "completed" if step_index >= MAX_STEP else "running"
 
@@ -180,7 +219,7 @@ async def check_gates(workflow_run_id: str, target_step: int | str) -> dict:
         }
 
     run = result.data
-    current_step = run.get("current_step", 0)
+    current_step = normalize_step(run)  # AC5: suporte legacy + v2
     current_name = get_step_name(current_step)
     status = run.get("status", "unknown")
 

@@ -303,89 +303,26 @@ WORKFLOW_TEMPLATES: list[dict] = [
     # ─────────────────────────────────────────────────────────────────
     {
         "slug": "aios_pipeline",
-        "name": "AIOS Pipeline Enforcement",
+        "name": "AIOS Pipeline Enforcement v2",
         "description": (
-            "Pipeline obrigatorio do AIOS: story -> @dev -> @qa -> @devops -> done. "
-            "Enforced por codigo — nenhum agente pode pular etapas."
+            "Pipeline completo AIOS v2: @pm -> @architect -> @sm -> @dev -> @qa -> @po -> @devops -> done. "
+            "Cobre Fase 1 (planejamento) + Fase 2 (execucao). Enforced por codigo."
         ),
-        "version": 1,
+        "version": 2,
         "active": True,
         "default_priority": 9,
         "steps": [
-            {
-                "step": 0,
-                "name": "story_created",
-                "task_type": "pipeline_gate",
-                "agent_id": "system",
-                "description": (
-                    "Story criada com acceptance criteria definidos. "
-                    "Gate: story existe e foi aprovada por @architect ou @pm."
-                ),
-                "payload_template": {},
-                "on_success": {"next_step": 1},
-                "on_failure": {"continue": False},
-                "required_gates": [],
-            },
-            {
-                "step": 1,
-                "name": "dev_implementing",
-                "task_type": "pipeline_gate",
-                "agent_id": "dev",
-                "description": (
-                    "Implementacao pelo @dev. "
-                    "Gate: story aprovada, sem bloqueios. "
-                    "Precisa: step 0 (story_created) concluido."
-                ),
-                "payload_template": {},
-                "on_success": {"next_step": 2},
-                "on_failure": {"continue": False},
-                "required_gates": [],
-            },
-            {
-                "step": 2,
-                "name": "qa_validating",
-                "task_type": "pipeline_gate",
-                "agent_id": "qa",
-                "description": (
-                    "Validacao pelo @qa. "
-                    "Gate: @dev marcou implementacao como done. "
-                    "Precisa: step 1 (dev_implementing) concluido."
-                ),
-                "payload_template": {},
-                "on_success": {"next_step": 3},
-                "on_failure": {"continue": False},
-                "required_gates": [],
-            },
-            {
-                "step": 3,
-                "name": "devops_deploying",
-                "task_type": "pipeline_gate",
-                "agent_id": "devops",
-                "description": (
-                    "Deploy pelo @devops. "
-                    "Gate: @qa aprovou (todos ACs passando). "
-                    "Precisa: step 2 (qa_validating) concluido."
-                ),
-                "payload_template": {},
-                "on_success": {"next_step": 4},
-                "on_failure": {"continue": False},
-                "required_gates": [],
-            },
-            {
-                "step": 4,
-                "name": "done",
-                "task_type": "pipeline_gate",
-                "agent_id": "system",
-                "description": (
-                    "Pipeline concluido. Deploy verificado, health OK. "
-                    "Precisa: step 3 (devops_deploying) concluido."
-                ),
-                "payload_template": {},
-                "on_success": {},
-                "on_failure": {"continue": True},
-                "required_gates": [],
-            },
+            {"step": 0, "name": "prd_approved",    "task_type": "pipeline_gate", "agent_id": "pm",       "description": "PRD aprovado por @pm. Gate: PRD salvo em docs/prd/ com FRs numerados.",                               "payload_template": {}, "on_success": {"next_step": 1}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 1, "name": "spec_approved",   "task_type": "pipeline_gate", "agent_id": "architect","description": "Design spec aprovado por @architect. Precisa: step 0 (prd_approved).",                               "payload_template": {}, "on_success": {"next_step": 2}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 2, "name": "stories_ready",   "task_type": "pipeline_gate", "agent_id": "sm",       "description": "Stories criadas por @sm. Precisa: step 1 (spec_approved).",                                         "payload_template": {}, "on_success": {"next_step": 3}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 3, "name": "dev_complete",    "task_type": "pipeline_gate", "agent_id": "dev",      "description": "Implementacao pelo @dev. Precisa: step 2 (stories_ready).",                                         "payload_template": {}, "on_success": {"next_step": 4}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 4, "name": "qa_approved",     "task_type": "pipeline_gate", "agent_id": "qa",       "description": "Validacao pelo @qa. Precisa: step 3 (dev_complete).",                                               "payload_template": {}, "on_success": {"next_step": 5}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 5, "name": "po_accepted",     "task_type": "pipeline_gate", "agent_id": "po",       "description": "Aceite pelo @po (FRs cruzados contra entrega). Precisa: step 4 (qa_approved).",                     "payload_template": {}, "on_success": {"next_step": 6}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 6, "name": "devops_deployed", "task_type": "pipeline_gate", "agent_id": "devops",   "description": "Deploy pelo @devops. Health check OK. Precisa: step 5 (po_accepted).",                             "payload_template": {}, "on_success": {"next_step": 7}, "on_failure": {"continue": False}, "required_gates": []},
+            {"step": 7, "name": "done",            "task_type": "pipeline_gate", "agent_id": "system",   "description": "Pipeline concluido. Deploy verificado, health OK. Precisa: step 6 (devops_deployed).",              "payload_template": {}, "on_success": {},               "on_failure": {"continue": True},  "required_gates": []},
         ],
+    },
+],
     },
 ]
 
