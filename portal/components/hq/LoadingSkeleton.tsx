@@ -145,6 +145,25 @@ export function ClientsSkeleton({ count = 6 }: { count?: number }) {
   )
 }
 
+/** Skeleton for workflow list — AC10 */
+export function WorkflowListSkeleton({ lines = 5 }: { lines?: number }) {
+  return (
+    <div className="flex flex-col divide-y divide-white/[0.04]" aria-label="Loading workflows">
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 py-3 px-3 min-h-[52px]">
+          <SkeletonBox className="h-4 w-4 rounded-full shrink-0" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <SkeletonBox className="h-3 w-32" />
+            <SkeletonBox className="h-2 w-20" />
+          </div>
+          <SkeletonBox className="h-4 w-20 rounded-full" />
+          <SkeletonBox className="h-3 w-14" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Skeleton for the decisions pending section */
 export function DecisionsSkeleton({ lines = 3 }: { lines?: number }) {
   return (
@@ -158,6 +177,52 @@ export function DecisionsSkeleton({ lines = 3 }: { lines?: number }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+/** Skeleton for Brain view (Story 3.3) — AC10 */
+export function BrainSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-label="Loading Brain view">
+      {/* 4 KPI cards */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-lg p-3 flex flex-col gap-2 min-h-[80px]"
+          >
+            <SkeletonBox className="h-3 w-20" />
+            <SkeletonBox className="h-7 w-12" />
+          </div>
+        ))}
+      </div>
+      {/* 3 namespace card placeholders */}
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}
+      >
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-lg p-4 flex flex-col gap-2"
+            style={{ minHeight: 120 }}
+          >
+            <div className="flex justify-between">
+              <SkeletonBox className="h-3 w-24" />
+              <SkeletonBox className="h-5 w-8" />
+            </div>
+            <SkeletonBox className="h-1.5 w-full rounded-full" />
+            <SkeletonBox className="h-2.5 w-32" />
+          </div>
+        ))}
+      </div>
+      {/* 5 table row placeholders */}
+      <div className="flex flex-col gap-1.5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonBox key={i} className="h-9 w-full rounded" />
+        ))}
+      </div>
     </div>
   )
 }
