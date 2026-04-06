@@ -26,7 +26,9 @@ export async function GET() {
     }
 
     const data = await res.json()
-    return Response.json(data)
+    // Runtime returns { agents: [...], count: N } — unwrap to array
+    const agents = Array.isArray(data) ? data : (data.agents ?? data)
+    return Response.json(agents)
   } catch (err) {
     console.error('[/api/hq/agents] fetch error:', err)
     return Response.json({ error: 'Runtime unreachable' }, { status: 503 })
