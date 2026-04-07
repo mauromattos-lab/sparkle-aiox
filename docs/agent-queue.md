@@ -152,13 +152,12 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 
 | Campo | Valor |
 |-------|-------|
-| **Status** | `EM_EXECUCAO` — TIER 1 funcional, TIER 2 API pronta, Portal pendente conexão |
-| **Responsável** | @dev |
+| **Status** | `FUNCIONAL` — Portal conectado ao Runtime (verificado 2026-04-07) |
+| **Responsável** | @dev (concluído) |
 | **Impacto** | Mauro pilota o sistema visualmente. Não é dashboard — é experiência de comando. |
 | **Stack** | Next.js (portal/ já existe), Supabase Realtime WebSocket, portal.sparkleai.tech |
-| **Lei 15** | "Se parece com Notion ou Trello, está errado. Se parece com Overwatch ou Final Fantasy, está no caminho certo." |
-| **Implementação parcial** | TIER 1 (Friday WhatsApp): cockpit_summary diário 08h BRT funcional. TIER 2 API: 4 endpoints implementados (overview, clients, agents, activity). Falta: conectar Portal Next.js aos endpoints reais. |
-| **API** | GET /cockpit/overview, /cockpit/clients, /cockpit/agents, /cockpit/activity |
+| **Implementação** | TIER 1 (Friday WhatsApp): cockpit_summary diário 08h BRT funcional. TIER 2 API: 4 endpoints (overview, clients, agents, activity) respondendo 200 com dados reais. Portal proxy routes configurados e RUNTIME_API_KEY no portal/.env da VPS. |
+| **API** | GET /cockpit/overview (MRR R$5.491, 7 clientes, 398 tasks/24h) ✅ |
 
 ---
 
@@ -482,6 +481,49 @@ PRÓXIMO: Camada 3 — Órgãos (Conteúdo = trabalho dedicado)
 - WF01: verificar que `channel` enviado é `"zenya"` e não `"A"` (correção minor @dev)
 - FR7: Calendly link ativo, integração real com calendário → sprint futura
 - FR3: routing explícito Médio/Baixo → sprint futura
+
+---
+
+## Sprint CONTENT WAVE 2
+
+### [CONTENT-2.4] Bucket Storage Público
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` — QA PASS 2026-04-07 |
+| **Impacto** | Bucket `content-assets` público confirmado via MCP Supabase. URLs permanentes (`get_public_url`) em `image_generator.py` e `video_generator.py`. `BOUNDARY.md` documentado com nota obrigatória sobre requisito Instagram Graph API. |
+| **Story** | `docs/stories/sprint-content/content-2-4-bucket-storage-publico.md` |
+| **Unblocks** | CONTENT-2.1, CONTENT-2.5 |
+
+---
+
+### [CONTENT-2.2] Resiliência Cron — Stuck Pieces
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL` — QA PASS com CONCERNS 2026-04-07 |
+| **Impacto** | Migration `015_content_pieces_resilience.sql` aplicada (`retry_count`, `failed_permanent`, `error_reason` + índice). Job `content_stuck_check` (30 min) com optimistic lock. Timeout configurável via `PIPELINE_TIMEOUT_MINUTES` (default 20). Notificação Friday no fail-permanent. |
+| **Story** | `docs/stories/sprint-content/content-2-2-cron-resilience.md` |
+| **Concern** | Assimetria optimistic lock: retry path tem lock (`.eq("status")`), fail-permanent path não. Risco baixo, não bloqueante. Sugestão: adicionar `.eq("status", current_status)` ao UPDATE de falha permanente em iteração futura. |
+| **Unblocks** | CONTENT-2.5 |
+
+---
+
+### [CONTENT-2.1] Publisher fix + Token Manager
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `AGUARDANDO_MAURO` — credenciais Instagram |
+| **Bloqueante** | `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` não configurados na VPS |
+
+---
+
+### [CONTENT-2.3] URL Absoluta Friday
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `FUNCIONAL — QA PASS 2026-04-07` |
+| **Responsável** | @qa |
 
 ---
 

@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # Quando True, billing error no modelo primário faz fallback automático para Haiku.
     anthropic_billing_fallback: bool = os.getenv("ANTHROPIC_BILLING_FALLBACK", "true").lower() in ("true", "1", "yes")
 
+    # Content pipeline — CONTENT-2.2 Resilience
+    # Peças em *_generating por mais de este número de minutos são tratadas como stuck.
+    # Configurável via PIPELINE_TIMEOUT_MINUTES (default 20).
+    pipeline_timeout_minutes: int = int(os.environ.get("PIPELINE_TIMEOUT_MINUTES", "20"))
+
+    # Portal — CONTENT-2.3 URL absoluta nas notificações Friday
+    # URL base do Portal sem trailing slash. Usado em notificações WhatsApp para links clicáveis.
+    portal_base_url: str = os.environ.get("PORTAL_BASE_URL", "https://portal.sparkleai.tech")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

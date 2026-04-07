@@ -329,7 +329,8 @@ async def _notify_friday_publish_failed(piece_id: str, error: str) -> None:
             print("[publisher] MAURO_WHATSAPP not configured — skip Friday notification")
             return
         msg = (
-            f"⚠️ Falha ao publicar conteúdo da Zenya — verifique em: /content/\n"
+            f"⚠️ Falha ao publicar conteudo da Zenya\n"
+            f"Acesse: {settings.portal_base_url}/hq/content/\n"
             f"Piece: {piece_id[:8]}\n"
             f"Erro: {error[:200]}"
         )
