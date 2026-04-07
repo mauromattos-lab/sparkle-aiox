@@ -1,32 +1,36 @@
 import sys
 import json
 import os
+import re
 
 input_data = json.load(sys.stdin)
-tool_name = input_data.get("tool_name", "")
 command = input_data.get("tool_input", {}).get("command", "")
 
-# Só interessa comandos git push (não git commit, git status, etc.)
-# Usa word boundary check para evitar false positive em commit messages
-command_stripped = command.strip()
-is_git_push = (
-    command_stripped.startswith("git push") or
-    " git push " in command_stripped or
-    command_stripped == "git push"
-)
+# Detecta git push como comando real (não texto dentro de commit message ou compound cmd)
+# Divide por separadores de shell e verifica cada subcomando individualmente
+def is_real_git_push(cmd):
+    parts = re.split(r"&&|\|\||;", cmd)
+    for part in parts:
+        tokens = part.strip().split()
+        # git push deve ser os dois primeiros tokens do subcomando
+        if len(tokens) >= 2 and tokens[0] == "git" and tokens[1] == "push":
+            return True
+    return False
 
-if not is_git_push:
+if not is_real_git_push(command):
     print(json.dumps({"decision": "allow"}))
     sys.exit(0)
 
-# Verifica agente ativo: env var OU arquivo sentinel
-active_agent = os.environ.get("AIOS_ACTIVE_AGENT", "")
-
-# Sentinel file: .claude/.active-agent (persiste no filesystem)
-sentinel_path = os.path.join(os.path.dirname(__file__), ".active-agent")
-if not active_agent and os.path.exists(sentinel_path):
+# Verifica agente ativo via sentinel file (env var inline nao propaga ao hook subprocess)
+sentinel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".active-agent")
+active_agent = ""
+if os.path.exists(sentinel_path):
     with open(sentinel_path, "r") as f:
         active_agent = f.read().strip()
+
+# Fallback: env var (funciona se setada no processo pai do Claude Code)
+if not active_agent:
+    active_agent = os.environ.get("AIOS_ACTIVE_AGENT", "")
 
 if active_agent != "devops":
     print(json.dumps({
