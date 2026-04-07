@@ -1,7 +1,7 @@
 ---
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.2
-title: "Image Prompt Engineer + Geração NanoBanana"
+title: "Image Prompt Engineer + Geração Gemini Image"
 status: TODO
 priority: P0
 executor: "@dev"
@@ -12,10 +12,10 @@ squad: squads/content/
 depends_on: [CONTENT-1.1]
 unblocks: [CONTENT-1.3, CONTENT-1.5]
 estimated_effort: 4-5h de agente (@dev)
-blocker: "NANOBANA_API_KEY — Mauro obtém em nanobanana.ai"
+blocker: "GEMINI_API_KEY — Mauro obtém em aistudio.google.com (gratuito)"
 ---
 
-# Story 1.2 — Image Prompt Engineer + Geração NanoBanana
+# Story 1.2 — Image Prompt Engineer + Geração Gemini Image
 
 **Sprint:** Content Wave 1
 **Status:** `TODO`
@@ -35,11 +35,11 @@ blocker: "NANOBANA_API_KEY — Mauro obtém em nanobanana.ai"
 
 ## Contexto Técnico
 
-**Estado atual:** Nenhuma integração com NanoBanana/Flux existe no Runtime.
+**Estado atual:** Nenhuma integração com Gemini Image existe no Runtime.
 
-**Estado alvo:** `image_engineer.py` gera prompt técnico completo; `image_generator.py` envia para NanoBanana com imagem de referência Tier A; imagem gerada salva no Supabase Storage; `content_pieces.status` avança de `briefed` → `image_generating` → `image_done`.
+**Estado alvo:** `image_engineer.py` gera prompt técnico completo; `image_generator.py` envia para Google Gemini Image API com imagem de referência Tier A como contexto multimodal; imagem gerada salva no Supabase Storage; `content_pieces.status` avança de `briefed` → `image_generating` → `image_done`.
 
-**⚠️ BLOCKER:** `NANOBANA_API_KEY` precisa estar em variável de ambiente antes do @dev testar esta story.
+**⚠️ BLOCKER:** `GEMINI_API_KEY` precisa estar em variável de ambiente antes do @dev testar esta story. Obter em aistudio.google.com (gratuito).
 
 ---
 
@@ -48,7 +48,7 @@ blocker: "NANOBANA_API_KEY — Mauro obtém em nanobanana.ai"
 - [ ] **AC1** — `image_engineer.py` recebe brief (theme, mood, style) e retorna prompt técnico completo incluindo: estilo visual, lighting, composition, tokens específicos do modelo Flux
 - [ ] **AC2** — Toda chamada de geração seleciona ao menos 1 imagem Tier A da `style_library` como referência visual (aleatória entre as disponíveis, ou a mais usada)
 - [ ] **AC3** — Suporte a dois estilos base: `cinematic` (iluminação dramática, profundidade de campo, cinematográfico) e `influencer_natural` (luz natural, casual, próximo à câmera)
-- [ ] **AC4** — `image_generator.py` chama NanoBanana/Flux API com `image_strength` entre 0.35–0.55 e a referência Tier A
+- [ ] **AC4** — `image_generator.py` chama Google Gemini Image API com prompt multimodal: texto descritivo da Zenya + imagem Tier A como referência de estilo visual (sem `image_strength` — consistência via prompt engineering)
 - [ ] **AC5** — Imagem gerada salva no Supabase Storage em `content-assets/images/{content_piece_id}.png`
 - [ ] **AC6** — `content_pieces.image_url` atualizado com o path de Storage; `status` avança para `image_done`
 - [ ] **AC7** — Falha na API NanoBanana atualiza `status = 'image_failed'` e registra erro em `error_log` — não bloqueia outras peças no pipeline
@@ -60,14 +60,20 @@ blocker: "NANOBANA_API_KEY — Mauro obtém em nanobanana.ai"
 
 ### Estrutura de prompt — estilo cinematic
 ```python
+ZENYA_BASE_DESCRIPTION = (
+    "Zenya, uma personagem de IA brasileira. "
+    "Mulher brasileira, traços marcantes, expressão confiante e acolhedora, "
+    "cabelos escuros, aparência moderna e sofisticada. "
+    "Mantenha exatamente o estilo visual da imagem de referência fornecida."
+)
+
 def build_cinematic_prompt(theme: str, mood: str) -> str:
     return (
-        f"{theme}, {mood} mood, "
-        "ultra-realistic portrait, cinematic lighting, "
-        "dramatic shadows, shallow depth of field, "
-        "85mm lens, golden hour, "
-        "Brazilian woman with dark features, "
-        "high-end fashion editorial, 8k resolution"
+        f"{ZENYA_BASE_DESCRIPTION} "
+        f"Tema: {theme}. Mood: {mood}. "
+        "Iluminação cinematográfica dramática, sombras profundas, "
+        "profundidade de campo rasa, lente 85mm, hora dourada, "
+        "editorial de moda high-end, resolução 8k."
     )
 ```
 
@@ -75,12 +81,27 @@ def build_cinematic_prompt(theme: str, mood: str) -> str:
 ```python
 def build_influencer_prompt(theme: str, mood: str) -> str:
     return (
-        f"{theme}, {mood} mood, "
-        "natural lighting, authentic lifestyle, "
-        "close to camera, warm tones, "
-        "Brazilian woman with dark features, "
-        "social media portrait, candid, vibrant"
+        f"{ZENYA_BASE_DESCRIPTION} "
+        f"Tema: {theme}. Mood: {mood}. "
+        "Luz natural, lifestyle autêntico, próxima à câmera, "
+        "tons quentes, retrato para redes sociais, espontâneo, vibrante."
     )
+```
+
+### Chamada Gemini Image (multimodal)
+```python
+import google.generativeai as genai
+from google.generativeai import types
+
+async def generate_image(prompt: str, reference_image_url: str) -> bytes:
+    client = genai.Client(api_key=settings.gemini_api_key)
+    # Referência Tier A como âncora visual
+    image_part = types.Part.from_uri(reference_image_url, mime_type="image/png")
+    response = await client.aio.models.generate_content(
+        model="gemini-2.0-flash-exp",
+        contents=[image_part, prompt],
+    )
+    return response.candidates[0].content.parts[0].inline_data.data
 ```
 
 ### Seleção de referência Tier A
@@ -122,9 +143,9 @@ supabase.table("content_pieces") \
 
 ## Integration Verifications
 
-- [ ] `NANOBANA_API_KEY` presente em variável de ambiente do Runtime
-- [ ] Chamada de geração com estilo `cinematic` retorna imagem válida
-- [ ] Chamada de geração com estilo `influencer_natural` retorna imagem válida
+- [ ] `GEMINI_API_KEY` presente em variável de ambiente do Runtime
+- [ ] Chamada de geração com estilo `cinematic` retorna imagem válida da Zenya
+- [ ] Chamada de geração com estilo `influencer_natural` retorna imagem válida da Zenya
 - [ ] Imagem salva no Supabase Storage e URL acessível publicamente
 - [ ] `content_pieces.status` = `image_done` após geração bem-sucedida
 - [ ] `content_pieces.status` = `image_failed` após falha de API (simular com key inválida)
@@ -137,5 +158,5 @@ supabase.table("content_pieces") \
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
 | `runtime/content/image_engineer.py` | Criar | Prompt engineer: build_cinematic_prompt, build_influencer_prompt, get_tier_a_reference |
-| `runtime/content/image_generator.py` | Criar | NanoBanana/Flux API integration: generate_image() |
+| `runtime/content/image_generator.py` | Criar | Google Gemini Image API (multimodal): generate_image() |
 | `tests/test_image_engineer.py` | Criar | Testes: prompt building, tier A selection, fallback, error handling |

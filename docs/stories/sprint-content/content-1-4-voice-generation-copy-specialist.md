@@ -141,6 +141,23 @@ async def generate_voice(script: str, voice_id: str) -> bytes:
 
 ---
 
+## QA Results
+
+**Revisor:** Quinn (QA Guardian) | **Data:** 2026-04-06 | **Gate:** `PASS com CONCERNS`
+
+**AC Traceability:** AC1-AC8 todos ✅ PASS — 16 testes integração passando (9 copy + 7 voice).
+
+**Issues:**
+- HIGH DT-01: `_elevenlabs_tts` síncrona chamada em contexto async — bloqueia event loop. Fix: `asyncio.to_thread`. Aceitável Content Wave 1 (volume baixo).
+- MEDIUM DT-02: importação de funções `_private` do tts.py — acoplamento a internals.
+- MEDIUM DT-03: endpoint `/voice/generate` chama `_update_audio_url` com UUID fake → UPDATE silencioso. Fluxo correto é `/voice/apply/{id}`.
+
+**Segurança:** ✅ sem hardcoded creds, sem SQL injection, sem secrets em log.
+
+**Decisão: PASS com CONCERNS** — @devops autorizado para push. DT-01 deve ser resolvido antes de carga real.
+
+---
+
 ## File List
 
 | Arquivo | Ação | Descrição |

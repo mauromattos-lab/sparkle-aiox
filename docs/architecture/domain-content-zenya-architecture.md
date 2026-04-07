@@ -22,8 +22,8 @@ CAMADA 2 — BRAIN
   sparkle-lore namespace ←── lore, restrições, histórico
 
 CAMADA 1 — INFRA
-  Supabase Storage (assets) | Kling API | ElevenLabs | Creatomate
-  NanoBanana/Flux API | CLIP embeddings | Instagram Graph API
+  Supabase Storage (assets) | Google Veo 3.1 | ElevenLabs | Creatomate
+  Google Gemini Image API | CLIP embeddings | Instagram Graph API
 ```
 
 Órgão Conteúdo **não se conecta diretamente** a outros órgãos. Toda troca é via Brain:
@@ -162,9 +162,9 @@ sparkle-runtime/runtime/
     ├── pipeline.py             — Orquestrador principal (state machine)
     ├── style_library.py        — CRUD + CLIP similarity da Style Library
     ├── image_engineer.py       — Image Prompt Engineer
-    ├── image_generator.py      — Integração NanoBanana/Flux
+    ├── image_generator.py      — Integração Google Gemini Image API
     ├── video_engineer.py       — Video Prompt Engineer
-    ├── video_generator.py      — Integração Kling API (→ ComfyUI futuro)
+    ├── video_generator.py      — Integração Google Veo 3.1 (VideoGeneratorProtocol)
     ├── voice_generator.py      — Integração ElevenLabs
     ├── copy_specialist.py      — Caption + voice script
     ├── assembler.py            — Integração Creatomate (→ Remotion futuro)
@@ -324,25 +324,30 @@ PENDING_APPROVAL
 
 ## Integrações Externas
 
-### Kling API (Fase 1 — vídeo)
+### Google Veo 3.1 (vídeo — image-to-video)
 ```python
-POST https://api.kling.ai/v1/videos/image2video
-{
-  "model_name": "kling-v1-5",
-  "image_url": "...",
-  "prompt": "...",
-  "negative_prompt": "...",
-  "duration": "5",
-  "aspect_ratio": "9:16"
-}
+# SDK: google-genai
+operation = await client.aio.models.generate_videos(
+    model="veo-2.0-generate-001",  # estável; veo-3.0 quando sair de preview
+    prompt=prompt,
+    image=types.Image(image_url=image_url),
+    config=types.GenerateVideosConfig(
+        aspect_ratio="9:16",
+        duration_seconds=5,   # 10 para cinematic
+        number_of_videos=1,
+    )
+)
 ```
-- Autenticação: JWT (KLING_ACCESS_KEY + KLING_SECRET_KEY)
-- Custo: ~$0.14/vídeo 5s
-- Abstração: `VideoGeneratorProtocol` → swap para ComfyUI sem mudar pipeline
+- Autenticação: `GEMINI_API_KEY` (mesmo da geração de imagem)
+- Custo: ~$0.05/seg no Lite tier
+- Abstração: `VeoVideoGenerator` implementa `VideoGeneratorProtocol`
+- Áudio gerado pelo Veo é substituído pelo ElevenLabs no assembly (voice changer)
 
-### NanoBanana / Flux (imagem)
-- Geração via API com `image` (referência Tier A) + `prompt`
-- `image_strength`: 0.35–0.55 (consistência sem perder criatividade)
+### Google Gemini Image API (imagem)
+- Geração multimodal: texto + imagem de referência Tier A como contexto visual
+- Modelo: `gemini-2.0-flash-exp` (ou `imagen-3` quando disponível)
+- Sem `image_strength` — consistência via prompt engineering + referência Tier A
+- Credencial: mesma `GEMINI_API_KEY` do Veo
 
 ### ElevenLabs (voz)
 - Já integrado no Runtime (`runtime/integrations/elevenlabs.py` ou similar)
@@ -371,12 +376,12 @@ class VideoGeneratorProtocol(Protocol):
 class AssemblerProtocol(Protocol):
     async def assemble(self, video: str, audio: str, caption: str) -> str: ...
 
-# Fase 1
-video_generator = KlingVideoGenerator()
+# Fase 1 (MVP)
+video_generator = VeoVideoGenerator()      # Google Veo 3.1
 assembler = CreatomateAssembler()
 
 # Fase 2 (troca sem tocar no pipeline)
-video_generator = ComfyUIVideoGenerator()
+video_generator = ComfyUIVideoGenerator()  # se necessário
 assembler = RemotionAssembler()
 ```
 
@@ -411,7 +416,8 @@ assembler = RemotionAssembler()
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|--------------|---------|-----------|
 | Inconsistência visual sem LoRA | Alta | Alto | Style Library Tier A obrigatória como referência |
-| Kling API instabilidade | Média | Médio | Retry automático (3x) + status `video_failed` sem bloquear pipeline |
+| Veo API instabilidade / rate limit | Média | Médio | Retry automático (3x) + status `video_failed` sem bloquear pipeline |
+| Gemini Image sem consistência visual (sem img2img) | Média | Alto | Prompt engineering robusto com descrição detalhada da Zenya + Tier A como âncora; validar nas primeiras 10 gerações |
 | Instagram Graph API rate limit | Baixa | Médio | Queue de publicação com delay entre posts |
 | Assembly Creatomate timeout | Baixa | Baixo | Retry + fallback para assembly manual |
 | Conteúdo que viola lore | Baixa | Alto | IP Auditor antes de pending_approval + aprovação Mauro |
@@ -440,8 +446,8 @@ Stories a criar (ordem de dependência):
 CONTENT-0.1  Curation Assistant + Style Library
     ↓
 CONTENT-1.1  Migration + Modelo de Dados (content_pieces, style_library, calendar)
-CONTENT-1.2  Image Prompt Engineer + Geração (NanoBanana)         ┐ paralelo
-CONTENT-1.3  Video Prompt Engineer + Geração (Kling API)          │ após 1.1
+CONTENT-1.2  Image Prompt Engineer + Geração (Gemini Image)       ┐ paralelo
+CONTENT-1.3  Video Prompt Engineer + Geração (Veo 3.1)            │ após 1.1
 CONTENT-1.4  Voice Generation (ElevenLabs) + Copy Specialist       ┘
     ↓
 CONTENT-1.5  Assembly (Creatomate)

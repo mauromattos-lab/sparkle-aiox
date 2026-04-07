@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = os.environ.get("ELEVENLABS_API_KEY", "")
     elevenlabs_zenya_voice_id: str = os.environ.get("ELEVENLABS_ZENYA_VOICE_ID", "")
 
+    # Google Gemini (Image + Veo video)
+    gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
+
     # Redis (ARQ)
     redis_url: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
