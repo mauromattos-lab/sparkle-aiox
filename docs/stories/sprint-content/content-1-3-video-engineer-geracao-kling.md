@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.3
 title: "Video Prompt Engineer + Geração Veo (Google Gemini)"
-status: TODO
+status: Ready for Review
 priority: P0
 executor: "@dev"
 sprint: Content Wave 1
@@ -47,14 +47,14 @@ blocker: "GEMINI_API_KEY — mesma chave de CONTENT-1.2, obtém em aistudio.goog
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `video_engineer.py` recebe imagem gerada + estilo e retorna prompt de vídeo descrevendo: movimento da personagem, câmera, física do ambiente, duração e aspect ratio
-- [ ] **AC2** — `VideoGeneratorProtocol` definido com interface: `async def generate(image_url, prompt, style) -> str`
-- [ ] **AC3** — `VeoVideoGenerator` implementa o protocolo: autentica via `GEMINI_API_KEY` (google-genai SDK), chama `client.aio.models.generate_videos(model="veo-2.0-generate-001", ...)`
-- [ ] **AC4** — Parâmetros obrigatórios na chamada Veo: `aspect_ratio: "9:16"`, `duration_seconds: 5` (ou 10 para cinematic), `number_of_videos: 1`
-- [ ] **AC5** — Veo retorna operation — `video_generator.py` faz polling via `operation.done` até completar (max 5 min com retry)
-- [ ] **AC6** — Vídeo gerado baixado e salvo no Supabase Storage em `content-assets/videos/{content_piece_id}.mp4`
-- [ ] **AC7** — `content_pieces.video_url` atualizado; `status` avança para `video_done`
-- [ ] **AC8** — Falha na API ou timeout atualiza `status = 'video_failed'` e registra em `error_log` — pipeline continua para outras peças
+- [x] **AC1** — `video_engineer.py` recebe imagem gerada + estilo e retorna prompt de vídeo descrevendo: movimento da personagem, câmera, física do ambiente, duração e aspect ratio
+- [x] **AC2** — `VideoGeneratorProtocol` definido com interface: `async def generate(image_url, prompt, style) -> str`
+- [x] **AC3** — `VeoVideoGenerator` implementa o protocolo: autentica via `GEMINI_API_KEY` (google-genai SDK), chama `client.aio.models.generate_videos(model="veo-2.0-generate-001", ...)`
+- [x] **AC4** — Parâmetros obrigatórios na chamada Veo: `aspect_ratio: "9:16"`, `duration_seconds: 5` (ou 10 para cinematic), `number_of_videos: 1`
+- [x] **AC5** — Veo retorna operation — `video_generator.py` faz polling via `operation.done` até completar (max 5 min com retry)
+- [x] **AC6** — Vídeo gerado baixado e salvo no Supabase Storage em `content-assets/videos/{content_piece_id}.mp4`
+- [x] **AC7** — `content_pieces.video_url` atualizado; `status` avança para `video_done`
+- [x] **AC8** — Falha na API ou timeout atualiza `status = 'video_failed'` e registra em `error_log` — pipeline continua para outras peças
 
 ---
 
@@ -134,10 +134,31 @@ bright natural light, smooth movement
 
 ---
 
+## Dev Agent Record
+
+**Agent Model Used:** claude-sonnet-4-6
+
+**Completion Notes:**
+- Implementado junto com CONTENT-1.2 (mesma sessão, mesmos arquivos)
+- `VideoGeneratorProtocol` definido com `@runtime_checkable` para type checking
+- `VeoVideoGenerator` usa `asyncio.to_thread` para chamadas síncronas do SDK
+- Polling: 30 iterações × 10s = max 5 min; `TimeoutError` capturado e registrado como `video_failed`
+- Testes de geração real (`VEO_LIVE_TESTS=1`) skippados por padrão — Veo tem custo e latência alta
+- `_record_failure()` compartilhado entre image e video generators — mesmo padrão
+
+**Change Log:**
+- Criado: `runtime/content/video_engineer.py`
+- Criado: `runtime/content/video_generator.py`
+- Modificado: `runtime/content/router.py` (compartilhado com CONTENT-1.2)
+- Criado: `tests/test_video_engine.py`
+
+---
+
 ## File List
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| `runtime/content/video_engineer.py` | Criar | Prompt engineer para movimento/câmera por estilo |
-| `runtime/content/video_generator.py` | Criar | VideoGeneratorProtocol + VeoVideoGenerator (google-genai SDK) |
-| `tests/test_video_generator.py` | Criar | Testes: auth API key, polling operation, timeout, failure handling |
+| `runtime/content/video_engineer.py` | ✅ Criado | Prompt engineer: build_video_prompt, get_video_duration por estilo |
+| `runtime/content/video_generator.py` | ✅ Criado | VideoGeneratorProtocol + VeoVideoGenerator (google-genai 1.70.0) |
+| `runtime/content/router.py` | ✅ Modificado | Endpoints /video/generate, /video/apply/{id}, /video/status |
+| `tests/test_video_engine.py` | ✅ Criado | 7 testes (4 pass, 3 skip — Veo live requer VEO_LIVE_TESTS=1) |

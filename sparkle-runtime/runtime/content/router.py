@@ -676,6 +676,223 @@ async def voice_status_endpoint():
     info["zenya_voice_id"] = settings.elevenlabs_zenya_voice_id or None
     return info
 
+# ══════════════════════════════════════════════════════════════
+# IMAGE GENERATOR (CONTENT-1.2)
+# ══════════════════════════════════════════════════════════════
+
+class ImageGenerateRequest(BaseModel):
+    theme: str
+    mood: str
+    style: str = "influencer_natural"
+    client_id: Optional[str] = None
+
+
+class ImageApplyRequest(ImageGenerateRequest):
+    pass
+
+
+@router.post("/image/generate")
+async def generate_image_endpoint(req: ImageGenerateRequest):
+    """
+    Gera imagem da Zenya via Gemini Image API.
+    Seleciona referência Tier A da Style Library automaticamente.
+    Retorna image_url (Supabase Storage) ou erro 400/500.
+    """
+    from runtime.content.image_engineer import prepare_generation, get_tier_a_reference, build_prompt
+    from runtime.content.image_generator import generate_image_gemini
+    import uuid as _uuid
+
+    if req.style not in ("cinematic", "influencer_natural"):
+        raise HTTPException(status_code=400, detail="style deve ser 'cinematic' ou 'influencer_natural'")
+
+    try:
+        ref = await get_tier_a_reference(req.style)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    prompt = build_prompt(req.theme, req.mood, req.style)
+    ref_url = ref.get("storage_path") or ref.get("image_url")
+
+    try:
+        from runtime.content.image_generator import generate_image_gemini, CONTENT_BUCKET
+        image_bytes = await generate_image_gemini(prompt, ref_url)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Gemini Image error: {exc}")
+
+    # Salvar com UUID temporário
+    tmp_id = str(_uuid.uuid4())
+    path = f"images/{tmp_id}.png"
+    supabase.storage.from_(CONTENT_BUCKET).upload(
+        path=path,
+        file=image_bytes,
+        file_options={"content-type": "image/png", "upsert": "true"},
+    )
+    image_url = supabase.storage.from_(CONTENT_BUCKET).get_public_url(path)
+
+    return {
+        "image_url": image_url,
+        "style": req.style,
+        "style_ref_id": ref["id"],
+        "prompt_preview": prompt[:200],
+    }
+
+
+@router.post("/image/apply/{content_piece_id}")
+async def apply_image_endpoint(content_piece_id: str, req: ImageApplyRequest):
+    """
+    Gera imagem e persiste image_url + status em content_pieces.
+    Requer content_piece existente.
+    """
+    from runtime.content.image_engineer import prepare_generation
+    from runtime.content.image_generator import generate_image_for_piece
+
+    check = supabase.table("content_pieces").select("id").eq("id", content_piece_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="content_piece não encontrado")
+
+    if req.style not in ("cinematic", "influencer_natural"):
+        raise HTTPException(status_code=400, detail="style deve ser 'cinematic' ou 'influencer_natural'")
+
+    try:
+        gen_data = await prepare_generation(content_piece_id, req.theme, req.mood, req.style)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    ref_url = gen_data["reference"].get("storage_path") or gen_data["reference"].get("image_url")
+    image_url = await generate_image_for_piece(
+        content_piece_id=content_piece_id,
+        prompt=gen_data["prompt"],
+        reference_image_url=ref_url,
+    )
+
+    if image_url is None:
+        # Falha registrada no content_piece — buscar error_log
+        result = supabase.table("content_pieces").select("error_log, status").eq(
+            "id", content_piece_id
+        ).execute()
+        info = result.data[0] if result.data else {}
+        raise HTTPException(status_code=500, detail={
+            "message": "Falha na geração de imagem",
+            "status": info.get("status"),
+            "error_log": info.get("error_log"),
+        })
+
+    return {"image_url": image_url, "content_piece_id": content_piece_id}
+
+
+@router.get("/image/status")
+async def image_status_endpoint():
+    """Status do engine de geração de imagem (Gemini)."""
+    key_configured = bool(settings.gemini_api_key)
+    return {
+        "engine": "Google Gemini Image",
+        "model": "gemini-2.0-flash-exp-image-generation",
+        "fallback_model": "imagen-3.0-generate-002",
+        "gemini_api_key_configured": key_configured,
+        "status": "ready" if key_configured else "unconfigured",
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# VIDEO GENERATOR (CONTENT-1.3)
+# ══════════════════════════════════════════════════════════════
+
+class VideoGenerateRequest(BaseModel):
+    image_url: str
+    style: str = "influencer_natural"
+    theme: Optional[str] = None
+    content_piece_id: Optional[str] = None
+
+
+class VideoApplyRequest(BaseModel):
+    image_url: str
+    style: str = "influencer_natural"
+    theme: Optional[str] = None
+
+
+@router.post("/video/generate")
+async def generate_video_endpoint(req: VideoGenerateRequest):
+    """
+    Gera vídeo 9:16 via Google Veo a partir de uma imagem.
+    Retorna video_url (Supabase Storage).
+    """
+    from runtime.content.video_engineer import build_video_prompt, get_video_duration
+    from runtime.content.video_generator import generate_video_for_piece, VeoVideoGenerator
+    import uuid as _uuid
+
+    if req.style not in ("cinematic", "influencer_natural"):
+        raise HTTPException(status_code=400, detail="style deve ser 'cinematic' ou 'influencer_natural'")
+
+    prompt = build_video_prompt(req.style, req.theme)
+    tmp_id = req.content_piece_id or str(_uuid.uuid4())
+
+    video_url = await generate_video_for_piece(
+        content_piece_id=tmp_id,
+        image_url=req.image_url,
+        prompt=prompt,
+        style=req.style,
+    )
+
+    if video_url is None:
+        raise HTTPException(status_code=500, detail="Falha na geração de vídeo — verifique GEMINI_API_KEY e acesso ao Veo")
+
+    return {
+        "video_url": video_url,
+        "style": req.style,
+        "duration_seconds": get_video_duration(req.style),
+    }
+
+
+@router.post("/video/apply/{content_piece_id}")
+async def apply_video_endpoint(content_piece_id: str, req: VideoApplyRequest):
+    """
+    Gera vídeo e persiste video_url + status em content_pieces.
+    """
+    from runtime.content.video_engineer import build_video_prompt
+    from runtime.content.video_generator import generate_video_for_piece
+
+    check = supabase.table("content_pieces").select("id").eq("id", content_piece_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="content_piece não encontrado")
+
+    if req.style not in ("cinematic", "influencer_natural"):
+        raise HTTPException(status_code=400, detail="style deve ser 'cinematic' ou 'influencer_natural'")
+
+    prompt = build_video_prompt(req.style, req.theme)
+    video_url = await generate_video_for_piece(
+        content_piece_id=content_piece_id,
+        image_url=req.image_url,
+        prompt=prompt,
+        style=req.style,
+    )
+
+    if video_url is None:
+        result = supabase.table("content_pieces").select("error_log, status").eq(
+            "id", content_piece_id
+        ).execute()
+        info = result.data[0] if result.data else {}
+        raise HTTPException(status_code=500, detail={
+            "message": "Falha na geração de vídeo",
+            "status": info.get("status"),
+            "error_log": info.get("error_log"),
+        })
+
+    return {"video_url": video_url, "content_piece_id": content_piece_id}
+
+
+@router.get("/video/status")
+async def video_status_endpoint():
+    """Status do engine de geração de vídeo (Veo)."""
+    key_configured = bool(settings.gemini_api_key)
+    return {
+        "engine": "Google Veo",
+        "model": "veo-2.0-generate-001",
+        "gemini_api_key_configured": key_configured,
+        "aspect_ratio": "9:16",
+        "status": "ready" if key_configured else "unconfigured",
+    }
+
+
 # ── Style Library (CONTENT-0.1) ───────────────────────────────
 from runtime.content.style_library import router as library_router
 router.include_router(library_router, tags=["style-library"])
