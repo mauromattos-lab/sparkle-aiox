@@ -18,10 +18,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from runtime.config import settings
 from runtime.db import supabase
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -29,7 +33,14 @@ router = APIRouter()
 # -- Request models --------------------------------------------------------
 
 class RejectRequest(BaseModel):
-    reason: Optional[str] = None
+    reason: str  # AC-6: obrigatório — rejeição sem motivo não é permitida
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("curation_note é obrigatório na rejeição")
+        return v.strip()
 
 
 class ApproveRequest(BaseModel):
@@ -60,6 +71,7 @@ async def curation_queue(
                 "curation_status,curation_note,curated_at,confidence_score"
             )
             .eq("curation_status", status)
+            .is_("deleted_at", "null")
             .order("created_at", desc=True)
             .range(offset, offset + limit - 1)
             .execute()
@@ -125,16 +137,15 @@ async def approve_chunk(chunk_id: str, body: ApproveRequest = ApproveRequest()):
 # -- POST /brain/curation/{chunk_id}/reject ---------------------------------
 
 @router.post("/curation/{chunk_id}/reject")
-async def reject_chunk(chunk_id: str, body: RejectRequest = RejectRequest()):
-    """Marca chunk como rejeitado. Chunks rejeitados sao excluidos de consultas."""
+async def reject_chunk(chunk_id: str, body: RejectRequest):
+    """Marca chunk como rejeitado. curation_note (reason) é obrigatório — AC-6."""
     try:
         now = datetime.now(timezone.utc).isoformat()
         update_data: dict = {
             "curation_status": "rejected",
             "curated_at": now,
+            "curation_note": body.reason,
         }
-        if body.reason:
-            update_data["curation_note"] = body.reason
 
         result = await asyncio.to_thread(
             lambda: supabase.table("brain_chunks")
@@ -303,3 +314,100 @@ async def curate_stats():
         }
     except Exception as e:
         return {"status": "error", "error": f"Falha ao buscar stats: {str(e)[:200]}"}
+
+
+# ── Manutenção: Soft-delete e Auto-curadoria por idade (W0-BRAIN-1) ──────────
+
+async def cleanup_rejected_chunks(days: int = 30) -> dict:
+    """
+    AC-4: Soft-deleta chunks rejeitados há mais de `days` dias.
+
+    Chunks com curation_status='rejected' e updated_at < NOW() - interval recebem
+    deleted_at = NOW() e são excluídos de todas as queries de retrieval.
+
+    Executado diariamente pelo scheduler (brain_rejected_cleanup).
+    """
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cutoff_iso = cutoff.isoformat()
+
+        result = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .update({"deleted_at": now_iso})
+            .eq("curation_status", "rejected")
+            .lt("updated_at", cutoff_iso)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        count = len(result.data) if result.data else 0
+        logger.info(
+            "[BRAIN] cleanup_rejected_chunks: %d chunks soft-deletados (threshold: %d dias)",
+            count, days,
+        )
+        return {"status": "ok", "deleted_count": count, "days": days}
+    except Exception as e:
+        logger.error("[BRAIN] cleanup_rejected_chunks falhou: %s", e)
+        return {"status": "error", "error": str(e)[:200]}
+
+
+async def trigger_autocurate_stale_pending(days: int = 7) -> dict:
+    """
+    AC-5: Enfileira chunks pending há mais de `days` dias para auto-curadoria via Haiku.
+
+    Chunks com curation_status='pending' sem ação há mais de 7 dias são enviados
+    automaticamente para o pipeline de auto-curadoria.
+
+    Executado diariamente pelo scheduler (brain_rejected_cleanup — mesmo job).
+    """
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_iso = cutoff.isoformat()
+
+        result = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .select("id", count="exact")
+            .eq("curation_status", "pending")
+            .lt("updated_at", cutoff_iso)
+            .is_("deleted_at", "null")
+            .limit(1)
+            .execute()
+        )
+
+        stale_count = result.count or 0
+        if stale_count == 0:
+            logger.info(
+                "[BRAIN] trigger_autocurate_stale_pending: nenhum chunk stale (threshold: %d dias)", days
+            )
+            return {"status": "ok", "triggered": 0}
+
+        task_res = await asyncio.to_thread(
+            lambda: supabase.table("runtime_tasks").insert({
+                "agent_id": "friday",
+                "client_id": settings.sparkle_internal_client_id,
+                "task_type": "brain_curate",
+                "payload": {
+                    "triggered_by": "stale_pending_cron",
+                    "stale_days": days,
+                    "stale_count": stale_count,
+                },
+                "status": "pending",
+                "priority": 4,
+            }).execute()
+        )
+
+        logger.info(
+            "[BRAIN] Auto-curadoria disparada para %d chunks pending > %d dias",
+            stale_count, days,
+        )
+        return {
+            "status": "ok",
+            "triggered": stale_count,
+            "task_id": task_res.data[0]["id"] if task_res.data else None,
+        }
+
+    except Exception as e:
+        logger.error("[BRAIN] trigger_autocurate_stale_pending falhou: %s", e)
+        return {"status": "error", "error": str(e)[:200]}

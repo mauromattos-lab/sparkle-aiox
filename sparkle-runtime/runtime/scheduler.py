@@ -109,6 +109,15 @@ async def _run_upsell_opportunity() -> None:
     await _run_and_execute("friday_initiative_upsell", priority=5)
 
 
+# ── W0-BRAIN-1: Brain Rejected Cleanup (daily) ─────────────
+
+async def _run_brain_rejected_cleanup() -> None:
+    """Soft-deleta chunks rejeitados >30 dias + dispara auto-curadoria para pending >7 dias."""
+    from runtime.brain.curation import cleanup_rejected_chunks, trigger_autocurate_stale_pending
+    await cleanup_rejected_chunks(days=30)
+    await trigger_autocurate_stale_pending(days=7)
+
+
 # ── B3-05: Brain Archival (daily) ──────────────────────────
 
 async def _run_brain_archival() -> None:
@@ -374,6 +383,14 @@ def start_scheduler() -> None:
         _run_upsell_opportunity,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=30, timezone=_TZ),
         id="upsell_opportunity",
+        replace_existing=True,
+    )
+
+    # W0-BRAIN-1: brain_rejected_cleanup todo dia às 3h30 de Brasília (após archival)
+    _scheduler.add_job(
+        _run_brain_rejected_cleanup,
+        trigger=CronTrigger(hour=3, minute=30, timezone=_TZ),
+        id="brain_rejected_cleanup",
         replace_existing=True,
     )
 

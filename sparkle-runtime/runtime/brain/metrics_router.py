@@ -84,6 +84,56 @@ async def brain_metrics(
         return {"status": "error", "message": f"Failed to fetch metrics: {str(e)[:200]}"}
 
 
+@router.get("/namespaces")
+async def brain_namespaces():
+    """
+    W0-BRAIN-1: Lista namespaces existentes com breakdown por curation_status.
+
+    Returns:
+        { namespace, total_chunks, approved_chunks, pending_chunks, rejected_chunks }
+    """
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .select("namespace, curation_status")
+            .is_("deleted_at", "null")
+            .execute()
+        )
+
+        rows = result.data or []
+
+        stats: dict[str, dict] = {}
+        for row in rows:
+            ns = row.get("namespace") or "general"
+            status = row.get("curation_status") or "pending"
+            if ns not in stats:
+                stats[ns] = {
+                    "namespace": ns,
+                    "total_chunks": 0,
+                    "approved_chunks": 0,
+                    "pending_chunks": 0,
+                    "rejected_chunks": 0,
+                }
+            stats[ns]["total_chunks"] += 1
+            if status == "approved":
+                stats[ns]["approved_chunks"] += 1
+            elif status == "pending":
+                stats[ns]["pending_chunks"] += 1
+            elif status in ("rejected", "review"):
+                stats[ns]["rejected_chunks"] += 1
+
+        namespace_list = sorted(stats.values(), key=lambda x: x["total_chunks"], reverse=True)
+
+        return {
+            "status": "ok",
+            "total_namespaces": len(namespace_list),
+            "namespaces": namespace_list,
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to fetch namespaces: {str(e)[:200]}"}
+
+
 @router.get("/metrics/namespaces")
 async def brain_namespace_stats():
     """

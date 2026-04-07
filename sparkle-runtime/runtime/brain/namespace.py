@@ -15,11 +15,52 @@ Default namespaces:
   - client_dna    : Client DNA extractions
   - insight       : Brain insights / synthesis
   - general       : Fallback for anything unclassified
+
+Semantic namespaces (W0-BRAIN-1):
+  - sparkle-lore  : Lore canônico de personagens (Zenya, Juno, Orion…)
+  - mauro-personal: Conhecimento pessoal do Mauro (DNA, preferências, histórico)
+  - sparkle-market: Mercado, concorrentes, benchmarks Sparkle
+  - client-{id}   : Namespace específico por cliente (pattern dinâmico)
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+# ── Semantic namespaces (W0-BRAIN-1 — lista canônica) ────────────────────────
+# Namespaces semânticos: domínios de alto nível gerenciados manualmente.
+# Ingestão com namespace semântico não reconhecido → fallback 'general' + warning.
+
+SEMANTIC_NAMESPACES: frozenset[str] = frozenset({
+    "sparkle-lore",    # Lore canônico de personagens (Zenya, Juno, Orion…)
+    "mauro-personal",  # DNA e conhecimento pessoal do Mauro
+    "sparkle-market",  # Mercado, concorrentes, benchmarks
+})
+
+# Pattern para namespaces de cliente (client-{uuid_or_slug})
+_CLIENT_NS_PATTERN = re.compile(r"^client-[a-z0-9_-]+$")
+
+# Namespaces de sistema: gerados automaticamente pelo pipeline de ingestão.
+SYSTEM_NAMESPACES: frozenset[str] = frozenset({
+    "youtube",
+    "web",
+    "file_pdf",
+    "file_csv",
+    "file_text",
+    "conversation",
+    "client_dna",
+    "insight",
+    "general",
+})
+
+
+def is_valid_namespace(ns: str) -> bool:
+    """Verifica se um namespace é válido (semântico, sistema ou client-{id})."""
+    return ns in SEMANTIC_NAMESPACES or ns in SYSTEM_NAMESPACES or bool(_CLIENT_NS_PATTERN.match(ns))
 
 
 # ── Source-type mapping ───────────────────────────────────────────────────────
@@ -69,10 +110,16 @@ def resolve_namespace(
     """
     meta = metadata or {}
 
-    # 1. Explicit namespace override
+    # 1. Explicit namespace override — validate against known namespaces
     explicit = meta.get("namespace")
     if explicit and isinstance(explicit, str) and explicit.strip():
-        return _normalize(explicit)
+        normalized = _normalize(explicit)
+        if not is_valid_namespace(normalized):
+            logger.warning(
+                "[BRAIN] Namespace desconhecido '%s' → fallback para 'general'", normalized
+            )
+            return "general"
+        return normalized
 
     # 2. Source type from metadata
     source_type = meta.get("source_type") or file_type or ""
