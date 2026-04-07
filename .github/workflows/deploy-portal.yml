@@ -51,7 +51,8 @@ jobs:
 
             echo "=== [1/6] Pulling latest changes ==="
             cd /opt/sparkle-aiox
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "=== [2/6] Building Docker image ==="
             cd "$DEPLOY_DIR"
