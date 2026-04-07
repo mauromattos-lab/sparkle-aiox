@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.7
 title: "Portal — Content Queue View (Aprovação)"
-status: Ready for Review
+status: Done
 priority: P0
 executor: "@dev (Portal Next.js)"
 sprint: Content Wave 1

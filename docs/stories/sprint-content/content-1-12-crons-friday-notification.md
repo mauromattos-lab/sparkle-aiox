@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.12
 title: "Crons + Friday Notification (WhatsApp)"
-status: TODO
+status: Done
 priority: P1
 executor: "@dev"
 sprint: Content Wave 1

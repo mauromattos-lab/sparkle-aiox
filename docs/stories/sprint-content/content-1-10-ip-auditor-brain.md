@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.10
 title: "IP Auditor — Validação de Lore via Brain (sparkle-lore)"
-status: Ready for Review
+status: Done
 priority: P1
 executor: "@dev"
 sprint: Content Wave 1

@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.11
 title: "Publisher — Instagram Reels via Graph API"
-status: TODO
+status: Done
 priority: P1
 executor: "@dev"
 sprint: Content Wave 1

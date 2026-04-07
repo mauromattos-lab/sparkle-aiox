@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.9
 title: "Portal — Calendar View (Briefing e Calendário de Produção)"
-status: Ready for Review
+status: Done
 priority: P1
 executor: "@dev (Portal Next.js)"
 sprint: Content Wave 1

@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.6
 title: "Pipeline Orchestrator — State Machine Completo"
-status: TODO
+status: Done
 priority: P0
 executor: "@dev"
 sprint: Content Wave 1
