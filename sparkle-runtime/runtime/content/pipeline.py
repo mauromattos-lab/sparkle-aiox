@@ -196,7 +196,7 @@ async def friday_notify_pending_approval() -> None:
             print("[pipeline] MAURO_WHATSAPP not configured -- skip pending_approval notify")
             return
 
-        msg = f"Zenya: {count} conteudo(s) aguardando aprovacao no Portal"
+        msg = f"\U0001f3ac {count} conteudo(s) da Zenya aguardando aprovacao no Portal \u2014 acesse: /content/queue"
         await asyncio.to_thread(lambda: zapi.send_text(phone, msg))
         print(f"[pipeline] Friday notified: {count} piece(s) pending approval")
 
