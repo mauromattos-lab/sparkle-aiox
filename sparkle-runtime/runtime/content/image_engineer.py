@@ -7,9 +7,13 @@ para envio ao Google Gemini Image API.
 Estilos suportados:
   - cinematic: iluminação dramática, editorial, profundidade de campo
   - influencer_natural: luz natural, lifestyle, próxima à câmera
+
+CONTENT-1.10: Queries sparkle-lore for character restrictions before
+building the prompt to ensure IP consistency.
 """
 from __future__ import annotations
 
+import asyncio
 import random
 from typing import Any
 
@@ -105,6 +109,33 @@ async def get_tier_a_reference(style: str) -> dict[str, Any]:
     return ref
 
 
+async def _get_lore_restrictions(theme: str) -> str:
+    """
+    Query sparkle-lore for character restrictions relevant to the theme.
+
+    Returns a restriction note string to append to the prompt, or '' if none found.
+    Non-blocking — returns '' on any error.
+    """
+    try:
+        from runtime.content.ip_auditor import _query_sparkle_lore
+        chunks = await _query_sparkle_lore(theme, top_k=3)
+        restrictions = []
+        for chunk in chunks:
+            tags = chunk.get("tags") or []
+            metadata = chunk.get("chunk_metadata") or {}
+            meta_tags = metadata.get("tags") or []
+            all_tags = tags + meta_tags
+            if "restriction" in all_tags or metadata.get("type") == "restriction":
+                text = (chunk.get("canonical_text") or chunk.get("raw_content") or "")[:200]
+                if text:
+                    restrictions.append(text)
+        if restrictions:
+            return " RESTRICOES DE PERSONAGEM: " + "; ".join(restrictions)
+    except Exception as exc:
+        print(f"[image_engineer] lore restriction query failed (non-blocking): {exc}")
+    return ""
+
+
 async def prepare_generation(
     content_piece_id: str,
     theme: str,
@@ -115,6 +146,7 @@ async def prepare_generation(
     Prepara todos os dados para geração de imagem:
       - Seleciona referência Tier A
       - Constrói o prompt técnico
+      - Consulta sparkle-lore para restrições de personagem (CONTENT-1.10 AC7)
       - Atualiza status do content_piece para image_generating
       - Salva referências usadas
 
@@ -122,7 +154,11 @@ async def prepare_generation(
         dict com: prompt, reference (dict da style_library)
     """
     ref = await get_tier_a_reference(style)
-    prompt = build_prompt(theme, mood, style)
+    base_prompt = build_prompt(theme, mood, style)
+
+    # CONTENT-1.10 AC7: query sparkle-lore for character restrictions
+    lore_note = await _get_lore_restrictions(theme)
+    prompt = base_prompt + lore_note if lore_note else base_prompt
 
     # Atualizar status e registrar referência
     supabase.table("content_pieces").update({
@@ -135,3 +171,4 @@ async def prepare_generation(
         "prompt": prompt,
         "reference": ref,
     }
+
