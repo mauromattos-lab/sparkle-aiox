@@ -143,3 +143,25 @@ POST /content/pieces/{id}/retry → reinicia de etapa failed
 | `runtime/content/approval.py` | Criar | Lógica de fila de aprovação (pending_approval → approved/rejected) |
 | `runtime/content/router.py` | Atualizar | Adicionar endpoints de briefs, queue, retry |
 | `tests/test_pipeline.py` | Criar | Testes: state machine, transições, concorrência, retry |
+
+## QA Results
+
+**Revisor:** @qa (Quinn) — 2026-04-07
+**Resultado:** PASS
+
+| AC | Status | Nota |
+|----|--------|------|
+| AC1 | ✅ | POST /content/briefs cria piece + dispara pipeline async |
+| AC2 | ✅ | briefed→image_generating→image_done→(copy+video parallel)→video_done→pending_approval |
+| AC3 | ✅ | copy + video via asyncio.gather (paralelo) |
+| AC4 | ✅ | pending_approval só quando image_url + video_url + caption preenchidos |
+| AC5 | ✅ | pipeline_log com timestamps em cada transição |
+| AC6 | ✅ | GET /content/pieces/{id} retorna status + pipeline_log |
+| AC7 | ✅ | GET /content/briefs lista com status e current_stage |
+| AC8 | ✅ | Limite 5 peças simultâneas (image_generating + video_generating) — fix aplicado |
+| AC9 | ✅ | POST /content/pieces/{id}/retry funcional |
+| AC10 | ✅ | POST /content/pipeline/tick exposto para cron |
+
+**Fixes aplicados pós-QA:**
+- `_step_video`: adicionado `_set_status(piece_id, "video_generating")` antes da geração (AC8 agora conta corretamente video concurrent)
+- `check_repetition`: envolvido em `asyncio.to_thread` (segurança async)
