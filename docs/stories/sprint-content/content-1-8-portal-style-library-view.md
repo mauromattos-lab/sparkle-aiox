@@ -134,10 +134,10 @@ function StyleLibraryCard({ item }: { item: StyleLibraryItem }) {
 | AC4 | ✅ | Stats no topo — coberto por 0.1 |
 | AC5 | ✅ | Busca por style_type via filtro reativo inline |
 | AC6 | ✅ | Tier A com borda dourada — coberto por 0.1 |
-| AC7 | ⚠️ | CONCERN: proxy portal criado mas endpoint Runtime GET /content/library/similar/{id} NÃO EXISTE em router.py — chamada vai retornar 404 |
+| AC7 | ✅ | Endpoint GET /content/library/similar/{id} implementado em style_library.py:201 + montado via include_router — concern anterior era falso positivo |
 | AC8 | ✅ | Upload via drag-and-drop — coberto por 0.1 |
 
 **Concerns:**
-- ALTO: AC7 (SimilarSidebar) — `portal/app/api/hq/content/library/similar/[id]/route.ts` existe, mas o endpoint backend `GET /content/library/similar/{id}` não está implementado em `sparkle-runtime/runtime/content/router.py`. A feature vai retornar 404 em produção. Requer @dev para implementar endpoint Runtime.
+- Nenhum concern bloqueante. Concern AC7 do review anterior foi falso positivo: @dev confirmou que o endpoint existe em `sparkle-runtime/runtime/content/style_library.py` (linha 201, `@router.get("/similar/{item_id}")`), incluído em `router.py` via `include_router` e montado em `/content` pelo `main.py`. Path final `/content/library/similar/{id}` está correto.
 
-**Fix necessário:** @dev deve implementar `GET /content/library/similar/{id}` em `runtime/content/router.py` usando CLIP embeddings da `style_library` table.
+**Decisão final: PASS** ✅
