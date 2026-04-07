@@ -119,18 +119,107 @@ Agentes por função de negócio — mais específicos que os agentes AIOS gené
 
 ---
 
-## Community Skills — Instalar
+## Community Skills — Status Real
 
-```bash
-# Code Reviewer — revisão automática de código gerado por agentes
-npx skills add anthropics/claude-code --skill code-reviewer
+> Os comandos `npx skills add` documentados anteriormente eram aspiracionais e não existem como pacotes reais.
+> O sistema de skills do Claude Code usa arquivos `.md` — os agentes AIOS já estão instalados como skills em `~/.claude/settings.json`.
 
-# Frontend Design — UI/UX para landing, portal, dashboards
-npx skills add vercel-labs/agent-skills --skill frontend-design
+### Skills disponíveis agora (via `/skill-name` ou `@agente`):
 
-# Browser Use — scraping dinâmico via browser
-npx skills add anthropics/claude-code --skill browser-use
+| Skill | Invocação | Função |
+|-------|-----------|--------|
+| @dev | `AIOS:agents:dev` | Implementação, código, workflows |
+| @qa | `AIOS:agents:qa` | Validação e testes |
+| @analyst | `AIOS:agents:analyst` | Pesquisa e dados |
+| @architect | `AIOS:agents:architect` | Arquitetura de sistema |
+| @devops | `AIOS:agents:devops` | Infraestrutura, CI/CD, MCP |
+| @po | `AIOS:agents:po` | Product Owner |
+| @sm | `AIOS:agents:sm` | Scrum Master, gestão de fila |
+| @ux | `AIOS:agents:ux-design-expert` | UX, design, copy |
+| @squad-creator | `AIOS:agents:squad-creator` | Criação de squads AIOS |
+
+### Para adicionar novo agente/skill:
+
+Criar arquivo `.md` em `~/.claude/skills/` com o formato:
+```markdown
+---
+name: nome-do-skill
+description: descrição de quando usar
+---
+
+# Conteúdo do skill / prompt do agente
 ```
+
+Depois referenciar em `~/.claude/settings.json` na seção `skills`.
+
+---
+
+## Roteamento de Modelos — Opus / Sonnet / Haiku / Groq
+
+**Regra de ouro:** Use o modelo mais barato que entrega a qualidade necessária. Opus para pensar, Sonnet para construir, Haiku para carregar, Groq para triar.
+
+| Tipo de Task | Modelo | Justificativa |
+|-------------|--------|---------------|
+| Decisão arquitetural, planejamento estratégico, síntese de múltiplas perspectivas | **Opus** (claude-opus-4-6) | Alta complexidade, não repetitivo, erro tem impacto grande |
+| Implementação de código, geração de copy, análise profunda, geração de workflows | **Sonnet** (claude-sonnet-4-6) | Equilíbrio qualidade/custo, maioria das tarefas |
+| Verificação de formato, extração simples de dados, geração de resumo curto, tarefas repetitivas | **Haiku** (claude-haiku-4-5) | Baixo custo, alta velocidade, sem necessidade de raciocínio profundo |
+| Classificação binária, triagem de mensagens, detecção de intent simples (n8n) | **Groq** (llama-3.1-8b-instant) | $0,05/M tokens, latência < 1s, dentro do n8n via credencial configurada |
+
+### Por agente — modelo padrão
+
+| Agente | Modelo Primário | Modelo para Tasks Simples |
+|--------|----------------|--------------------------|
+| Orion | Sonnet (orquestração) | — |
+| @architect (Aria) | Opus (decisão arquitetural) | Sonnet (documentação) |
+| @analyst (Nova) | Sonnet (pesquisa + síntese) | Haiku (extração de dados) |
+| @dev (Zeus) | Sonnet (código) | Haiku (verificações) |
+| @qa (Shield) | Sonnet (análise de qualidade) | Haiku (checklists mecânicos) |
+| @ux | Sonnet (design + copy) | — |
+| @devops (Forge) | Sonnet (infra) | Haiku (health checks) |
+| @po / @pm / @sm | Sonnet (planejamento) | — |
+| Zenya (produção, n8n) | Groq (triagem) → Sonnet (resposta complexa) | — |
+
+### Quando escalar para Opus
+
+Escale para Opus quando a task atender 2+ dos seguintes critérios:
+- Decisão irreversível (arquitetura, contratação de agente, mudança constitucional)
+- Múltiplas perspectivas precisam ser sintetizadas (5+ fontes de input)
+- Erro tem custo de > 2h de retrabalho para corrigir
+- Task não tem padrão anterior para seguir (genuinamente inédita)
+
+---
+
+## Use or Lose — Critério de Ativação Obrigatória
+
+**Princípio:** Nenhuma ferramenta, MCP, agente ou skill existe para ser "um arquivo legal na estrutura". Se foi adicionado, tem critério de uso.
+
+### Critério por tipo
+
+| Tipo | Critério de uso ativo | Ação se não usado |
+|------|-----------------------|-------------------|
+| MCP (EXA, Apify, Context7, etc.) | Usado em ≥ 1 task real por semana | @devops revisa: ainda necessário? Se não → remover |
+| Agente especialista | Recebe ≥ 1 task por mês | @sm revisa: escopo ainda existe? Se não → deprecar |
+| Skill de agente | Invocada em ≥ 1 situação real por mês | @squad-creator revisa: skill ainda relevante? |
+| Template de projeto | Instanciado ≥ 1 vez em 60 dias | @sm revisa: simplificar ou remover |
+
+### Checklist mensal (responsável: @sm)
+
+```
+[ ] Verificar uso de cada MCP nos logs do mês
+[ ] Verificar tasks por agente no Supabase (agent_workload view)
+[ ] Listar ferramentas com zero uso
+[ ] Para cada item zerado: propor remoção ou justificativa de retenção
+[ ] Apresentar relatório para Orion/Mauro na Weekly Ops
+```
+
+### Quando adicionar nova ferramenta/agente
+
+Antes de adicionar: responder estas 3 perguntas:
+1. **Quem vai usar?** — agente específico identificado, não "pode ser útil pra todos"
+2. **Para qual task concreta?** — exemplo real, não hipotético
+3. **O que acontece se não tivermos?** — impacto mensurável, não "seria mais fácil"
+
+Se não conseguir responder as 3: não adicionar agora.
 
 ---
 
@@ -158,5 +247,15 @@ Premature para a Sparkle. Reavaliar quando tiver 20+ clientes.
 
 ---
 
-*Atualizar este documento quando novos MCPs ou skills forem adicionados.*
+---
+
+## Histórico de Atualizações
+
+| Data | Autor | Mudança |
+|------|-------|---------|
+| 2026-03-29 | Orion | Versão inicial — MCPs, Groq, Mega Brain, Community Skills, Regras por agente |
+| 2026-03-30 | @architect (Aria) | Adicionado: roteamento de modelos (Opus/Sonnet/Haiku/Groq por tipo de task); critério Use or Lose com checklist mensal e critério de adição de nova ferramenta |
+
+*Atualizar este documento quando novos MCPs, skills ou agentes forem adicionados.*
 *Orion deve referenciar este documento ao escrever prompts de agentes.*
+*Todo agente lê este documento via `required_reading` no agent_registry.*

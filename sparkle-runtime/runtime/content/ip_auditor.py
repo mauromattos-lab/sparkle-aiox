@@ -143,14 +143,16 @@ async def check_repetition(piece: dict) -> tuple[bool, list[str]]:
     since = (_now() - timedelta(days=7)).isoformat()
 
     try:
-        recent_result = (
-            supabase.table("content_pieces")
-            .select("id, theme, caption, published_at")
-            .eq("status", "published")
-            .gte("published_at", since)
-            .limit(50)
-            .execute()
-        )
+        def _query():
+            return (
+                supabase.table("content_pieces")
+                .select("id, theme, caption, published_at")
+                .eq("status", "published")
+                .gte("published_at", since)
+                .limit(50)
+                .execute()
+            )
+        recent_result = await asyncio.to_thread(_query)
         recent = recent_result.data or []
     except Exception as exc:
         print(f"[ip_auditor] repetition DB query error (non-blocking): {exc}")

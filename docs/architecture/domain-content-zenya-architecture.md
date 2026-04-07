@@ -1,10 +1,17 @@
 # Architecture — Domínio Conteúdo (Zenya-First)
 
-**Versão:** 1.0  
-**Data:** 2026-04-06  
+**Versão:** 1.1  
+**Data:** 2026-04-07  
 **Autor:** @architect (Aria)  
 **PRD:** `docs/prd/domain-content-zenya-prd.md`  
-**Status:** Aprovado para Stories
+**Status:** Aprovado para Stories — revisão MVP
+
+**Changelog v1.1:**
+- Image provider: Google Gemini Image → **Fal.ai + Flux** (free tier, billing não necessário)
+- Video provider alternativo: **Luma Dream Machine** (free credits) via `VideoGeneratorProtocol`
+- Assembly (Creatomate) **removido do MVP** — voz feita manualmente por Mauro via ElevenLabs voice changer
+- Pipeline simplificado: remove estados `voice_generating`, `assembly_pending`, `assembly_done`, `assembly_failed`
+- `CONTENT-1.5` (Assembly) cancelada; `CONTENT-1.4` mantida só para script + caption (sem TTS automático)
 
 ---
 
@@ -22,8 +29,9 @@ CAMADA 2 — BRAIN
   sparkle-lore namespace ←── lore, restrições, histórico
 
 CAMADA 1 — INFRA
-  Supabase Storage (assets) | Google Veo 3.1 | ElevenLabs | Creatomate
-  Google Gemini Image API | CLIP embeddings | Instagram Graph API
+  Supabase Storage (assets) | Google Veo 3.1 | ElevenLabs (script + manual voice changer)
+  Fal.ai + Flux (imagem) | Luma Dream Machine (vídeo alternativo) | CLIP embeddings | Instagram Graph API
+  ~~Creatomate~~ (removido MVP)
 ```
 
 Órgão Conteúdo **não se conecta diretamente** a outros órgãos. Toda troca é via Brain:
@@ -88,16 +96,13 @@ CREATE INDEX idx_content_pieces_creator ON content_pieces(creator_id);
 CREATE INDEX idx_content_pieces_scheduled ON content_pieces(scheduled_at) WHERE scheduled_at IS NOT NULL;
 ```
 
-#### Estados do pipeline (`status`)
+#### Estados do pipeline (`status`) — MVP v1.1
 ```
 briefed           → brief criado, aguardando produção
 image_generating  → imagem em geração
 image_done        → imagem gerada, aguardando vídeo
 video_generating  → vídeo em geração
-video_done        → vídeo gerado, aguardando voz
-voice_generating  → áudio em geração
-assembly_pending  → todos os assets prontos, aguardando Creatomate
-assembly_done     → .mp4 montado, aguardando aprovação
+video_done        → vídeo gerado, aguardando aprovação (Mauro faz voz manualmente)
 pending_approval  → na fila do Portal para Mauro revisar
 approved          → aprovado, aguardando agendamento
 scheduled         → agendado para publicação
@@ -105,9 +110,10 @@ published         → publicado com sucesso
 rejected          → rejeitado por Mauro
 image_failed      → falha na geração de imagem
 video_failed      → falha na geração de vídeo
-assembly_failed   → falha no assembly
 publish_failed    → falha na publicação
 ```
+> **Removidos v1.1:** `voice_generating`, `assembly_pending`, `assembly_done`, `assembly_failed`
+> Voz é manual (ElevenLabs voice changer). Assembly (Creatomate) removido do MVP.
 
 #### `style_library`
 Catálogo curado das imagens de referência da Zenya.
@@ -343,20 +349,35 @@ operation = await client.aio.models.generate_videos(
 - Abstração: `VeoVideoGenerator` implementa `VideoGeneratorProtocol`
 - Áudio gerado pelo Veo é substituído pelo ElevenLabs no assembly (voice changer)
 
-### Google Gemini Image API (imagem)
-- Geração multimodal: texto + imagem de referência Tier A como contexto visual
-- Modelo: `gemini-2.0-flash-exp` (ou `imagen-3` quando disponível)
-- Sem `image_strength` — consistência via prompt engineering + referência Tier A
-- Credencial: mesma `GEMINI_API_KEY` do Veo
+### Fal.ai + Flux (imagem) — v1.1
+- SDK: `fal-client` Python
+- Endpoint: `fal-ai/flux/dev/image-to-image` (ref Tier A → img2img) ou `fal-ai/flux/dev` (text-to-image fallback)
+- Referência visual: imagem Tier A passada como `image_url` com `strength` (~0.75)
+- Credencial: `FAL_KEY` (obter em fal.ai — free tier, ~200 imagens/dia)
+- Custo pago: ~$0.003/imagem (10x mais barato que Google)
+- Abstração: `FalFluxImageGenerator` implementa `ImageGeneratorProtocol`
 
-### ElevenLabs (voz)
-- Já integrado no Runtime (`runtime/integrations/elevenlabs.py` ou similar)
-- Voice ID da Zenya já configurado
+> **Migração futura:** quando Google billing habilitado, `GeminiImageGenerator` reassume sem mudar pipeline
 
-### Creatomate (assembly)
-- Template parametrizável: `{{video_url}}`, `{{audio_url}}`, `{{caption}}`, `{{logo_url}}`
-- Output: `.mp4` 9:16 1080×1920
-- Abstração: `AssemblerProtocol` → swap para Remotion sem mudar pipeline
+### Luma Dream Machine (vídeo alternativo) — v1.1
+- SDK: `lumaai` Python
+- Endpoint: `client.generations.image_to_video.create()`
+- Input: `image_url` (Supabase Storage) + prompt de movimento
+- Output: vídeo 5s ou 9s, aspect ratio 9:16
+- Credencial: `LUMAAI_API_KEY` (obter em lumaai.com — tem créditos gratuitos de trial)
+- Abstração: `LumaVideoGenerator` implementa `VideoGeneratorProtocol` (mesmo padrão do Veo)
+- Polling: `client.generations.get(id)` até `state == "completed"` (max 5 min)
+
+> Veo permanece como provider preferencial quando Google billing for habilitado.
+
+### ElevenLabs (script + voice changer manual) — v1.1
+- `copy_specialist.py` gera voice script e caption (mantido)
+- TTS automático: **removido do MVP** — Mauro aplica voice changer manualmente
+- Voice ID da Zenya: já configurado no ElevenLabs dashboard
+
+### ~~Creatomate~~ — REMOVIDO DO MVP
+- Assembly automático não necessário enquanto voz é manual
+- `AssemblerProtocol` permanece na arquitetura para Fase 2 (automação completa)
 
 ### Instagram Graph API (publicação)
 - `POST /{ig-user-id}/media` → upload reel
@@ -365,24 +386,30 @@ operation = await client.aio.models.generate_videos(
 
 ---
 
-## Abstrações de Provider (padrão para migração)
+## Abstrações de Provider (padrão para migração) — v1.1
 
 ```python
 # Cada integração implementa o protocolo — swap sem mudar pipeline
 
+class ImageGeneratorProtocol(Protocol):
+    async def generate(self, prompt: str, reference_url: str | None, style: str) -> bytes: ...
+
 class VideoGeneratorProtocol(Protocol):
     async def generate(self, image_url: str, prompt: str, style: str) -> str: ...
 
-class AssemblerProtocol(Protocol):
+class AssemblerProtocol(Protocol):  # Fase 2
     async def assemble(self, video: str, audio: str, caption: str) -> str: ...
 
-# Fase 1 (MVP)
-video_generator = VeoVideoGenerator()      # Google Veo 3.1
-assembler = CreatomateAssembler()
+# MVP v1.1 (atual)
+image_generator = FalFluxImageGenerator()      # Fal.ai + Flux (free tier)
+video_generator = LumaVideoGenerator()         # Luma Dream Machine (free credits)
 
-# Fase 2 (troca sem tocar no pipeline)
-video_generator = ComfyUIVideoGenerator()  # se necessário
-assembler = RemotionAssembler()
+# Quando billing Google habilitado (swap sem tocar no pipeline)
+image_generator = GeminiImageGenerator()       # Google Gemini Image
+video_generator = VeoVideoGenerator()          # Google Veo 3.1
+
+# Fase 2 (automação completa)
+assembler = CreatomateAssembler()              # ou RemotionAssembler()
 ```
 
 ---

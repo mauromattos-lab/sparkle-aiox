@@ -2,7 +2,7 @@
 epic: EPIC-ONBOARDING — Zenya Onboarding System E2E
 story: ONB-1.5b
 title: Fase 4 — Configuração de Integrações do Cliente (Google + E-commerce)
-status: Done
+status: Accepted
 priority: Média
 executor: "@dev (implementação) -> @qa (validação) -> @devops (deploy)"
 sprint: Sprint Core (2026-04-05+)
@@ -134,7 +134,7 @@ Migration (se necessária) adiciona em `zenya_clients`:
 - [x] Calendar funcional via webhook n8n + HTTP Request node (OAuth2 Sparkle no n8n)
 - [x] IV1 ✅ Drive cria pasta raiz + materiais/{fotos,docs,videos} + contratos
 - [x] IV2 ✅ Calendar criado e visível no Google Calendar da Sparkle
-- [x] @qa: IV1–IV7 passam
+- [x] @qa: IV1–IV7 verificados (2026-04-05) — detalhes abaixo
 - [ ] @devops: deploy em produção (mudanças já estão na VPS)
 
 ## Dev Agent Record
@@ -173,3 +173,22 @@ Migration (se necessária) adiciona em `zenya_clients`:
 4. **Esta story pode rodar em paralelo com 1.5a** para o setup do Drive/Calendar, mas o teste completo da Zenya (story 1.6) depende de ambas estarem done.
 
 — River, removendo obstáculos 🌊
+
+---
+
+## QA Agent Record
+
+**Data:** 2026-04-05 | **Agente:** @qa | **Verificação via:** SSH VPS + webhooks n8n ao vivo + Supabase MCP
+
+| IV | Status | Evidência |
+|----|--------|-----------|
+| **IV1** — Drive cria subpastas | ✅ PASSOU | Webhook live retornou `folder_id=1aKIyWjuvANuki7FsgsG_wXSL7Obgt5QH`. Workflow n8n `7w4uDx1h3Vf0feUP` confirmado com nós: Criar Pasta Raiz, Criar materiais, Criar contratos, Criar fotos, Criar docs, Criar videos. Estrutura AC1 completa. |
+| **IV2** — Calendar visível no Google Calendar | ✅ PASSOU | Webhook live retornou `calendar_id=4b43ddaa...@group.calendar.google.com`. Calendar criado em conta Sparkle, visível no Google Calendar. |
+| **IV3** — Loja Integrada inválida → não 500 | ✅ PASSOU | Key inválida retorna `success=False, error="Loja Integrada respondeu 302 — verificar API key"`. Sem exceção/500. |
+| **IV4** — Nuvemshop inválida → não 500 | ✅ PASSOU | Credenciais inválidas retornam `success=False, error="Credenciais inválidas (401 Unauthorized)"`. Sem exceção/500. |
+| **IV5** — Sem agenda → Calendar skipped | ✅ PASSOU | `provision_google(..., has_scheduling=False)` retorna `calendar={"skipped": True}`. Step marcado como skipped, não failed. |
+| **IV6** — Upload material → Drive | ⚠️ OUT OF SCOPE v1 | Endpoint `POST /onboarding/{session_id}/upload-materials` não existe em `router.py`. Conforme nota da story: fora do escopo v1. Aceito. |
+| **IV7** — Clientes existentes não sobrescritos | ✅ PASSOU | Supabase confirmado: Plaka e Fun Personalize com campos `loja_integrada_api_key=null`, `nuvemshop_store_id=null`, `google_drive_folder_id=null`. Provisioners usam `.update().eq("client_id", ...)` com campos específicos — não sobrescrevem outros campos. |
+
+### Veredito
+**APROVADA** — Todos os IVs verificáveis passaram. IV6 marcado out of scope v1 conforme contrato da story. Story pronta para @po e @devops (deploy).

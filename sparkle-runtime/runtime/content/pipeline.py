@@ -171,6 +171,7 @@ async def _step_video(piece: dict) -> bool:
         return False
 
     try:
+        _set_status(piece_id, "video_generating")
         prompt = build_video_prompt(style, theme)
         video_url = await generate_video_for_piece(
             content_piece_id=piece_id,

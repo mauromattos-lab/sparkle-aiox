@@ -1,7 +1,7 @@
 # VERT1-F0: Fase 0 — Pre-requisitos do Sistema para Vertical Zenya
 
 **Sprint:** Vertical 1 - Clientes/Zenya
-**Status:** EM_EXECUCAO
+**Status:** FUNCIONAL
 **Pipeline:** Processo 3 (Correcao) + Processo 4 (Planejamento)
 **Criado por:** @architect (Aria) + @analyst — blueprint vertical-1-zenya-blueprint.md
 **Referencia:** docs/architecture/vertical-1-zenya-blueprint.md
@@ -52,14 +52,15 @@ Antes de migrar qualquer cliente do n8n para o Runtime, ha 5 acoes de sistema qu
 **Fix:** Rodar DNA extraction para Alexsandro e Douglas via endpoint existente.
 
 ### Acceptance Criteria
-- [ ] `POST /brain/extract-dna/{client_id}` executado para Alexsandro (UUID)
-- [ ] `POST /brain/extract-dna/{client_id}` executado para Douglas (UUID)
-- [ ] `client_dna` tem pelo menos 3 categorias preenchidas para cada
-- [ ] Se extraction falhar (sem credito Anthropic), documentar como blocker
+- [x] `POST /brain/extract-dna/{client_id}` executado para Alexsandro (UUID)
+- [x] `POST /brain/extract-dna/{client_id}` executado para Douglas (UUID)
+- [x] `client_dna` tem pelo menos 3 categorias preenchidas para cada
+- [x] Se extraction falhar (sem credito Anthropic), documentar como blocker
 
-**Status F0-3:** Prerequisites verified — Alexsandro has 193 KB entries, Douglas has 35 KB entries. Sufficient material for DNA extraction. Actual extraction requires Runtime deploy with updated router (F0-1) + valid ANTHROPIC_API_KEY. Will be triggered post-deploy via:
-- `POST https://runtime.sparkleai.tech/zenya/clients/9a50811b-faec-4797-8729-1932d21e254b/dna/extract`
-- `POST https://runtime.sparkleai.tech/zenya/clients/b1d89755-3314-4842-bb34-d33d95f0b6f4/dna/extract`
+**Status F0-3:** CONCLUIDO (2026-04-05)
+- Alexsandro: 24 items em 6 categorias (produtos=7, faq=5, diferenciais=4, publico_alvo=4, regras=2, objecoes=2). soul_prompt_generated OK.
+- Douglas: 51 items em 8 categorias (produtos=12, faq=9, regras=8, objecoes=6, diferenciais=5, publico_alvo=5, persona=4, tom=2). soul_prompt_generated OK.
+- Fixes aplicados: constraint `client_dna_dna_type_check` duplicada removida, max_tokens aumentado de 4096 para 8192 (truncava JSON de clientes com muitos chunks).
 
 ---
 

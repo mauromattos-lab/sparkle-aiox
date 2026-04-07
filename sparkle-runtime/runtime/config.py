@@ -33,8 +33,11 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = os.environ.get("ELEVENLABS_API_KEY", "")
     elevenlabs_zenya_voice_id: str = os.environ.get("ELEVENLABS_ZENYA_VOICE_ID", "")
 
-    # Google Gemini (Image + Veo video)
+    # Google Gemini (Veo video — requer billing)
     gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
+
+    # Fal.ai (Image + Video — free tier)
+    fal_key: str = os.environ.get("FAL_KEY", "")
 
     # Redis (ARQ)
     redis_url: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
@@ -63,6 +66,10 @@ class Settings(BaseSettings):
     sentry_dsn: str = os.environ.get("SENTRY_DSN", "")
     # SENTRY_TRACES_SAMPLE_RATE: 0.0 = sem performance tracing por padrão.
     sentry_traces_sample_rate: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+
+    # Instagram Graph API (CONTENT-1.11 — set up after Meta Developer App)
+    instagram_access_token: str = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+    instagram_user_id: str = os.environ.get("INSTAGRAM_USER_ID", "")
 
     # Autentique — assinatura digital de contratos
     autentique_token: str = os.environ.get("AUTENTIQUE_TOKEN", "")

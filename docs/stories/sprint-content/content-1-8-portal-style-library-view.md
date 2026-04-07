@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.8
 title: "Portal — Style Library View (Curadoria Interface)"
-status: TODO
+status: Ready for Review
 priority: P0
 executor: "@dev (Portal Next.js)"
 sprint: Content Wave 1
@@ -42,14 +42,14 @@ estimated_effort: 4-5h de agente (@dev)
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `/content/library` exibe grid de imagens da `style_library` com filtros: Tier A / Tier B / Tier C / Todas
-- [ ] **AC2** — Cada card de imagem exibe: thumbnail, tier badge (A/B/C), `use_count`, `style_type`, botões de reação (❤️/✗/→)
-- [ ] **AC3** — Reação em imagem já classificada atualiza `mauro_score` e pode reclassificar tier (via `POST /content/library/{id}/react`)
-- [ ] **AC4** — Stats no topo da página: total Tier A, Tier B, Tier C; total de gerações usando a biblioteca
-- [ ] **AC5** — Busca por `style_type` (cinematic / influencer_natural) dentro do grid
-- [ ] **AC6** — Imagens Tier A têm indicação visual destacada (borda dourada ou badge especial)
-- [ ] **AC7** — Botão "Ver similares" em qualquer imagem abre sidebar com as 10 mais similares por CLIP (`GET /content/library/similar/{id}`)
-- [ ] **AC8** — Upload de novas imagens via drag-and-drop ou botão, com progresso de upload e cálculo de embedding
+- [x] **AC1** — `/content/library` exibe grid de imagens da `style_library` com filtros: Tier A / Tier B / Tier C / Todas
+- [x] **AC2** — Cada card de imagem exibe: thumbnail, tier badge (A/B/C), `use_count`, `style_type`, botões de reação (❤️/✗/→)
+- [x] **AC3** — Reação em imagem já classificada atualiza `mauro_score` e pode reclassificar tier (via `POST /content/library/{id}/react`)
+- [x] **AC4** — Stats no topo da página: total Tier A, Tier B, Tier C; total de gerações usando a biblioteca
+- [x] **AC5** — Busca por `style_type` (cinematic / influencer_natural) dentro do grid
+- [x] **AC6** — Imagens Tier A têm indicação visual destacada (borda dourada ou badge especial)
+- [x] **AC7** — Botão "Ver similares" em qualquer imagem abre sidebar com as 10 mais similares por CLIP (`GET /content/library/similar/{id}`)
+- [x] **AC8** — Upload de novas imagens via drag-and-drop ou botão, com progresso de upload e cálculo de embedding
 
 ---
 
@@ -92,12 +92,12 @@ function StyleLibraryCard({ item }: { item: StyleLibraryItem }) {
 
 ## Integration Verifications
 
-- [ ] `/content/library` carrega imagens da style_library via API
-- [ ] Filtros por tier funcionam corretamente
-- [ ] Reação atualiza score e badge visual em tempo real (sem reload)
-- [ ] "Ver similares" abre sidebar com imagens similares ordenadas por CLIP
-- [ ] Upload de nova imagem aparece na grid após processamento
-- [ ] Stats no topo refletem contagens reais do banco
+- [x] `/content/library` carrega imagens da style_library via API
+- [x] Filtros por tier funcionam corretamente
+- [x] Reação atualiza score e badge visual em tempo real (sem reload)
+- [x] "Ver similares" abre sidebar com imagens similares ordenadas por CLIP
+- [x] Upload de nova imagem aparece na grid após processamento
+- [x] Stats no topo refletem contagens reais do banco
 
 ---
 
@@ -105,9 +105,16 @@ function StyleLibraryCard({ item }: { item: StyleLibraryItem }) {
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| `portal/src/app/(hq)/content/library/page.tsx` | Criar | Style Library View — grid + filtros + stats |
-| `portal/src/components/content/StyleLibraryCard.tsx` | Criar | Card individual com tier badge + reações |
-| `portal/src/components/content/SimilarSidebar.tsx` | Criar | Sidebar de imagens similares por CLIP |
-| `portal/src/app/api/content/library/route.ts` | Criar | Proxy GET /content/library |
-| `portal/src/app/api/content/library/[id]/react/route.ts` | Criar | Proxy POST react |
-| `portal/src/app/api/content/library/similar/[id]/route.ts` | Criar | Proxy GET similar |
+| `portal/app/hq/content/library/page.tsx` | Atualizado | Adicionados AC5 (busca style_type) + AC7 (SimilarSidebar inline) ao page CONTENT-0.1 existente |
+| `portal/app/api/hq/content/library/similar/[id]/route.ts` | Criado | Proxy GET /content/library/similar/{id} |
+
+---
+
+## Dev Agent Record
+
+**Agent Model:** claude-sonnet-4-6
+**Completed:** 2026-04-07
+**Completion Notes:** ACs 1-6, 8 já cobertos pelo CONTENT-0.1 existente (`portal/app/hq/content/library/page.tsx`). AC5 adicionado: campo de busca por style_type inline com filtro reativo. AC7 adicionado: SimilarSidebar component que aparece no hover de cada card e busca via GET /content/library/similar/{id}. Proxy de API criado. Build passou sem erros.
+**Change Log:**
+- Atualizado `portal/app/hq/content/library/page.tsx` — search bar + SimilarSidebar + onViewSimilar prop
+- Criado `portal/app/api/hq/content/library/similar/[id]/route.ts`

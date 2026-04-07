@@ -2,10 +2,10 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.5
 title: "Assembly (Creatomate) — Montagem do Reel Final"
-status: TODO
-priority: P0
+status: Deferred
+priority: P2
 executor: "@dev"
-sprint: Content Wave 1
+sprint: Content Wave 2
 prd: docs/prd/domain-content-zenya-prd.md
 architecture: docs/architecture/domain-content-zenya-architecture.md
 squad: squads/content/
@@ -17,8 +17,12 @@ blocker: "CREATOMATE_API_KEY — Mauro obtém em creatomate.com → API | CREATO
 
 # Story 1.5 — Assembly (Creatomate) — Montagem do Reel Final
 
-**Sprint:** Content Wave 1
-**Status:** `TODO`
+> ⚠️ **DEFERRED — Arquitetura v1.1 (2026-04-07)**
+> Voz manual por Mauro via ElevenLabs voice changer. Assembly automático removido do MVP.
+> Retorna em Content Wave 2 quando pipeline for totalmente autônomo.
+
+**Sprint:** Content Wave 2
+**Status:** `Deferred`
 **Sequência:** 6 de 13
 **PRD:** `docs/prd/domain-content-zenya-prd.md` — FR5
 **Architecture:** `docs/architecture/domain-content-zenya-architecture.md`

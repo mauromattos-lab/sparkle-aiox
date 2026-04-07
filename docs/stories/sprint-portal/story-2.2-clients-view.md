@@ -1,7 +1,7 @@
 # Story 2.2 — Clients View
 
 **Sprint:** Portal Workstation v1 — Epic 2
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 2 de 2 — sem dependencia da 2.1. Depende de Epic 1 deployed.
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 5
 **UX spec:** `docs/stories/sprint-portal/ux-spec-epic1.md` — Secoes 2, 3, 4 (padroes de interacao, densidade, responsividade)

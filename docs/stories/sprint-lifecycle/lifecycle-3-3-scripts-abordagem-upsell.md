@@ -2,7 +2,7 @@
 epic: EPIC-CLIENT-LIFECYCLE — Gestão do Ciclo de Vida do Cliente
 story: LIFECYCLE-3.3
 title: "Scripts de Abordagem para Upsell (Fase 5)"
-status: NEEDS_FIX
+status: DONE
 priority: Média
 executor: "@dev (implementação) + @analyst (conteúdo dos scripts)"
 sprint: Client Lifecycle Wave 3

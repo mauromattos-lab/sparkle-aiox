@@ -3,16 +3,18 @@
 /**
  * Style Library — Curation interface for Zenya's visual references.
  * CONTENT-0.1 — AC5, AC6, AC7, AC8, AC9
+ * CONTENT-1.8 — AC1-AC8 (permanent management view)
  *
  * Flow:
  * 1. Load images from style_library (uploaded via Supabase Storage)
  * 2. Mauro reacts: ❤️ (like → Tier A), ✗ (discard → Tier C), → (neutral → Tier B)
  * 3. After ≥ 10 likes → "Confirmar Style Library" button appears
  * 4. Confirm → POST /api/hq/content/library/confirm
+ * 5. (1.8) Search by style_type, view similar images via CLIP
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Heart, X, ArrowRight, CheckCircle, Upload, Loader2, RefreshCw } from 'lucide-react'
+import { Heart, X, ArrowRight, CheckCircle, Upload, Loader2, RefreshCw, Search, SlidersHorizontal } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
 // ── Types ────────────────────────────────────────────────────
@@ -102,10 +104,12 @@ function ImageCard({
   item,
   onReact,
   reacting,
+  onViewSimilar,
 }: {
   item: StyleLibraryItem
   onReact: (id: string, reaction: 'like' | 'discard' | 'neutral') => void
   reacting: string | null
+  onViewSimilar: (id: string) => void
 }) {
   const isReacting = reacting === item.id
 
@@ -136,6 +140,13 @@ function ImageCard({
             {item.use_count}×
           </div>
         )}
+        {/* AC7: Ver similares — visible on hover */}
+        <button
+          onClick={() => onViewSimilar(item.id)}
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 text-white/70 hover:text-white text-[10px] px-2 py-1 rounded-lg whitespace-nowrap"
+        >
+          Ver similares
+        </button>
       </div>
 
       {/* Reaction buttons */}
@@ -290,12 +301,104 @@ function UploadZone({ onUploaded }: { onUploaded: () => void }) {
   )
 }
 
+// ── Similar Sidebar (CONTENT-1.8 AC7) ───────────────────────
+
+function SimilarSidebar({
+  itemId,
+  onClose,
+}: {
+  itemId: string
+  onClose: () => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<StyleLibraryItem[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/hq/content/library/similar/${itemId}`)
+        if (!res.ok) throw new Error(`Erro ${res.status}`)
+        const data = await res.json()
+        if (!cancelled) setItems(Array.isArray(data) ? data : (data.items ?? []))
+      } catch (e) {
+        if (!cancelled) setError('Não foi possível carregar similares')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [itemId])
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/60" onClick={onClose} />
+
+      {/* Sidebar */}
+      <div className="w-72 bg-[#0c0c18] border-l border-white/10 overflow-y-auto flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-white/[0.08]">
+          <h3 className="text-sm font-semibold text-white/80">Similares por CLIP</h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-white/40 hover:text-white/70 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 p-3">
+          {loading ? (
+            <div className="grid grid-cols-2 gap-2">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="aspect-[9/16] rounded-lg bg-white/5 animate-pulse" />
+              ))}
+            </div>
+          ) : error ? (
+            <p className="text-xs text-red-400 text-center py-8">{error}</p>
+          ) : items.length === 0 ? (
+            <p className="text-xs text-white/30 text-center py-8 italic">Nenhuma similar encontrada</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {items.map((item) => (
+                <div key={item.id} className="relative rounded-lg overflow-hidden border border-white/10 group">
+                  <img
+                    src={item.public_url}
+                    alt=""
+                    className="w-full aspect-[9/16] object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute top-1 left-1">
+                    <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
+                      item.tier === 'A' ? 'bg-yellow-500/80 text-black' :
+                      item.tier === 'B' ? 'bg-white/30 text-white' :
+                      'bg-red-500/50 text-white'
+                    }`}>
+                      {item.tier}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ────────────────────────────────────────────────
 
 export default function StyleLibraryPage() {
   const [items, setItems] = useState<StyleLibraryItem[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [tierFilter, setTierFilter] = useState<TierFilter>('all')
+  const [styleSearch, setStyleSearch] = useState('')
+  const [similarItemId, setSimilarItemId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [reacting, setReacting] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -367,7 +470,14 @@ export default function StyleLibraryPage() {
   const neutralCount = items.filter((i) => i.mauro_score === 0).length
   const canConfirm = likedCount >= 10 && !confirmed
 
-  const filtered = tierFilter === 'all' ? items : items.filter((i) => i.tier === tierFilter)
+  const filtered = items.filter((i) => {
+    if (tierFilter !== 'all' && i.tier !== tierFilter) return false
+    if (styleSearch.trim()) {
+      const q = styleSearch.trim().toLowerCase()
+      return (i.style_type ?? '').toLowerCase().includes(q)
+    }
+    return true
+  })
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -421,8 +531,8 @@ export default function StyleLibraryPage() {
         <span className="text-white/40">{stats?.total || items.length} total</span>
       </div>
 
-      {/* Tier filter */}
-      <div className="flex gap-2">
+      {/* Tier filter + Style search (CONTENT-1.8 AC1, AC5) */}
+      <div className="flex flex-wrap items-center gap-2">
         {(['all', 'A', 'B', 'C'] as const).map((t) => (
           <button
             key={t}
@@ -436,6 +546,23 @@ export default function StyleLibraryPage() {
             {t === 'all' ? `Todas (${items.length})` : `Tier ${t} (${items.filter((i) => i.tier === t).length})`}
           </button>
         ))}
+
+        {/* AC5: Search by style_type */}
+        <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 ml-auto">
+          <Search size={13} className="text-white/30" />
+          <input
+            type="text"
+            value={styleSearch}
+            onChange={(e) => setStyleSearch(e.target.value)}
+            placeholder="Filtrar por estilo..."
+            className="bg-transparent text-xs text-white/70 placeholder-white/25 focus:outline-none w-36"
+          />
+          {styleSearch && (
+            <button onClick={() => setStyleSearch('')} className="text-white/30 hover:text-white/60">
+              <X size={11} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Upload zone */}
@@ -475,9 +602,18 @@ export default function StyleLibraryPage() {
               item={item}
               onReact={handleReact}
               reacting={reacting}
+              onViewSimilar={(id) => setSimilarItemId(id)}
             />
           ))}
         </div>
+      )}
+
+      {/* AC7: Similar sidebar (CONTENT-1.8) */}
+      {similarItemId && (
+        <SimilarSidebar
+          itemId={similarItemId}
+          onClose={() => setSimilarItemId(null)}
+        />
       )}
     </div>
   )

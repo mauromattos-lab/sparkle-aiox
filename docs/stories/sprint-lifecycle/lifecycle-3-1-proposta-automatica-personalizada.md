@@ -2,7 +2,7 @@
 epic: EPIC-CLIENT-LIFECYCLE — Gestão do Ciclo de Vida do Cliente
 story: LIFECYCLE-3.1
 title: "Proposta Automática Personalizada (Fase 2)"
-status: NEEDS_FIX
+status: DONE
 priority: Alta
 executor: "@dev (implementação) + @architect (template engine design)"
 sprint: Client Lifecycle Wave 3

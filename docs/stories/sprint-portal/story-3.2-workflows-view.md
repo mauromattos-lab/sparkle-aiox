@@ -1,7 +1,7 @@
 # Story 3.2 — Workflows View
 
 **Sprint:** Portal Workstation v1 — Epic 3
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 2 de 3 — sem dependencia de 3.1 e 3.3. Depende de Epic 1 deployed.
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 7
 **PRD:** `docs/prd/portal-workstation-prd.md` — FR5

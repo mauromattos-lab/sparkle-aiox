@@ -665,6 +665,10 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # ── CONTENT-1.12: Content pipeline + publisher + brain sync ─
+    from runtime.crons.content import register_content_jobs
+    register_content_jobs(_scheduler)
+
     # ── B2-02: Character Orchestrator periodic jobs ──────────
     from runtime.characters.scheduler import register_character_jobs
     register_character_jobs(_scheduler)

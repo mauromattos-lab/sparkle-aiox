@@ -1,7 +1,7 @@
 # Story 3.3 — Brain View
 
 **Sprint:** Portal Workstation v1 — Epic 3
-**Status:** `po_accepted`
+**Status:** `deployed`
 **Sequencia:** 3 de 3 — sem dependencia de 3.1 e 3.2. Depende de Epic 1 deployed.
 **Design spec:** `docs/stories/sprint-portal/design-spec.md` — Secao 8
 **PRD:** `docs/prd/portal-workstation-prd.md` — FR6

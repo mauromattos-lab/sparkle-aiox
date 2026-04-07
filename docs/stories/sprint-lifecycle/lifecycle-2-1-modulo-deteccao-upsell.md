@@ -2,7 +2,7 @@
 epic: EPIC-CLIENT-LIFECYCLE — Gestão do Ciclo de Vida do Cliente
 story: LIFECYCLE-2.1
 title: "Módulo de Detecção de Upsell (Fase 5)"
-status: NEEDS_FIX
+status: DONE
 priority: Alta
 executor: "@dev (implementação)"
 sprint: Client Lifecycle Wave 2

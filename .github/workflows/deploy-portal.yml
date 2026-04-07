@@ -36,7 +36,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            DEPLOY_DIR="/opt/sparkle-runtime/portal"
+            DEPLOY_DIR="/opt/sparkle-aiox/portal"
             CONTAINER_NAME="sparkle-portal"
             IMAGE_NAME="sparkle-portal:latest"
             PORTAL_URL="https://portal.sparkleai.tech"
@@ -46,7 +46,7 @@ jobs:
             RETRY_INTERVAL=5
 
             echo "=== [1/6] Pulling latest changes ==="
-            cd /opt/sparkle-runtime
+            cd /opt/sparkle-aiox
             git pull origin main
 
             echo "=== [2/6] Building Docker image ==="

@@ -2,7 +2,7 @@
 epic: EPIC-CLIENT-LIFECYCLE — Gestão do Ciclo de Vida do Cliente
 story: LIFECYCLE-3.4
 title: "Programa de Referral e Cases Automáticos (Fase 6)"
-status: NEEDS_FIX
+status: DONE
 priority: Média
 executor: "@dev (implementação) + @analyst (estrutura de cases)"
 sprint: Client Lifecycle Wave 3

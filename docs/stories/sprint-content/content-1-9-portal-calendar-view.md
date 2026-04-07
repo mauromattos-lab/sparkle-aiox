@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.9
 title: "Portal — Calendar View (Briefing e Calendário de Produção)"
-status: TODO
+status: Ready for Review
 priority: P1
 executor: "@dev (Portal Next.js)"
 sprint: Content Wave 1
@@ -45,14 +45,14 @@ blocker_soft: "QA-2 (pilares de conteúdo) e QA-4 (horários) — preencher plac
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `/content/` exibe calendário semanal (7 dias) com peças agendadas ou em produção por data
-- [ ] **AC2** — Cada dia no calendário mostra: quantas peças estão em `published`, `approved`, `pending_approval`, `assembly_done`, em produção
-- [ ] **AC3** — Formulário de criação de brief: campos `theme` (texto livre), `mood` (dropdown: alegre/inspirador/educativo/emocional), `style` (cinematic / influencer_natural), `target_date`
-- [ ] **AC4** — Submissão do formulário chama `POST /content/briefs` e adiciona peça ao calendário com `status = 'briefed'`
-- [ ] **AC5** — Lista "Em produção" abaixo do calendário mostra todas as peças com status `image_generating`, `video_generating`, `assembly_pending`, etc. com indicador de progresso visual
-- [ ] **AC6** — Limite visual: quando há 5 peças em produção, formulário de brief exibe aviso "Pipeline cheio — aguarde uma peça concluir antes de criar nova"
-- [ ] **AC7** — Click em qualquer peça do calendário abre detail panel com: status atual, pipeline_log (timeline), assets (imagem/vídeo/áudio se disponíveis)
-- [ ] **AC8** — Link direto para `/content/queue` quando há peças `pending_approval` — badge com contador
+- [x] **AC1** — `/content/` exibe calendário semanal (7 dias) com peças agendadas ou em produção por data
+- [x] **AC2** — Cada dia no calendário mostra: quantas peças estão em `published`, `approved`, `pending_approval`, `assembly_done`, em produção
+- [x] **AC3** — Formulário de criação de brief: campos `theme` (texto livre), `mood` (dropdown: alegre/inspirador/educativo/emocional), `style` (cinematic / influencer_natural), `target_date`
+- [x] **AC4** — Submissão do formulário chama `POST /content/briefs` e adiciona peça ao calendário com `status = 'briefed'`
+- [x] **AC5** — Lista "Em produção" abaixo do calendário mostra todas as peças com status `image_generating`, `video_generating`, `assembly_pending`, etc. com indicador de progresso visual
+- [x] **AC6** — Limite visual: quando há 5 peças em produção, formulário de brief exibe aviso "Pipeline cheio — aguarde uma peça concluir antes de criar nova"
+- [x] **AC7** — Click em qualquer peça do calendário abre detail panel com: status atual, pipeline_log (timeline), assets (imagem/vídeo/áudio se disponíveis)
+- [x] **AC8** — Link direto para `/content/queue` quando há peças `pending_approval` — badge com contador
 
 ---
 
@@ -119,11 +119,11 @@ const STATUS_COLORS = {
 
 ## Integration Verifications
 
-- [ ] `/content/` carrega e exibe calendário semanal com peças reais
-- [ ] Formulário de brief cria peça e aparece na lista em produção
-- [ ] Limite de 5 peças exibe aviso correto
-- [ ] Click em peça abre detail com pipeline_log
-- [ ] Badge de aprovação pendente aparece e linka para `/content/queue`
+- [x] `/content/` carrega e exibe calendário semanal com peças reais
+- [x] Formulário de brief cria peça e aparece na lista em produção
+- [x] Limite de 5 peças exibe aviso correto
+- [x] Click em peça abre detail com pipeline_log
+- [x] Badge de aprovação pendente aparece e linka para `/content/queue`
 
 ---
 
@@ -131,9 +131,18 @@ const STATUS_COLORS = {
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| `portal/src/app/(hq)/content/page.tsx` | Criar | Dashboard principal — calendário + brief form + produção |
-| `portal/src/components/content/WeeklyCalendar.tsx` | Criar | Calendário semanal com status por dia |
-| `portal/src/components/content/BriefForm.tsx` | Criar | Formulário de criação de brief |
-| `portal/src/components/content/ProductionQueue.tsx` | Criar | Lista de peças em produção com status visual |
-| `portal/src/components/content/PieceDetailPanel.tsx` | Criar | Panel de detalhe com pipeline_log timeline |
-| `portal/src/app/api/content/briefs/route.ts` | Criar | Proxy POST /content/briefs e GET /content/briefs |
+| `portal/app/hq/content/page.tsx` | Criado | Dashboard principal — WeeklyCalendar + BriefForm + ProductionQueue + PieceDetailPanel inline |
+| `portal/app/api/hq/content/briefs/route.ts` | Criado | Proxy GET+POST /content/briefs |
+| `portal/app/api/hq/content/pieces/route.ts` | Criado | Proxy GET /content/pieces (lista todas as peças para o calendário) |
+
+---
+
+## Dev Agent Record
+
+**Agent Model:** claude-sonnet-4-6
+**Completed:** 2026-04-07
+**Completion Notes:** Todos os 8 ACs implementados. Componentes inline no page.tsx: WeeklyCalendar (navegação semana anterior/próxima), BriefForm (tema + mood + style + data), ProductionQueue (barra de progresso visual por etapa do pipeline), PieceDetailPanel (timeline de pipeline_log, links para assets). AC6: aviso "Pipeline cheio" quando ≥5 peças em IN_PRODUCTION_STATUSES. AC8: badge amarelo linkando para /hq/content/queue. Build passou sem erros.
+**Change Log:**
+- Criado `portal/app/hq/content/page.tsx`
+- Criado `portal/app/api/hq/content/briefs/route.ts`
+- Criado `portal/app/api/hq/content/pieces/route.ts`
