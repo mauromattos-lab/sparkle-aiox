@@ -31,7 +31,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           script_stop: true
           script: |
             set -euo pipefail
@@ -40,8 +40,10 @@ jobs:
             CONTAINER_NAME="sparkle-portal"
             IMAGE_NAME="sparkle-portal:latest"
             PORTAL_URL="https://portal.sparkleai.tech"
-            SUPABASE_URL="https://gqhdspayjtiijcqklbys.supabase.co"
-            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+            NEXT_PUBLIC_SUPABASE_URL="https://gqhdspayjtiijcqklbys.supabase.co"
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+            RUNTIME_URL="https://runtime.sparkleai.tech"
+            RUNTIME_API_KEY="${{ secrets.RUNTIME_API_KEY }}"
             MAX_RETRIES=6
             RETRY_INTERVAL=5
 
@@ -52,8 +54,8 @@ jobs:
             echo "=== [2/6] Building Docker image ==="
             cd "$DEPLOY_DIR"
             docker build \
-              --build-arg SUPABASE_URL="$SUPABASE_URL" \
-              --build-arg SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
               -t "$IMAGE_NAME" .
 
             echo "=== [3/6] Stopping old container ==="
@@ -66,6 +68,8 @@ jobs:
               --restart unless-stopped \
               --label "coolify.managed=true" \
               -p 3001:3000 \
+              -e RUNTIME_URL="$RUNTIME_URL" \
+              -e RUNTIME_API_KEY="$RUNTIME_API_KEY" \
               "$IMAGE_NAME"
 
             echo "=== [5/6] Verifying portal responds ==="
