@@ -2,7 +2,7 @@
 epic: EPIC-BRAIN — Brain como Circulação Real
 story: BRAIN-CURATE-01
 title: "Brain Curate Scale Fix — Batch Size + Cron Dedup + Review Queue UI"
-status: Ready for Dev
+status: Done
 priority: P0
 executor: "@dev"
 sprint: sprint-core
@@ -12,15 +12,15 @@ squad: null
 depends_on: []
 unblocks: [FRIDAY-CONTEXTUAL, CONTENT-WAVE2]
 estimated_effort: "1h de agente (@dev)"
-next_agent: "@qa"
-next_command: "*review docs/stories/sprint-core/brain-curate-scale-fix.md"
-next_gate: "qa_review"
+next_agent: "@devops"
+next_command: "*pre-push && *push"
+next_gate: "devops_push"
 ---
 
 # Story BRAIN-CURATE-01 — Brain Curate Scale Fix
 
 **Sprint:** sprint-core
-**Status:** `Ready for Dev`
+**Status:** `Done`
 **Architecture:** `docs/architecture/sparkle-aiox-brownfield-architecture-2026-04.md`
 
 ---
@@ -135,4 +135,27 @@ Em `portal/app/brain/curation/page.tsx`:
 
 ## QA Results
 
-_(aguardando @qa)_
+**Revisor:** Quinn (@qa)
+**Data:** 2026-04-07
+**Resultado:** PASS
+
+| AC | Status | Nota |
+|----|--------|------|
+| AC1 | PASS | `BATCH_SIZE = 50` confirmado em `brain_curate.py` linha 27. Taxa de curadoria 60→150/dia. |
+| AC2 | PASS | Auditoria `scheduler.py` confirmada — 1 registro único `id="brain_curate"` com `replace_existing=True`. Diagnóstico VPS correto e documentado. |
+| AC3 | PASS | Todos os 7 itens verificados: `CurationStats.review`, endpoint `/brain/curate/stats`, tipo filtro `'review'`, tab "Para Revisao" com count, badge AUTO (amber), `canAct = isPending || isReview`, StatsBar 5 colunas, empty state para tab review. |
+| AC4 | WAIVED | Verificação pós-deploy — depende de próxima execução do cron na VPS. Não bloqueia gate. |
+
+**Findings:**
+
+| Severidade | Arquivo | Descrição |
+|------------|---------|-----------|
+| LOW | `brain_curate.py:4` | Docstring ainda diz "batches of 20" — desatualizado, sem impacto runtime |
+| LOW | `page.tsx:480` | 4 tabs com `flex gap-2` sem `flex-wrap` — pode transbordar em mobile muito estreito |
+
+**Nenhum CRITICAL ou HIGH.** Findings LOW não bloqueiam entrega.
+
+**Destaques positivos:**
+- `canAct = isPending || isReview` é a abstração correta — habilita ação humana em ambos os estados sem duplicar lógica
+- `stats.review ?? 0` na StatsBar: defensivo correto para retrocompatibilidade caso endpoint antigo seja chamado
+- Badge AUTO em amber diferencia visualmente curadoria automática de manual — boa decisão UX
