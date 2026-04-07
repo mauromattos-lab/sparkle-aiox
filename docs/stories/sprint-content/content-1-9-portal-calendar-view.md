@@ -146,3 +146,25 @@ const STATUS_COLORS = {
 - Criado `portal/app/hq/content/page.tsx`
 - Criado `portal/app/api/hq/content/briefs/route.ts`
 - Criado `portal/app/api/hq/content/pieces/route.ts`
+
+---
+
+## QA Results
+
+**Revisor:** @qa (Quinn) — 2026-04-07
+**Resultado:** PASS com CONCERNS ⚠️
+
+| AC | Status | Nota |
+|----|--------|------|
+| AC1 | ✅ | Calendário semanal 7 dias com peças por data |
+| AC2 | ✅ | Cada dia exibe contagem por status |
+| AC3 | ✅ | BriefForm com theme/mood/style/target_date |
+| AC4 | ✅ | POST /content/briefs adiciona peça ao calendário com status='briefed' |
+| AC5 | ✅ | Lista "Em produção" com progress visual por etapa |
+| AC6 | ✅ | Aviso "Pipeline cheio" quando ≥5 peças em IN_PRODUCTION_STATUSES |
+| AC7 | ✅ | Click em peça abre PieceDetailPanel com pipeline_log timeline |
+| AC8 | ✅ | Badge linkando para /hq/content/queue quando há pending_approval |
+
+**Concerns:**
+- MÉDIO: `STATUS_COLORS` no page.tsx inclui `assembly_pending` e `assembly_done` — status removidos do MVP v1.1. São dead code inofensivo mas pode confundir em manutenção futura.
+- BAIXO: Pilares de conteúdo (MOOD_OPTIONS) são placeholders — pendente resposta de Mauro à QA-2. Documentado na story como blocker_soft.

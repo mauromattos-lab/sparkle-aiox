@@ -185,3 +185,27 @@ function VideoPreview({ url }: { url: string }) {
 - Criados 4 proxies de API em `portal/app/api/hq/content/pieces/[id]/`
 - Criado `portal/app/api/hq/content/queue/route.ts`
 - Criado `portal/app/api/hq/content/pieces/route.ts`
+
+---
+
+## QA Results
+
+**Revisor:** @qa (Quinn) — 2026-04-07
+**Resultado:** PASS ✅
+
+| AC | Status | Nota |
+|----|--------|------|
+| AC1 | ✅ | fetch /api/hq/content/queue, normaliza {pieces:[]} e array direto |
+| AC2 | ✅ | VideoPreview autoplay+muted+loop, ImagePreview, usa video_url correto |
+| AC3 | ✅ | Counter "N de M hoje", prev/next com disabled guard |
+| AC4 | ✅ | CaptionEditor inline, Enter salva, Escape cancela, PATCH /caption |
+| AC5 | ✅ | handleApprove remove peça, avança index com Math.min |
+| AC6 | ✅ | RejectModal disabled sem reason.trim() |
+| AC7 | ✅ | Coberto por AC4 |
+| AC8 | ✅ | handleApproveAll sequencial com loading dedicado |
+| AC9 | ✅ | Empty state + link para /hq/content |
+| AC10 | ✅ | Spinner em loading, toast em erro/sucesso |
+
+**Concerns (não bloqueantes):**
+- BAIXO: handleApproveAll não para em erro individual — silent failures possíveis
+- BAIXO: setPieces([]) otimista após approve all (sem reload de confirmação)
