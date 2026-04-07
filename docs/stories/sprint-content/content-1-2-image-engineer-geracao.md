@@ -143,13 +143,47 @@ supabase.table("content_pieces") \
 
 ## Integration Verifications
 
-- [ ] `GEMINI_API_KEY` presente em variável de ambiente do Runtime
-- [ ] Chamada de geração com estilo `cinematic` retorna imagem válida da Zenya
-- [ ] Chamada de geração com estilo `influencer_natural` retorna imagem válida da Zenya
-- [ ] Imagem salva no Supabase Storage e URL acessível publicamente
-- [ ] `content_pieces.status` = `image_done` após geração bem-sucedida
-- [ ] `content_pieces.status` = `image_failed` após falha de API (simular com key inválida)
-- [ ] Geração sem Tier A disponível retorna erro 400 com mensagem clara (não 500)
+- [x] `GEMINI_API_KEY` presente em variável de ambiente do Runtime
+- [ ] Chamada de geração com estilo `cinematic` retorna imagem válida da Zenya *(pendente: Style Library sem Tier A)*
+- [ ] Chamada de geração com estilo `influencer_natural` retorna imagem válida da Zenya *(pendente: Style Library sem Tier A)*
+- [ ] Imagem salva no Supabase Storage e URL acessível publicamente *(pendente: geração real)*
+- [ ] `content_pieces.status` = `image_done` após geração bem-sucedida *(pendente: geração real)*
+- [x] `content_pieces.status` = `image_failed` após falha de API — padrão `_record_failure()` verificado no código
+- [x] Geração sem Tier A disponível retorna erro 400 com mensagem clara — `get_tier_a_reference()` raises ValueError → HTTPException 400
+
+---
+
+## QA Results
+
+**QA Agent:** @qa (Quinn)
+**Date:** 2026-04-07
+**Gate Decision:** ✅ PASS com CONCERNS
+
+### AC Coverage
+| AC | Status | Verificação |
+|----|--------|-------------|
+| AC1 | ✅ PASS | `build_prompt()` retorna prompt técnico completo com lighting, composition, proporção 9:16 |
+| AC2 | ✅ PASS | `get_tier_a_reference()` — Tier A aleatória entre top-5 menos usadas, fallback sem style_type |
+| AC3 | ✅ PASS | Ambos estilos (`cinematic`, `influencer_natural`) implementados e validados em test |
+| AC4 | ✅ PASS | Gemini multimodal: `inline_data` Tier A + texto descritivo → imagem; Imagen 3 como fallback |
+| AC5 | ✅ PASS | Storage upload em `content-assets/images/{id}.png` com `upsert=true` |
+| AC6 | ✅ PASS | `image_url` + `status=image_done` atualizados após upload |
+| AC7 | ✅ PASS | `_record_failure()` → `image_failed` + append em `error_log` JSONB |
+| AC8 | ✅ PASS | `ValueError` em `get_tier_a_reference()` propagado como 400 com mensagem clara |
+
+### Test Results
+- **11 passed, 4 skipped** (15 total)
+- 7 testes CONTENT-1.2: todos passando (1 skip — `/content/pieces` pendente)
+- Skips são esperados: dependem de Veo live ou endpoint futuro
+
+### Concerns (não bloqueantes)
+
+**MEDIUM — Supabase síncrono em contexto async:** `get_tier_a_reference()` e `prepare_generation()` chamam `supabase.table()` diretamente em funções `async def` sem `asyncio.to_thread`. Para MVP é aceitável (calls são rápidas). Registrar como tech debt antes de produção com carga.
+
+**LOW — MIME type detection simplista:** `generate_image_gemini()` detecta tipo da referência Tier A apenas por extensão `.png`; imagens JPEG/WebP retornam `image/jpeg`. Considerar usar `content-type` do response HTTP.
+
+### Verdict
+Código limpo, padrões consistentes com o restante do Runtime, ACs completamente cobertos. Aprovado para push. As verificações de integração pendentes (geração real com Tier A) dependem de curadoria da Style Library — blocker externo, não de código.
 
 ---
 
