@@ -28,34 +28,11 @@ def _headers() -> dict:
     }
 
 
-def _is_phone_allowed(phone: str) -> bool:
-    """
-    SAFEGUARD: Only allow sends to explicitly whitelisted numbers.
-    Prevents accidental messages to clients during testing/validation.
-    Whitelist loaded from ZAPI_ALLOWED_PHONES env var (comma-separated)
-    plus Mauro's number (always allowed).
-    """
-    clean = phone.replace("+", "").replace(" ", "").replace("-", "")
-    allowed = {settings.mauro_whatsapp}
-    extra = getattr(settings, "zapi_allowed_phones", "")
-    if extra:
-        allowed.update(p.strip() for p in extra.split(",") if p.strip())
-    return clean in allowed
-
-
 def send_text(phone: str, message: str) -> dict:
     """
     Send a text message to a WhatsApp number.
     phone format: "5511999999999" (country code + number, no +)
-    SAFEGUARD: blocked if phone not in whitelist.
     """
-    if not _is_phone_allowed(phone):
-        import logging
-        logging.getLogger("zapi").warning(
-            "[BLOCKED] send_text to %s — not in whitelist. Message: %.60s...",
-            phone, message,
-        )
-        return {"blocked": True, "reason": "phone not in ZAPI_ALLOWED_PHONES"}
     url = f"{_base_url()}/send-text"
     payload = {"phone": phone, "message": message}
 
@@ -69,14 +46,7 @@ def send_audio(phone: str, audio_url: str) -> dict:
     """
     Send an audio message by URL. The URL must be publicly accessible.
     Z-API downloads the audio and sends it as voice message.
-    SAFEGUARD: blocked if phone not in whitelist.
     """
-    if not _is_phone_allowed(phone):
-        import logging
-        logging.getLogger("zapi").warning(
-            "[BLOCKED] send_audio to %s — not in whitelist", phone,
-        )
-        return {"blocked": True, "reason": "phone not in ZAPI_ALLOWED_PHONES"}
     url = f"{_base_url()}/send-audio"
     payload = {"phone": phone, "audio": audio_url}
 

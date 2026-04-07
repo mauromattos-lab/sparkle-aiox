@@ -346,22 +346,16 @@ async def handle_onboard_client(task: dict) -> dict:
     kb_count = await _insert_kb(actual_client_id, kb_items)
     steps.append(f"KB inserida: {kb_count} registros")
 
-    # 5. Provisionar infraestrutura técnica (n8n + Z-API + Chatwoot) — ONB-1.5a
-    from runtime.onboarding.n8n_provisioner import provision_technical_infrastructure
-    tier = payload.get('tier', 'essencial')
-    infra_result = await provision_technical_infrastructure(
-        client_id=actual_client_id,
+    # 5. Clonar workflows n8n
+    workflows = await asyncio.to_thread(
+        _clone_workflows_n8n,
         business_name=business_name,
-        tier=tier,
+        slug=slug,
         phone=phone,
+        client_id=actual_client_id,
         system_prompt=system_prompt,
     )
-    workflows = [{'name': n, 'id': wid} for wid, n in infra_result['n8n']['workflow_ids'].items()]
-    steps.append(f"Workflows: {infra_result['n8n']['cloned']}/{infra_result['n8n']['total']} clonados (tier: {tier})")
-    if infra_result['zapi']['success']:
-        steps.append(f"Z-API: instância {infra_result['zapi']['instance_id']} criada")
-    if infra_result['chatwoot']['success']:
-        steps.append(f"Chatwoot: inbox {infra_result['chatwoot']['inbox_id']} criado")
+    steps.append(f"Workflows: {len(workflows)}/4 clonados")
 
     # 6. Salvar system_prompt como nota no Supabase
     try:
@@ -379,14 +373,18 @@ async def handle_onboard_client(task: dict) -> dict:
         print(f"[onboard] save system_prompt falhou: {e}")
 
     # 7. Montar mensagem resumo para Mauro
-    wf_lines = "\n".join(f"  • {w['name']} (ID: {w['id']})" for w in workflows) or "  • nenhum"
+    wf_lines = "\n".join(f"  • {w['name']} (ID: {w['id']})" for w in workflows) or "  • nenhum (sem N8N_API_KEY)"
     pending = []
     if not phone:
         pending.append("• Adicionar número WhatsApp do cliente")
     if not site_url or not site_content:
         pending.append("• Verificar/completar KB (site indisponível)")
-    pending.extend(infra_result.get("pending_human", []))
+    if not workflows:
+        pending.append("• Clonar workflows manualmente (sem N8N_API_KEY)")
+    pending.append("• Criar instância Z-API para o cliente")
     pending.append("• Ativar workflows após QA")
+    pending.append("• Configurar id_conversa_alerta no node Info")
+
     pending_str = "\n".join(pending)
 
     summary = (
