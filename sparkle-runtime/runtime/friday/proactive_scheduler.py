@@ -21,6 +21,12 @@ async def run_proactive_check() -> None:
 
     Errors are logged but never propagate — the scheduler must not crash.
     """
+    from runtime.config import settings
+
+    if not settings.proactive_enabled:
+        logger.info("[FRIDAY-PROACTIVE] Desativado — aguardando redesign Wave 1 (W1-FRIDAY-1)")
+        return
+
     from runtime.friday.proactive import check_proactive_triggers
 
     try:
@@ -39,6 +45,12 @@ def register_proactive_jobs(scheduler) -> None:
     Args:
         scheduler: The APScheduler AsyncIOScheduler instance.
     """
+    from runtime.config import settings
+
+    if not settings.proactive_enabled:
+        logger.info("[FRIDAY-PROACTIVE] Desativado — job não registrado. Aguardando redesign Wave 1 (W1-FRIDAY-1)")
+        return
+
     from apscheduler.triggers.cron import CronTrigger
     from zoneinfo import ZoneInfo
 

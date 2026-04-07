@@ -1,3 +1,9 @@
+# DESATIVADO — Wave 0. Redesign com triggers de negócio em W1-FRIDAY-1.
+# Bugs identificados: canal Z-API errado (MAURO_WHATSAPP apontava para número da Zenya),
+# duplicatas por múltiplas réplicas Coolify com APScheduler independentes,
+# conteúdo técnico (runtime_tasks) em vez de gatilhos de negócio.
+# Desativação via PROACTIVE_ENABLED=false (env var, default false em config.py).
+
 """
 Friday Proactive Outreach — B3-02 (Lei 3: Friday doesn't wait to be called).
 

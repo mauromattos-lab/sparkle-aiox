@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Quando True, billing error no modelo primário faz fallback automático para Haiku.
     anthropic_billing_fallback: bool = os.getenv("ANTHROPIC_BILLING_FALLBACK", "true").lower() in ("true", "1", "yes")
 
+    # Friday proactive — Wave 0: desativado até redesign com triggers de negócio (W1-FRIDAY-1)
+    # PROACTIVE_ENABLED=false por padrão. Habilitar apenas após W1-FRIDAY-1 concluído.
+    proactive_enabled: bool = os.getenv("PROACTIVE_ENABLED", "false").lower() in ("true", "1", "yes")
+
     # Content pipeline — CONTENT-2.2 Resilience
     # Peças em *_generating por mais de este número de minutos são tratadas como stuck.
     # Configurável via PIPELINE_TIMEOUT_MINUTES (default 20).
