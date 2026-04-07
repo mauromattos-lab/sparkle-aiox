@@ -70,6 +70,7 @@ jobs:
               --name "$CONTAINER_NAME" \
               --restart unless-stopped \
               --label "coolify.managed=true" \
+              --network coolify \
               -p 3001:3000 \
               -e RUNTIME_URL="$RUNTIME_URL" \
               -e RUNTIME_API_KEY="$RUNTIME_API_KEY" \
