@@ -546,3 +546,136 @@ def _build_preview_text(
         lines.append(f"[AVISO: {len(content)} chars — excede limite de {max_caption}]")
 
     return "\n".join(lines)
+
+
+
+
+# ══════════════════════════════════════════════════════════════
+# COPY SPECIALIST (CONTENT-1.4)
+# ══════════════════════════════════════════════════════════════
+
+class CopyBriefRequest(BaseModel):
+    theme: str
+    mood: str
+    style: str
+    platform: str = "instagram"
+    include_narration: bool = True
+    client_id: Optional[str] = None
+
+
+class CopyApplyRequest(CopyBriefRequest):
+    pass
+
+
+@router.post("/copy/generate")
+async def generate_copy_endpoint(req: CopyBriefRequest):
+    """Gera caption + voice_script para a Zenya via Copy Specialist."""
+    from runtime.content.copy_specialist import generate_copy
+    try:
+        result = await generate_copy(
+            theme=req.theme,
+            mood=req.mood,
+            style=req.style,
+            platform=req.platform,
+            include_narration=req.include_narration,
+            client_id=req.client_id or settings.sparkle_internal_client_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return result
+
+
+@router.post("/copy/apply/{content_piece_id}")
+async def apply_copy_endpoint(content_piece_id: str, req: CopyApplyRequest):
+    """Gera copy e persiste em content_pieces."""
+    from runtime.content.copy_specialist import apply_copy_to_piece
+    # Verificar se o piece existe
+    check = supabase.table("content_pieces").select("id").eq("id", content_piece_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="content_piece não encontrado")
+    try:
+        result = await apply_copy_to_piece(
+            content_piece_id=content_piece_id,
+            theme=req.theme,
+            mood=req.mood,
+            style=req.style,
+            platform=req.platform,
+            include_narration=req.include_narration,
+            client_id=req.client_id or settings.sparkle_internal_client_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return result
+
+
+# ══════════════════════════════════════════════════════════════
+# VOICE GENERATOR (CONTENT-1.4)
+# ══════════════════════════════════════════════════════════════
+
+class VoiceGenerateRequest(BaseModel):
+    voice_script: Optional[str] = None
+
+
+class VoiceApplyRequest(BaseModel):
+    voice_script: Optional[str] = None
+
+
+@router.post("/voice/generate")
+async def generate_voice_endpoint(req: VoiceGenerateRequest):
+    """Gera áudio MP3 via ElevenLabs com a voz da Zenya."""
+    from runtime.content.voice_generator import generate_voice_for_piece
+    # voice_script obrigatório no body (pode ser null explicitamente)
+    if "voice_script" not in req.model_fields_set and req.voice_script is None:
+        raise HTTPException(status_code=422, detail="voice_script é obrigatório")
+    if req.voice_script is not None and req.voice_script.strip() == "":
+        raise HTTPException(status_code=400, detail="voice_script não pode ser string vazia")
+    import uuid as _uuid
+    tmp_id = str(_uuid.uuid4())
+    try:
+        audio_url = await generate_voice_for_piece(
+            content_piece_id=tmp_id,
+            voice_script=req.voice_script,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"audio_url": audio_url}
+
+
+@router.post("/voice/apply/{content_piece_id}")
+async def apply_voice_endpoint(content_piece_id: str, req: VoiceApplyRequest):
+    """Gera áudio e persiste audio_url em content_pieces."""
+    from runtime.content.voice_generator import generate_voice_for_piece
+    check = supabase.table("content_pieces").select("id").eq("id", content_piece_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="content_piece não encontrado")
+    if req.voice_script is not None and req.voice_script.strip() == "":
+        raise HTTPException(status_code=400, detail="voice_script não pode ser string vazia")
+    try:
+        audio_url = await generate_voice_for_piece(
+            content_piece_id=content_piece_id,
+            voice_script=req.voice_script,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"audio_url": audio_url}
+
+
+@router.get("/voice/status")
+async def voice_status_endpoint():
+    """Status do engine TTS para a Zenya (ElevenLabs voice ID configurado)."""
+    from runtime.utils.tts import get_tts_info
+    info = get_tts_info()
+    info["zenya_voice_id"] = settings.elevenlabs_zenya_voice_id or None
+    return info
+
+# ── Style Library (CONTENT-0.1) ───────────────────────────────
+from runtime.content.style_library import router as library_router
+router.include_router(library_router, tags=["style-library"])

@@ -2,7 +2,7 @@
 epic: EPIC-CONTENT-ZENYA — Domínio Conteúdo (Zenya-First)
 story: CONTENT-1.4
 title: "Voice Generation (ElevenLabs) + Copy Specialist"
-status: TODO
+status: Ready for Review
 priority: P0
 executor: "@dev"
 sprint: Content Wave 1
@@ -44,14 +44,14 @@ estimated_effort: 3-4h de agente (@dev)
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `copy_specialist.py` recebe brief (theme, mood, style, platform) e retorna: `caption` (Instagram, máx 2200 chars) + `voice_script` (narração PT-BR, máx 30s de fala)
-- [ ] **AC2** — Caption inclui: hook na primeira linha, corpo do conteúdo, emojis contextuais, hashtags relevantes (mín 5, máx 15)
-- [ ] **AC3** — Voice script é escrito em PT-BR coloquial, no tom da Zenya (caloroso, direto, confiante), sem marcações de formatação — texto puro para TTS
-- [ ] **AC4** — Variação "sem narração" é suportada: `voice_script = None` resulta em `audio_url = None` (pipeline usa música de fundo no assembly)
-- [ ] **AC5** — `voice_generator.py` usa a voz ElevenLabs da Zenya (Voice ID configurado em variável de ambiente `ELEVENLABS_ZENYA_VOICE_ID`)
-- [ ] **AC6** — Áudio gerado salvo no Supabase Storage em `content-assets/audio/{content_piece_id}.mp3`
-- [ ] **AC7** — `content_pieces.voice_script`, `content_pieces.caption` e `content_pieces.audio_url` atualizados após geração
-- [ ] **AC8** — Verificar se ElevenLabs já está integrado no Runtime — reusar módulo existente se possível, não duplicar
+- [x] **AC1** — `copy_specialist.py` recebe brief (theme, mood, style, platform) e retorna: `caption` (Instagram, máx 2200 chars) + `voice_script` (narração PT-BR, máx 30s de fala)
+- [x] **AC2** — Caption inclui: hook na primeira linha, corpo do conteúdo, emojis contextuais, hashtags relevantes (mín 5, máx 15)
+- [x] **AC3** — Voice script é escrito em PT-BR coloquial, no tom da Zenya (caloroso, direto, confiante), sem marcações de formatação — texto puro para TTS
+- [x] **AC4** — Variação "sem narração" é suportada: `voice_script = None` resulta em `audio_url = None` (pipeline usa música de fundo no assembly)
+- [x] **AC5** — `voice_generator.py` usa a voz ElevenLabs da Zenya (Voice ID configurado em variável de ambiente `ELEVENLABS_ZENYA_VOICE_ID`)
+- [x] **AC6** — Áudio gerado salvo no Supabase Storage em `content-assets/audio/{content_piece_id}.mp3`
+- [x] **AC7** — `content_pieces.voice_script`, `content_pieces.caption` e `content_pieces.audio_url` atualizados após geração
+- [x] **AC8** — Verificar se ElevenLabs já está integrado no Runtime — reusar módulo existente se possível, não duplicar
 
 ---
 
@@ -119,11 +119,35 @@ async def generate_voice(script: str, voice_id: str) -> bytes:
 
 ---
 
+## Dev Agent Record
+
+**Agent Model Used:** claude-sonnet-4-6
+
+**Completion Notes:**
+- Reusou `runtime/utils/tts.py` (ElevenLabs) e `runtime/utils/llm.py` (Claude Haiku) — sem duplicação
+- `ELEVENLABS_ZENYA_VOICE_ID` adicionado ao `.env` e `runtime/config.py`
+- Bucket `content-assets` criado no Supabase Storage (público, 100MB)
+- voice_script=None → audio_url=None sem erro (AC4 ✅)
+- Endpoints registrados no `runtime/content/router.py`: `/content/copy/generate`, `/content/copy/apply/{id}`, `/content/voice/generate`, `/content/voice/apply/{id}`, `/content/voice/status`
+- 9/9 testes copy specialist passaram; 7/7 testes voice generator passaram
+
+**Change Log:**
+- Criado: `runtime/content/copy_specialist.py`
+- Criado: `runtime/content/voice_generator.py`
+- Modificado: `runtime/content/router.py` (5 novos endpoints)
+- Modificado: `runtime/config.py` (campo `elevenlabs_zenya_voice_id`)
+- Criado: `tests/test_copy_specialist.py`
+- Criado: `tests/test_voice_generator.py`
+
+---
+
 ## File List
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| `runtime/content/copy_specialist.py` | Criar | Caption + voice script generator (Claude Haiku) |
-| `runtime/content/voice_generator.py` | Criar | ElevenLabs TTS integration (reusar módulo existente se possível) |
-| `tests/test_copy_specialist.py` | Criar | Testes: geração de copy, variação sem narração, formato JSON |
-| `tests/test_voice_generator.py` | Criar | Testes: geração de áudio, storage, voice_id correto |
+| `runtime/content/copy_specialist.py` | ✅ Criado | Caption + voice script generator (Claude Haiku) |
+| `runtime/content/voice_generator.py` | ✅ Criado | ElevenLabs TTS integration (reusou tts.py existente) |
+| `runtime/content/router.py` | ✅ Modificado | 5 novos endpoints: copy/generate, copy/apply, voice/generate, voice/apply, voice/status |
+| `runtime/config.py` | ✅ Modificado | Campo elevenlabs_zenya_voice_id |
+| `tests/test_copy_specialist.py` | ✅ Criado | 9 testes passando (1 skipped — /content/pieces pendente) |
+| `tests/test_voice_generator.py` | ✅ Criado | 7 testes passando (1 skipped — /content/pieces pendente) |
