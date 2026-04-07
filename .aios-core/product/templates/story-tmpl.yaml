@@ -47,6 +47,20 @@ sections:
     editors: [scrum-master, dev-agent]
 
   # Story 11.1: Dynamic Executor Assignment (Projeto Bob)
+  - id: pipeline-routing
+    title: Pipeline Routing
+    type: metadata
+    required: false
+    instruction: |
+      Preencher ao criar a story. Indica qual agente executa o próximo gate.
+      O Synapse Engine lê esses campos e injeta no início de cada sessão.
+    template: |
+      next_agent: "@qa"
+      next_command: "*review docs/stories/..."
+      next_gate: "qa_review"
+    owner: scrum-master
+    editors: [scrum-master, dev-agent, qa-agent]
+
   - id: executor-assignment
     title: Executor Assignment
     type: metadata

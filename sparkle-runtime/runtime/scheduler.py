@@ -429,6 +429,10 @@ def start_scheduler() -> None:
     from runtime.crons.content import register_content_jobs
     register_content_jobs(_scheduler)
 
+    # ── AIOS-E-02: AIOS gate monitor (daily 09h BRT) ─────────
+    from runtime.aios.gate_monitor import register_aios_jobs
+    register_aios_jobs(_scheduler)
+
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     job_names = ", ".join(j.id for j in jobs)

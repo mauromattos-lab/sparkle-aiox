@@ -278,12 +278,60 @@ Se o gate anterior não foi concluído no banco → reportar para Orion antes de
 
 ---
 
+## Protocolo de Registro em story_gates
+
+Todo agente, ao completar seu gate, registra via MCP Supabase (`mcp__supabase__execute_sql`):
+
+```sql
+INSERT INTO story_gates (story_id, gate, agent, status, notes)
+VALUES ('{STORY-ID}', '{gate}', '{@agente}', '{status}', '{observações}')
+ON CONFLICT (story_id, gate)
+DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes, completed_at = now();
+```
+
+### Gates válidos por agente
+
+| Gate | Agente responsável | Quando registrar |
+|------|--------------------|-----------------|
+| `po_validate` | @po | Após *validate-story-draft |
+| `arch_complexity` | @architect | Após *assess-complexity |
+| `devops_worktree` | @devops | Após *create-worktree |
+| `dev_implement` | @dev | Ao marcar story "Ready for Review" |
+| `qa_review` | @qa | Ao emitir resultado do *review |
+| `po_accept` | @po | Após *close-story |
+| `devops_push` | @devops | Após *push com sucesso |
+
+### Status válidos
+
+| Status | Significado |
+|--------|-------------|
+| `pass` | Gate concluído com sucesso |
+| `fail` | Gate falhou — story retorna para gate anterior |
+| `waived` | Gate dispensado com justificativa (ex: hotfix urgente) |
+| `skipped` | Gate foi pulado sem justificativa — **dispara alerta Friday** |
+
+### Verificação antes de iniciar gate
+
+Todo agente verifica se o gate anterior está com `status = 'pass'` antes de começar:
+
+```sql
+SELECT gate, status FROM story_gates
+WHERE story_id = '{STORY-ID}'
+ORDER BY completed_at DESC;
+```
+
+Se o gate anterior não constar com `pass` → reportar para Orion antes de prosseguir.
+
+---
+
 ## Referências
 
 - Metodologia base: AIOX Squad (two-phase approach, contexto limpo, PRD→Arch→Stories→Code)
 - PRDs referência: `docs/prd/pipeline-comercial-prd.md`, `docs/prd/zenya-onboarding-system-prd.md`
 - Contexto dos agentes: `AGENT_CONTEXT.md`
 - Estado do sistema: `docs/agent-queue.md` (leitura humana) + Supabase `agent_work_items` (fonte de verdade)
+- Prompts de ativação de agentes: `docs/operations/agent-activation-prompts.md`
+- Enforcement hooks: `docs/architecture/aios-enforcement-architecture.md`
 
 ---
 

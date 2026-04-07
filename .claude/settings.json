@@ -1,3 +1,20 @@
 {
-  "language": "portuguese"
+  "language": "portuguese",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "python .claude/hooks/enforce-agent-authority.py"}
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {"type": "command", "command": "python .claude/hooks/enforce-qa-gate.py"},
+          {"type": "command", "command": "python .claude/hooks/enforce-story-required.py"}
+        ]
+      }
+    ]
+  }
 }
