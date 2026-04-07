@@ -425,6 +425,10 @@ def start_scheduler() -> None:
     from runtime.friday.proactive_scheduler import register_proactive_jobs
     register_proactive_jobs(_scheduler)
 
+    # ── CONTENT-2.2: Content crons (pipeline_tick, publisher_tick, brain_sync, stuck_check) ──
+    from runtime.crons.content import register_content_jobs
+    register_content_jobs(_scheduler)
+
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     job_names = ", ".join(j.id for j in jobs)
