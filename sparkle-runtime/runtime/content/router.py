@@ -12,6 +12,16 @@ v2 endpoints (new):
   GET  /content/templates         — lista templates disponiveis por formato/plataforma
   GET  /content/{id}/preview      — preview estruturado do conteudo para plataforma-alvo
   POST /content/generate-batch    — geracao em lote (plano semanal multi-plataforma)
+
+Pipeline endpoints (CONTENT-1.6):
+  POST /content/briefs            — cria content_piece + dispara pipeline automaticamente
+  GET  /content/briefs            — lista todas as pieces com status e current_stage
+  GET  /content/pieces/{id}       — detalhe + pipeline_log completo
+  GET  /content/queue             — lista pieces em pending_approval
+  POST /content/pieces/{id}/approve — aprova piece + define scheduled_at
+  POST /content/pieces/{id}/reject  — rejeita piece com reason
+  POST /content/pieces/{id}/retry   — reinicia piece em estado *_failed
+  POST /content/pipeline/tick     — executa tick manual do pipeline (cron hook)
 """
 from __future__ import annotations
 
@@ -891,6 +901,216 @@ async def video_status_endpoint():
         "aspect_ratio": "9:16",
         "status": "ready" if key_configured else "unconfigured",
     }
+
+
+# ══════════════════════════════════════════════════════════════
+# PIPELINE ORCHESTRATOR (CONTENT-1.6)
+# ══════════════════════════════════════════════════════════════
+
+class BriefRequest(BaseModel):
+    """Request to create a content brief and fire the pipeline."""
+    theme: str
+    mood: str = "inspirador"
+    style: str = "influencer_natural"
+    platform: str = "instagram"
+    client_id: Optional[str] = None
+
+
+class PieceApproveRequest(BaseModel):
+    """Approve a pending_approval piece, optionally scheduling it."""
+    scheduled_at: Optional[str] = None
+
+
+class PieceRejectRequest(BaseModel):
+    """Reject a pending_approval piece with a reason."""
+    reason: str = ""
+
+
+@router.post("/briefs")
+async def create_brief(req: BriefRequest):
+    """
+    Create a content_piece with status='briefed' and fire the pipeline automatically.
+    Pipeline runs in background — response returns immediately with the new piece.
+    """
+    from runtime.content.pipeline import advance_pipeline
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # content_pieces uses creator_id (not client_id)
+    creator_id = req.client_id or settings.sparkle_internal_client_id
+
+    try:
+        result = (
+            supabase.table("content_pieces")
+            .insert({
+                "theme": req.theme,
+                "mood": req.mood,
+                "style": req.style,
+                "platform": req.platform,
+                "creator_id": creator_id,
+                "status": "briefed",
+                "pipeline_log": [{"event": "created", "at": now_iso}],
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            })
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to create content_piece")
+
+    piece = result.data[0]
+
+    # Fire pipeline in background (non-blocking)
+    asyncio.create_task(advance_pipeline(piece))
+
+    return {
+        "id": piece["id"],
+        "status": piece["status"],
+        "theme": req.theme,
+        "mood": req.mood,
+        "style": req.style,
+        "platform": req.platform,
+        "message": "Brief created — pipeline started",
+    }
+
+
+@router.get("/briefs")
+async def list_briefs(
+    limit: int = 50,
+    status: Optional[str] = None,
+    creator_id: Optional[str] = None,
+):
+    """
+    List all content_pieces with their current status and a human-readable current_stage.
+    """
+    query = (
+        supabase.table("content_pieces")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if status:
+        query = query.eq("status", status)
+    if creator_id:
+        query = query.eq("creator_id", creator_id)
+
+    try:
+        result = query.execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    items = []
+    stage_labels = {
+        "briefed": "Aguardando geracao de imagem",
+        "image_generating": "Gerando imagem...",
+        "image_done": "Imagem pronta — iniciando video e copy",
+        "video_generating": "Gerando video...",
+        "video_done": "Video pronto — auditoria IP",
+        "pending_approval": "Aguardando aprovacao",
+        "approved": "Aprovado",
+        "scheduled": "Agendado para publicacao",
+        "published": "Publicado",
+        "image_failed": "Falha na geracao de imagem",
+        "video_failed": "Falha na geracao de video",
+        "copy_failed": "Falha na geracao de copy",
+        "rejected": "Rejeitado",
+    }
+
+    for piece in (result.data or []):
+        st = piece.get("status", "")
+        items.append({
+            **piece,
+            "current_stage": stage_labels.get(st, st),
+        })
+
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/pieces/{piece_id}")
+async def get_piece_detail(piece_id: str):
+    """Return full detail of a content_piece including pipeline_log."""
+    try:
+        result = (
+            supabase.table("content_pieces")
+            .select("*")
+            .eq("id", piece_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="content_piece not found")
+
+    return result.data[0]
+
+
+@router.get("/queue")
+async def get_approval_queue(limit: int = 50):
+    """Return all pieces in pending_approval status (Mauro's review queue)."""
+    from runtime.content.approval import get_approval_queue as _queue
+    try:
+        items = _queue(limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/pieces/{piece_id}/approve")
+async def approve_piece_endpoint(piece_id: str, req: PieceApproveRequest):
+    """Approve a content_piece, optionally setting a scheduled_at date."""
+    from runtime.content.approval import approve_piece
+    try:
+        piece = approve_piece(piece_id, scheduled_at=req.scheduled_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"status": piece.get("status"), "id": piece_id, "piece": piece}
+
+
+@router.post("/pieces/{piece_id}/reject")
+async def reject_piece_endpoint(piece_id: str, req: PieceRejectRequest):
+    """Reject a content_piece with an optional reason."""
+    from runtime.content.approval import reject_piece
+    try:
+        piece = reject_piece(piece_id, reason=req.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"status": "rejected", "id": piece_id, "reason": req.reason}
+
+
+@router.post("/pieces/{piece_id}/retry")
+async def retry_piece_endpoint(piece_id: str):
+    """Restart a piece that is in a *_failed state from the failed step."""
+    from runtime.content.pipeline import retry_piece
+    try:
+        piece = await retry_piece(piece_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"id": piece_id, "status": piece.get("status"), "message": "Retry initiated"}
+
+
+@router.post("/pipeline/tick")
+async def pipeline_tick_endpoint():
+    """
+    Manual trigger for the pipeline cron tick.
+    Advances all pieces in advanceable states.
+    Also called by the scheduler every 5 minutes.
+    """
+    from runtime.content.pipeline import tick_pipeline
+    try:
+        result = await tick_pipeline()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return result
 
 
 # ── Style Library (CONTENT-0.1) ───────────────────────────────

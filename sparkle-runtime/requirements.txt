@@ -35,6 +35,9 @@ gtts>=2.5.0
 # PDF extraction
 PyPDF2>=3.0.0
 
+# Fuzzy string matching (IP Auditor repetition check — CONTENT-1.10)
+rapidfuzz>=3.0.0
+
 # Error tracking
 sentry-sdk[fastapi]>=2.0.0
 
