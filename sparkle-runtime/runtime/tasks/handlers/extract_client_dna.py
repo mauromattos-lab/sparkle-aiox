@@ -122,16 +122,71 @@ def _parse_json_response(raw: str) -> dict | None:
 
 
 async def _get_client_chunks(client_id: str, limit: int = 60) -> list[dict]:
-    """Fetch the most recent brain chunks for a client."""
+    """Fetch content for DNA extraction from brain_chunks AND zenya_knowledge_base.
+
+    Search order:
+    1. brain_chunks by brain_owner
+    2. brain_chunks by client_id (UUID)
+    3. zenya_knowledge_base (product catalog / KB entries)
+    """
+    # 1. brain_chunks by brain_owner
     result = await asyncio.to_thread(
         lambda: supabase.table("brain_chunks")
         .select("id,raw_content,source_type,source_title,chunk_metadata")
-        .eq("client_id", client_id)
+        .eq("brain_owner", client_id)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
-    return result.data or []
+    chunks = result.data or []
+
+    # 2. brain_chunks by client_id UUID
+    if not chunks:
+        try:
+            result = await asyncio.to_thread(
+                lambda: supabase.table("brain_chunks")
+                .select("id,raw_content,source_type,source_title,chunk_metadata")
+                .eq("client_id", client_id)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            chunks = result.data or []
+        except Exception:
+            pass
+
+    # 3. zenya_knowledge_base — convert KB entries to chunk-like dicts
+    if not chunks:
+        try:
+            kb_result = await asyncio.to_thread(
+                lambda: supabase.table("zenya_knowledge_base")
+                .select("id,category,item_name,description,price,price_unit,additional_info")
+                .eq("client_id", client_id)
+                .eq("active", True)
+                .limit(limit)
+                .execute()
+            )
+            kb_rows = kb_result.data or []
+            for row in kb_rows:
+                parts = [f"[{row.get('category', '')}] {row.get('item_name', '')}"]
+                if row.get("description"):
+                    parts.append(row["description"])
+                if row.get("price"):
+                    unit = row.get("price_unit", "R$")
+                    parts.append(f"Preco: {unit} {row['price']}")
+                if row.get("additional_info"):
+                    parts.append(row["additional_info"])
+                chunks.append({
+                    "id": str(row["id"]),
+                    "raw_content": " | ".join(parts),
+                    "source_type": "knowledge_base",
+                    "source_title": row.get("item_name", ""),
+                    "chunk_metadata": {"category": row.get("category", "")},
+                })
+        except Exception:
+            pass
+
+    return chunks
 
 
 async def _get_next_version(client_id: str) -> int:
@@ -185,7 +240,7 @@ async def _extract_dna_from_chunks(
         task_id=task_id,
         agent_id="system",
         purpose="extract_client_dna",
-        max_tokens=4096,
+        max_tokens=8192,
     )
 
     return _parse_json_response(raw)
@@ -342,6 +397,85 @@ def _count_categories(items: list[dict]) -> dict[str, int]:
 
 
 # ── Main handler ──────────────────────────────────────────────
+
+async def handle_extract_all_client_dna(task: dict) -> dict:
+    """
+    Batch extraction: extract DNA for ALL active zenya_clients that have brain chunks.
+
+    Payload (optional):
+        regenerate_prompt (bool): generate soul_prompt per client (default True)
+
+    Iterates zenya_clients where active=true, checks for brain_chunks,
+    and runs handle_extract_client_dna for each.
+    """
+    payload = task.get("payload", {})
+    regenerate = payload.get("regenerate_prompt", True)
+
+    # Fetch all active zenya_clients
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_id,business_name")
+            .eq("active", True)
+            .execute()
+        )
+        clients = result.data or []
+    except Exception as e:
+        return {"error": f"Falha ao buscar clientes: {e}"}
+
+    if not clients:
+        return {"message": "Nenhum cliente ativo encontrado em zenya_clients"}
+
+    results = []
+    success = 0
+    skipped = 0
+    errors = 0
+
+    for client in clients:
+        cid = client.get("client_id")
+        name = client.get("business_name", cid)
+
+        # Check if client has brain chunks before calling extraction
+        chunks = await _get_client_chunks(cid, limit=1)
+        if not chunks:
+            skipped += 1
+            results.append({"client_id": cid, "business_name": name, "status": "skipped", "reason": "no_chunks"})
+            continue
+
+        sub_task = {
+            "id": task.get("id"),
+            "payload": {
+                "client_id": cid,
+                "regenerate_prompt": regenerate,
+            },
+        }
+
+        try:
+            r = await handle_extract_client_dna(sub_task)
+            if "error" in r:
+                errors += 1
+                results.append({"client_id": cid, "business_name": name, "status": "error", "error": r["error"]})
+            else:
+                success += 1
+                results.append({
+                    "client_id": cid,
+                    "business_name": name,
+                    "status": "ok",
+                    "items_extracted": r.get("items_extracted", 0),
+                })
+        except Exception as e:
+            errors += 1
+            results.append({"client_id": cid, "business_name": name, "status": "error", "error": str(e)[:200]})
+
+    return {
+        "message": f"Batch DNA extraction: {success} ok, {skipped} skipped, {errors} errors de {len(clients)} clientes",
+        "total_clients": len(clients),
+        "success": success,
+        "skipped": skipped,
+        "errors": errors,
+        "details": results,
+    }
+
 
 async def handle_extract_client_dna(task: dict) -> dict:
     """
