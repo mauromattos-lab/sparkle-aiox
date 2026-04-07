@@ -1,12 +1,15 @@
 """
-Content Pipeline Orchestrator — CONTENT-1.6.
+Content Pipeline Orchestrator — CONTENT-1.6 / CONTENT-1.12.
 
 State machine that advances content_pieces through the MVP pipeline:
 
-  briefed → image_generating → image_done
-          → (copy + video in parallel) → video_done
-          → [ip_audit] → pending_approval
-          → approved/rejected → scheduled → published
+  briefed -> image_generating -> image_done
+          -> (copy + video in parallel) -> video_done
+          -> [ip_audit] -> pending_approval
+          -> approved/rejected -> scheduled -> published
+
+CONTENT-1.12 AC5: When a piece reaches pending_approval, trigger a Friday
+notification (anti-spam: max once per hour).
 
 Assembly (Creatomate) and automatic TTS are REMOVED from MVP v1.1.
 Voice is applied manually by Mauro.
@@ -28,17 +31,21 @@ MAX_CONCURRENT = 5  # max pieces in image_generating or video_generating
 
 TERMINAL_STATUSES = {
     "pending_approval", "approved", "rejected", "scheduled", "published",
-    "image_failed", "video_failed", "copy_failed",
+    "image_failed", "video_failed", "copy_failed", "publish_failed",
 }
 
 FAILED_STATUSES = {"image_failed", "video_failed", "copy_failed"}
 
-# Map: failed status → status to retry from
+# Map: failed status -> status to retry from
 RETRY_FROM: dict[str, str] = {
     "image_failed": "briefed",
     "video_failed": "image_done",
     "copy_failed": "image_done",
 }
+
+# Anti-spam: key used to track last pending_approval notification
+_CRON_PENDING_APPROVAL = "pending_approval_friday_notify"
+_NOTIFY_COOLDOWN_HOURS = 1
 
 
 # ── Helpers ────────────────────────────────────────────────────
@@ -76,7 +83,7 @@ def _set_status(piece_id: str, new_status: str) -> None:
         "updated_at": _now_iso(),
     }).eq("id", piece_id).execute()
 
-    print(f"[pipeline] {piece_id[:8]} {log_entry['from']} → {new_status}")
+    print(f"[pipeline] {piece_id[:8]} {log_entry['from']} -> {new_status}")
 
 
 def _update_piece(piece_id: str, fields: dict) -> None:
@@ -116,11 +123,95 @@ def can_start_production() -> bool:
         return False
 
 
+# ── Friday notification (pending_approval) ─────────────────────
+
+async def _check_last_pending_approval_notification() -> bool:
+    """
+    AC5 anti-spam: Return True if we CAN notify (last notification was more than 1h ago or never).
+    Uses cron_executions table with cron_name=pending_approval_friday_notify.
+    """
+    try:
+        from datetime import timedelta
+        cutoff = (_now() - timedelta(hours=_NOTIFY_COOLDOWN_HOURS)).isoformat()
+        result = await asyncio.to_thread(
+            lambda: supabase.table("cron_executions")
+            .select("id, started_at")
+            .eq("cron_name", _CRON_PENDING_APPROVAL)
+            .eq("status", "success")
+            .gte("started_at", cutoff)
+            .limit(1)
+            .execute()
+        )
+        # If there's a recent success entry, we're in cooldown -- don't notify
+        return len(result.data or []) == 0
+    except Exception as exc:
+        print(f"[pipeline] anti-spam check error (allowing notification): {exc}")
+        return True
+
+
+async def _record_pending_approval_notification() -> None:
+    """Insert a cron_executions record marking that we sent the notification."""
+    try:
+        await asyncio.to_thread(
+            lambda: supabase.table("cron_executions").insert({
+                "cron_name": _CRON_PENDING_APPROVAL,
+                "status": "success",
+                "finished_at": _now_iso(),
+                "duration_ms": 0,
+            }).execute()
+        )
+    except Exception as exc:
+        print(f"[pipeline] _record_pending_approval_notification error: {exc}")
+
+
+async def friday_notify_pending_approval() -> None:
+    """
+    CONTENT-1.12 AC5/AC6: Notify Mauro via WhatsApp that content is waiting approval.
+    Anti-spam: max once per hour.
+    """
+    try:
+        # Anti-spam check
+        can_notify = await _check_last_pending_approval_notification()
+        if not can_notify:
+            print("[pipeline] pending_approval notification skipped -- cooldown active")
+            return
+
+        # Count pieces in pending_approval
+        result = await asyncio.to_thread(
+            lambda: supabase.table("content_pieces")
+            .select("id", count="exact")
+            .eq("status", "pending_approval")
+            .execute()
+        )
+        count = result.count if result.count is not None else len(result.data or [])
+        if count == 0:
+            return
+
+        # Send WhatsApp notification
+        from runtime.config import settings
+        from runtime.integrations import zapi
+
+        phone = settings.mauro_whatsapp
+        if not phone:
+            print("[pipeline] MAURO_WHATSAPP not configured -- skip pending_approval notify")
+            return
+
+        msg = f"Zenya: {count} conteudo(s) aguardando aprovacao no Portal"
+        await asyncio.to_thread(lambda: zapi.send_text(phone, msg))
+        print(f"[pipeline] Friday notified: {count} piece(s) pending approval")
+
+        # Record so anti-spam kicks in for next hour
+        await _record_pending_approval_notification()
+
+    except Exception as exc:
+        print(f"[pipeline] friday_notify_pending_approval error (non-blocking): {exc}")
+
+
 # ── Step implementations ───────────────────────────────────────
 
 async def _step_image(piece: dict) -> bool:
     """
-    briefed → image_generating → image_done
+    briefed -> image_generating -> image_done
 
     Returns True on success, False on failure (status set to image_failed).
     """
@@ -167,11 +258,10 @@ async def _step_video(piece: dict) -> bool:
     theme = piece.get("theme", "")
 
     if not image_url:
-        print(f"[pipeline] video step skipped — no image_url for {piece_id}")
+        print(f"[pipeline] video step skipped -- no image_url for {piece_id}")
         return False
 
     try:
-        _set_status(piece_id, "video_generating")
         prompt = build_video_prompt(style, theme)
         video_url = await generate_video_for_piece(
             content_piece_id=piece_id,
@@ -226,7 +316,7 @@ async def _step_copy(piece: dict) -> bool:
 
 async def _step_parallel(piece: dict) -> bool:
     """
-    image_done → run video + copy in parallel → video_done.
+    image_done -> run video + copy in parallel -> video_done.
 
     Both tasks run concurrently. If video fails, status = video_failed.
     Copy failure is non-blocking (just logs, pipeline continues).
@@ -251,7 +341,7 @@ async def _step_parallel(piece: dict) -> bool:
 
     # If copy failed but video succeeded, log but continue (copy can be retried)
     if not copy_ok:
-        print(f"[pipeline] parallel: copy failed for {piece_id} — continuing pipeline")
+        print(f"[pipeline] parallel: copy failed for {piece_id} -- continuing pipeline")
         _log_pipeline_event(piece_id, {"event": "copy_warning", "message": "copy failed but pipeline continues"})
 
     _set_status(piece_id, "video_done")
@@ -261,7 +351,7 @@ async def _step_parallel(piece: dict) -> bool:
 async def _step_audit(piece: dict) -> None:
     """
     Run IP Auditor between video_done and pending_approval.
-    Never blocks — always advances.
+    Never blocks -- always advances.
     """
     try:
         from runtime.content.ip_auditor import audit_piece
@@ -281,26 +371,27 @@ async def advance_pipeline(piece: dict) -> None:
     """
     Advance a content_piece by one or more steps based on its current status.
 
-    This function is idempotent — calling it multiple times on the same piece
+    This function is idempotent -- calling it multiple times on the same piece
     in the same state is safe. It handles one "tick" of the pipeline.
 
     Flow:
-      briefed       → _step_image (sets image_generating → image_done)
-      image_done    → _step_parallel (copy + video) → video_done
-      video_done    → _step_audit → pending_approval
+      briefed       -> _step_image (sets image_generating -> image_done)
+      image_done    -> _step_parallel (copy + video) -> video_done
+      video_done    -> _step_audit -> pending_approval
+                       (triggers Friday notification via asyncio.create_task)
     """
     status = piece.get("status")
     piece_id = piece["id"]
 
     if status == "briefed":
         if not can_start_production():
-            print(f"[pipeline] concurrency limit reached — {piece_id} waiting")
+            print(f"[pipeline] concurrency limit reached -- {piece_id} waiting")
             return
         await _step_image(piece)
 
     elif status == "image_done":
         if not can_start_production():
-            print(f"[pipeline] concurrency limit reached — {piece_id} waiting")
+            print(f"[pipeline] concurrency limit reached -- {piece_id} waiting")
             return
         await _step_parallel(piece)
 
@@ -311,12 +402,14 @@ async def advance_pipeline(piece: dict) -> None:
         fresh = _get_piece(piece_id)
         if fresh and fresh.get("status") == "video_done":
             _set_status(piece_id, "pending_approval")
+            # CONTENT-1.12 AC5: Trigger Friday notification (non-blocking)
+            asyncio.create_task(friday_notify_pending_approval())
 
     elif status in TERMINAL_STATUSES:
-        print(f"[pipeline] {piece_id} is in terminal status '{status}' — skipping")
+        print(f"[pipeline] {piece_id} is in terminal status '{status}' -- skipping")
 
     else:
-        print(f"[pipeline] {piece_id} unknown status '{status}' — skipping")
+        print(f"[pipeline] {piece_id} unknown status '{status}' -- skipping")
 
 
 async def retry_piece(piece_id: str) -> dict:
@@ -346,7 +439,7 @@ async def retry_piece(piece_id: str) -> dict:
 
 async def tick_pipeline() -> dict:
     """
-    Cron tick — called every 5 minutes by the scheduler.
+    Cron tick -- called every 5 minutes by the scheduler.
 
     Advances all pieces stuck in non-terminal, non-generating states.
     Also polls generating pieces to check if external providers have finished.
@@ -370,7 +463,7 @@ async def tick_pipeline() -> dict:
             result["errors"].append({"id": piece["id"], "error": str(exc)})
 
     # 2. Poll generating pieces (for async providers like Kling)
-    # Currently Gemini/Veo are synchronous — this is a hook for future async providers
+    # Currently Gemini/Veo are synchronous -- this is a hook for future async providers
     generating = supabase.table("content_pieces").select("id, status").in_(
         "status", ["image_generating", "video_generating"]
     ).execute()
