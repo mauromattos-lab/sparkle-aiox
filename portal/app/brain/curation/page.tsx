@@ -26,6 +26,7 @@ interface CurationStats {
   pending: number
   approved: number
   rejected: number
+  review: number
   total: number
   approval_rate: number
 }
@@ -137,10 +138,14 @@ function StatsBar({ stats, loading }: { stats: CurationStats | null; loading: bo
 
   return (
     <div className="glass rounded-xl p-4 mb-6">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="flex flex-col items-center">
           <span className="text-2xl font-bold text-yellow-400">{stats.pending}</span>
           <span className="text-xs text-white/40 mt-1">Pendentes</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="text-2xl font-bold text-amber-400">{stats.review ?? 0}</span>
+          <span className="text-xs text-white/40 mt-1">Para Revisao</span>
         </div>
         <div className="flex flex-col items-center">
           <span className="text-2xl font-bold text-emerald-400">{stats.approved}</span>
@@ -179,6 +184,9 @@ function ChunkCard({
   const [expanded, setExpanded] = useState(false)
 
   const isPending = chunk.curation_status === 'pending'
+  const isReview = chunk.curation_status === 'review'
+  const canAct = isPending || isReview
+  const isAutoNote = chunk.curation_note?.startsWith('[auto]')
 
   return (
     <div className="glass rounded-xl p-4 transition-all duration-200 hover:border-white/12 group">
@@ -230,14 +238,18 @@ function ChunkCard({
 
       {/* Curation note (for already reviewed) */}
       {chunk.curation_note && (
-        <div className="mt-2 px-3 py-2 rounded-lg bg-white/3 border border-white/5">
-          <span className="text-[10px] text-white/40">Nota: </span>
+        <div className="mt-2 px-3 py-2 rounded-lg bg-white/3 border border-white/5 flex items-start gap-2">
+          {isAutoNote && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 whitespace-nowrap flex-shrink-0">
+              AUTO
+            </span>
+          )}
           <span className="text-xs text-white/60">{chunk.curation_note}</span>
         </div>
       )}
 
-      {/* Action buttons (only for pending) */}
-      {isPending && (
+      {/* Action buttons (for pending and review) */}
+      {canAct && (
         <div className="mt-4 flex items-center gap-2">
           <button
             onClick={() => onApprove(chunk.id)}
@@ -315,8 +327,8 @@ function ChunkCard({
         </div>
       )}
 
-      {/* Status badge for reviewed chunks */}
-      {!isPending && (
+      {/* Status badge for reviewed/approved/rejected chunks */}
+      {!canAct && (
         <div className="mt-3 flex items-center gap-2">
           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
             chunk.curation_status === 'approved'
@@ -341,7 +353,7 @@ function ChunkCard({
 export default function BrainCurationPage() {
   const [chunks, setChunks] = useState<BrainChunk[]>([])
   const [stats, setStats] = useState<CurationStats | null>(null)
-  const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected'>('pending')
+  const [filter, setFilter] = useState<'pending' | 'review' | 'approved' | 'rejected'>('pending')
   const [loading, setLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [actioningId, setActioningId] = useState<string | null>(null)
@@ -351,7 +363,7 @@ export default function BrainCurationPage() {
   const loadStats = useCallback(async () => {
     try {
       setStatsLoading(true)
-      const res = await fetch(`${RUNTIME_URL}/brain/curation/stats`)
+      const res = await fetch(`${RUNTIME_URL}/brain/curate/stats`)
       const data = await res.json()
       if (data.status === 'ok') {
         setStats(data)
@@ -468,6 +480,7 @@ export default function BrainCurationPage() {
       <div className="relative z-10 flex gap-2 mb-6">
         {([
           { key: 'pending' as const, label: 'Pendentes', count: stats?.pending },
+          { key: 'review' as const, label: 'Para Revisao', count: stats?.review },
           { key: 'approved' as const, label: 'Aprovados', count: stats?.approved },
           { key: 'rejected' as const, label: 'Rejeitados', count: stats?.rejected },
         ]).map(({ key, label, count }) => (
@@ -517,13 +530,18 @@ export default function BrainCurationPage() {
           <p className="text-white/40 text-sm font-medium">
             {filter === 'pending'
               ? 'Nenhum chunk pendente de revisao'
-              : filter === 'approved'
-                ? 'Nenhum chunk aprovado ainda'
-                : 'Nenhum chunk rejeitado'
+              : filter === 'review'
+                ? 'Nenhum chunk aguardando revisao humana'
+                : filter === 'approved'
+                  ? 'Nenhum chunk aprovado ainda'
+                  : 'Nenhum chunk rejeitado'
             }
           </p>
           {filter === 'pending' && (
             <p className="text-white/25 text-xs">O Brain esta limpo. Bom trabalho.</p>
+          )}
+          {filter === 'review' && (
+            <p className="text-white/25 text-xs">Nenhum chunk aguardando revisao humana.</p>
           )}
         </div>
       )}

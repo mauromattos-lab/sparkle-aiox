@@ -24,7 +24,7 @@ from runtime.db import supabase
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 20
+BATCH_SIZE = 50
 
 _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
