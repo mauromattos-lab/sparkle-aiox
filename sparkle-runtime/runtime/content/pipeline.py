@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from runtime.db import supabase
+from runtime.content import lore_injector
 
 # ── Constants ──────────────────────────────────────────────────
 
@@ -298,6 +299,44 @@ async def _step_copy(piece: dict) -> bool:
     # content_pieces uses creator_id not client_id; fall back to internal id for LLM billing
     client_id = piece.get("creator_id") or settings.sparkle_internal_client_id
 
+    # W1-CONTENT-1: Inject lore context before copy generation (non-blocking)
+    lore_ctx = ""
+    lore_chars = 0
+    lore_chunks_used = 0
+    lore_entries_used = 0
+    try:
+        brief = {"theme": theme, "mood": mood, "style": style, "platform": platform}
+        lore_ctx = await lore_injector.get_lore_context(brief)
+        if lore_ctx:
+            # Count approximate chunks and entries from the lore block
+            lore_chars = len(lore_ctx)
+            lore_chunks_used = lore_ctx.count("[LORE]")
+            lore_entries_used = lore_ctx.count("[PERSONAGEM]")
+            _log_pipeline_event(piece_id, {
+                "event": "lore_injected",
+                "chars_injected": lore_chars,
+                "chunks_used": lore_chunks_used,
+                "lore_entries_used": lore_entries_used,
+            })
+            print(f"[pipeline] lore_injected: {lore_chars}chars, {lore_chunks_used}chunks, {lore_entries_used}entries")
+        else:
+            _log_pipeline_event(piece_id, {
+                "event": "lore_injected",
+                "chars_injected": 0,
+                "chunks_used": 0,
+                "lore_entries_used": 0,
+            })
+            print(f"[pipeline] lore_injector returned empty — copy proceeds without lore")
+    except Exception as lore_exc:
+        print(f"[pipeline] lore_injector failed (non-blocking): {lore_exc}")
+        _log_pipeline_event(piece_id, {
+            "event": "lore_injected",
+            "chars_injected": 0,
+            "chunks_used": 0,
+            "lore_entries_used": 0,
+            "warning": f"lore_injector failed: {str(lore_exc)[:100]}",
+        })
+
     try:
         await apply_copy_to_piece(
             content_piece_id=piece_id,
@@ -307,6 +346,7 @@ async def _step_copy(piece: dict) -> bool:
             platform=platform,
             include_narration=False,  # MVP: no TTS, voice manual
             client_id=client_id,
+            lore_context=lore_ctx,
         )
         return True
 

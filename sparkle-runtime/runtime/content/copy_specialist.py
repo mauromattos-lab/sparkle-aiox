@@ -56,6 +56,7 @@ async def generate_copy(
     platform: str = "instagram",
     include_narration: bool = True,
     client_id: str = "sparkle-internal",
+    lore_context: str = "",
 ) -> dict:
     """
     Gera caption + voice_script para um content piece da Zenya.
@@ -67,6 +68,9 @@ async def generate_copy(
         platform: Plataforma alvo (default: instagram)
         include_narration: Se False, voice_script será sempre None
         client_id: Para logging de custo
+        lore_context: Bloco de lore canônico da Zenya para injeção no prompt (W1-CONTENT-1).
+                      Quando fornecido, é inserido no system prompt antes das instruções de geração.
+                      String vazia = comportamento original sem lore.
 
     Returns:
         dict com keys: caption (str), voice_script (str | None)
@@ -88,9 +92,20 @@ async def generate_copy(
         "Gere caption + voice script seguindo as regras do sistema."
     )
 
+    # W1-CONTENT-1: Inject lore context into system prompt if available
+    if lore_context:
+        effective_system = (
+            COPY_SYSTEM_PROMPT
+            + "\n\n=== LORE CANÔNICO DA ZENYA (use como guia de consistência) ===\n"
+            + lore_context
+            + "\n=== FIM DO LORE ===\n"
+        )
+    else:
+        effective_system = COPY_SYSTEM_PROMPT
+
     raw = await call_claude(
         prompt,
-        system=COPY_SYSTEM_PROMPT,
+        system=effective_system,
         model="claude-haiku-4-5-20251001",
         client_id=client_id,
         purpose="content_copy_generation",
@@ -126,9 +141,15 @@ async def apply_copy_to_piece(
     platform: str = "instagram",
     include_narration: bool = True,
     client_id: str = "sparkle-internal",
+    lore_context: str = "",
 ) -> dict:
     """
     Gera copy e atualiza content_pieces no Supabase.
+
+    Args:
+        content_piece_id: UUID do content_piece a atualizar
+        theme, mood, style, platform, include_narration, client_id: passados para generate_copy
+        lore_context: Bloco de lore canônico da Zenya (W1-CONTENT-1). Passado para generate_copy.
 
     Returns:
         dict com caption e voice_script aplicados
@@ -140,6 +161,7 @@ async def apply_copy_to_piece(
         platform=platform,
         include_narration=include_narration,
         client_id=client_id,
+        lore_context=lore_context,
     )
 
     supabase.table("content_pieces").update({
