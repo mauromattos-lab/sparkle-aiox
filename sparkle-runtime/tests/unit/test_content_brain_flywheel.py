@@ -307,8 +307,12 @@ class TestApprovalBrainHook:
             await approval._ingest_approved_to_brain(_make_piece())
 
     @pytest.mark.asyncio
-    async def test_ingest_approved_skips_empty_content(self):
-        """If all text fields are empty, ingest is skipped (no HTTP call)."""
+    async def test_ingest_approved_includes_metadata_header(self):
+        """Payload raw_content includes metadata header with piece_id and character."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok", "chunk_ids": []}
+
         with patch("runtime.content.approval.settings") as mock_settings, \
              patch("runtime.content.approval.supabase"), \
              patch("httpx.AsyncClient") as mock_client_cls:
@@ -318,14 +322,18 @@ class TestApprovalBrainHook:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.post = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
             mock_client_cls.return_value = mock_client
 
             from runtime.content import approval
-            empty_piece = _make_piece(theme="", caption="", voice_script="")
-            await approval._ingest_approved_to_brain(empty_piece)
+            piece = _make_piece(theme="Test tema", caption="Test caption", voice_script="Test script")
+            await approval._ingest_approved_to_brain(piece)
 
-        mock_client.post.assert_not_called()
+        payload = mock_client.post.call_args.kwargs.get("json") or {}
+        raw = payload.get("raw_content", "")
+        assert "content_piece_id=" in raw, "metadata header must include content_piece_id"
+        assert "character=" in raw, "metadata header must include character"
+        assert "Test tema" in raw, "raw_content must include theme"
 
 
 # ════════════════════════════════════════════════════════════════════════
