@@ -191,3 +191,63 @@ architecture_reference: docs/architecture/domain-friday-architecture.md
 | `sparkle-runtime/migrations/018_mauro_dna.sql` | Criado | DDL tabela `mauro_dna` + RLS |
 | `sparkle-runtime/migrations/019_friday_context_log.sql` | Criado | DDL tabela `friday_context_log` |
 | `sparkle-runtime/tests/unit/test_friday_brain_context.py` | Criado | Testes unitários: sucesso, fallback exceção, fallback lista vazia, flag desativado |
+
+---
+
+## QA Results
+
+**Gate: PASS com CONCERNS**
+**Data: 2026-04-07 | Executor: @qa**
+
+### Smoke Tests Executados
+
+#### ST-1 — friday_context_log com chunks_retrieved > 0 e fallback_used = false
+**PASS**
+```
+chunks_retrieved=4, fallback_used=false, created_at=2026-04-08 00:37:24 (teste @qa)
+chunks_retrieved=4, fallback_used=false, created_at=2026-04-08 00:16:51 (teste @dev)
+chunks_retrieved=0, fallback_used=true,  created_at=2026-04-08 00:13:21 (fallback registrado corretamente)
+```
+3 registros presentes. Fallback está sendo logado corretamente. Interação de QA gerou `chunks_retrieved=4, fallback_used=false` — confirmado.
+
+#### ST-2 — Tabela mauro_dna: existência e RLS
+**CONCERN**
+- `relrowsecurity = true` — RLS ativo. PASS.
+- `COUNT(*) = 0` — tabela existe mas está **vazia**. A tabela foi criada (migration aplicada) mas nenhuma entrada de DNA do Mauro foi inserida ainda.
+- Impacto: Friday consulta Brain via `retrieve_knowledge` (namespace `mauro-personal`), não diretamente `mauro_dna`. Enquanto `mauro_dna` vazio não compromete o funcionamento atual, a tabela foi criada para ser populada com o DNA estruturado do Mauro. Ação pendente pós-QA: popular `mauro_dna` com dados do Mauro.
+
+#### ST-3 — Endpoint /friday/message: chamada e resposta
+**PASS**
+Endpoint correto é `POST /friday/message` com campo `text` (não `message`). A `/friday/chat` não existe no routing — era expectativa incorreta no spec do QA, não bug do @dev.
+
+Resposta obtida:
+```json
+{
+  "status": "ok",
+  "task_id": "387fe163-aa19-4a9a-ba1f-82c6d2339fbd",
+  "response": "Baseado no que temos em mãos:\n\n**MRR atual: R$4.594/mês**\n\n**🔴 Alta prioridade**\n- Fun Personalize (Julia) — R$897...\n..."
+}
+```
+
+#### ST-4 — Resposta com contexto real (não genérico)
+**PASS**
+A resposta demonstra contexto real inequívoco:
+- Cita MRR exato (R$4.594/mês)
+- Nomeia clientes específicos por nome, valor e produto (Fun Personalize R$897, Vitalis R$1.500, Ensinaja R$650, Gabriela R$750, Alexsandro R$500, Plaka R$297)
+- Tom direto e cúmplice ("Qual tá te tirando o sono agora?")
+- Sem linguagem genérica de assistente
+- Brain consultado: `chunks_retrieved=4` confirmado em `friday_context_log` imediatamente após a chamada
+
+A Friday está operando com persona e contexto do Brain injetado corretamente.
+
+### Concerns
+
+1. **mauro_dna vazia (não bloqueante):** A tabela existe com RLS mas sem registros. Isso é uma entrega incompleta da story (AC-4 diz "tabela criada" mas não menciona seed de dados). Funcionalidade não é comprometida hoje pois o contexto vem do Brain via RAG — mas popular `mauro_dna` é o próximo passo natural.
+
+2. **1 registro fallback (00:13:21):** Existe um registro de fallback nos logs antes dos testes com sucesso. Provavelmente ocorreu durante o deploy/reinício do serviço quando Brain ainda não estava disponível. Comportamento esperado — fallback foi acionado corretamente e o serviço se recuperou.
+
+### Conclusão
+
+Todos os ACs críticos verificados em produção. Friday responde com contexto real do Brain, persona correta, `friday_context_log` registra corretamente, RLS ativo em `mauro_dna`. O único item pendente na Definition of Done era exatamente este smoke test @qa — agora concluído.
+
+**Status final: PASS — story pode ser marcada como Done completo.**

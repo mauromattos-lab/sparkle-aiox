@@ -2,7 +2,8 @@
 epic: EPIC-WAVE1
 story: W1-CONTENT-1
 title: Conteúdo — Geração com Lore da Zenya Injetado no Prompt
-status: Ready for Dev
+status: Done
+completed_at: 2026-04-07
 priority: Alta
 executor: "@dev -> @devops -> @qa"
 sprint: Wave 1 — Domain Activation (2026-04-07+)
@@ -285,3 +286,38 @@ Esta story habilita o flywheel de forma indireta: conteúdo gerado com lore tend
 
 *@dev (Nox) — Wave 1, Sprint EPIC-WAVE1*
 *Sparkle AIOX Story W1-CONTENT-1 — 2026-04-07*
+
+---
+
+## QA Results
+
+**Gate: PASS**
+
+**Validado por:** @qa — 2026-04-08
+**Ambiente:** Produção (VPS 187.77.37.88 + Supabase gqhdspayjtiijcqklbys)
+
+### Checklist de evidências
+
+| Verificação | Resultado | Evidência |
+|-------------|-----------|-----------|
+| Migration 018 aplicada (`character_slug` em `character_lore`) | PASS | `information_schema.columns` confirma coluna `character_slug` na tabela. Migration `20260405201800` aplicada (018_character_lore_slug.sql presente no VPS). |
+| `lore_injected` no pipeline_log com `chars_injected > 0` | PASS | 3 peças confirmadas no banco com `event=lore_injected`, `chars_injected=1287`, `chunks_used=3`, `lore_entries_used=2` |
+| `lore_injector.py` existe em produção | PASS | Arquivo presente em `/opt/sparkle-aiox/sparkle-runtime/runtime/content/lore_injector.py` |
+| IP Auditor retorna COMPATIVEL nas 3 peças geradas | PASS | Todas as 3 peças (autoconhecimento, tecnologia, cotidiano) têm `lore_compliance=COMPATIVEL` no `pipeline_log.ip_audit` — validação cruzada confirmada |
+| Unit tests `test_lore_injector.py` | PASS | **6/6 passed** — lore disponível, Brain indisponível, character_lore vazio, timeout, tema vazio, max_chars |
+| Unit tests `test_copy_specialist_lore.py` | PASS | **4/4 passed** — lore no prompt, sem lore (comportamento original), lore vazio, caption+voice_script retornados |
+| Total unit tests W1-CONTENT-1 | PASS | **10/10 passed** em 1.36s |
+| Comportamento não-bloqueante do lore_injector | PASS | Confirmado via testes de graceful degradation — falha em Brain ou character_lore retorna `""` sem exceção |
+
+### Detalhes das 3 peças de teste em produção
+
+| Peça | Tema | lore_injected | chars_injected | IP Audit |
+|------|------|---------------|----------------|----------|
+| `2e2adf04` | autoconhecimento e IA | sim | 1287 | COMPATIVEL |
+| `94691c14` | tecnologia e criatividade | sim | 1287 | COMPATIVEL |
+| `0a968542` | cotidiano e produtividade com IA | sim | 1287 | COMPATIVEL |
+
+### Pendência (não bloqueante para PASS)
+
+- T7: `work_log.md` não atualizado pelo @dev — menor, não impacta funcionalidade.
+- AC-6 aprovação do Mauro: pendente por definição (gate de negócio, não técnico).

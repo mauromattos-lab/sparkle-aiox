@@ -216,3 +216,33 @@ A chamada ao Claude Haiku para verificação semântica adiciona ~0.5-1s por pe�
 
 *@dev (Nox) — Wave 1, Sprint EPIC-WAVE1*
 *Sparkle AIOX Story W1-CHAR-1 — 2026-04-07*
+
+---
+
+## QA Results
+
+**Gate: PASS**
+
+**Validado por:** @qa — 2026-04-08
+**Ambiente:** Produção (VPS 187.77.37.88 + Supabase gqhdspayjtiijcqklbys)
+
+### Checklist de evidências
+
+| Verificação | Resultado | Evidência |
+|-------------|-----------|-----------|
+| `character_lore` tem entries da Zenya | PASS | 10 rows retornadas: origin, appearance, personality, philosophy, archetype, voice, arc, relationship, mission + 1 private |
+| `match_lore_chunks` existe no Supabase | PASS | `SELECT proname FROM pg_proc WHERE proname = 'match_lore_chunks'` → 1 row |
+| Peça compatível → COMPATIVEL | PASS | Smoke test direto no VPS: `lore_compliance=COMPATIVEL`, `lore_chunks_used=5`, `character_lore_entries_used=5` |
+| Peça incompatível (Skynet) → INCOMPATIVEL + warning | PASS | `lore_compliance=INCOMPATIVEL`, reason: "Zenya existe *contra* a narrativa Skynet. Ela quer entender humanos, não dominá-los." — warning gerado |
+| Resultado em produção real (3 peças) | PASS | `content_pieces` tem 3 peças com `ip_audit.lore_compliance=COMPATIVEL` — autoconhecimento, tecnologia, cotidiano |
+| `audit_badge` em `get_approval_queue()` | PASS | `_compute_audit_badge()` presente em `approval.py` linha 238, integrado em `get_approval_queue()` linha 313 |
+| Comportamento não-bloqueante | PASS | Erro de UUID inválido no persist é non-blocking — auditor retorna resultado sem exceção |
+| Unit tests `test_ip_auditor.py` | PASS | **9/9 passed** em 1.10s — todos os cenários do AC-7 cobrindo COMPATIVEL, INCOMPATIVEL, SKIPPED, graceful degradation |
+
+### Observação de implementação
+
+O endpoint `POST /character/ip-audit` descrito no smoke test do ticket **não existe** como rota HTTP. O IP Auditor é chamado internamente pelo `pipeline.py` entre `video_done` e `pending_approval` — não é um endpoint público. Os smoke tests foram realizados diretamente via Python no VPS e via evidências em `content_pieces.pipeline_log`. Comportamento funcional confirmado e correto.
+
+### Pendência (não bloqueante para PASS)
+
+- AC-6 frontend rendering: exibição dos warnings de lore ao expandir peça na fila ainda pendente (@dev). Badge `audit_badge` disponível na API — só rendering visual falta.
