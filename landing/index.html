@@ -649,93 +649,118 @@
     }
     .problem-item .icon { flex-shrink: 0; font-size: 16px; }
 
+    /* ─── IMAGE-FIRST CARD (componente unificado) ───────── */
+
+    /* grid compartilhado — 4 col desktop, 2 tablet, 1 mobile */
+    .img-card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--s3);
+      margin-top: var(--s5);
+    }
+    @media (max-width: 1024px) { .img-card-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 480px)  { .img-card-grid { grid-template-columns: 1fr; } }
+
+    .img-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      transition: var(--t-base);
+      display: flex;
+      flex-direction: column;
+      cursor: default;
+    }
+    .img-card:hover {
+      border-color: var(--border-blue);
+      transform: translateY(-5px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), var(--blue-glow);
+    }
+
+    /* thumbnail sangrando no topo */
+    .img-card-thumb-wrap {
+      width: 100%;
+      height: 200px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .img-card-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+      transition: transform 0.5s ease;
+      filter: brightness(0.92);
+    }
+    .img-card:hover .img-card-thumb {
+      transform: scale(1.06);
+      filter: brightness(1);
+    }
+
+    /* corpo do card */
+    .img-card-body {
+      padding: 20px 22px 22px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: var(--s1);
+    }
+    .img-card-tag {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 4px;
+    }
+    .img-card-title {
+      font-family: var(--font-head);
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--white);
+      line-height: 1.3;
+    }
+    .img-card-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+      flex: 1;
+      margin-top: 4px;
+    }
+    .img-card-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--blue);
+      transition: var(--t-fast);
+      margin-top: var(--s2);
+      text-decoration: none;
+    }
+    .img-card-link:hover {
+      gap: 9px;
+      color: #7dd3fc;
+    }
+    .img-card-link::after {
+      content: '→';
+      transition: transform 0.2s ease;
+    }
+    .img-card:hover .img-card-link::after {
+      transform: translateX(3px);
+    }
+
     /* ─── COMO ELA SE COMUNICA ──────────────────────────── */
     #comunica {
       padding: var(--s7) 0;
       text-align: center;
     }
 
-    .comunica-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--s3);
-      margin-top: var(--s4);
-      text-align: left;
-    }
-    @media (max-width: 768px) {
-      .comunica-grid { grid-template-columns: 1fr; }
-    }
-
-    .comunica-card {
-      display: flex;
-      gap: var(--s2);
-      align-items: center;
-      padding: var(--s3);
-      background: var(--bg-card);
-      border: 1px solid var(--border-blue);
-      border-radius: var(--r-md);
-      transition: var(--t-base);
-    }
-    .comunica-card:hover {
-      border-color: var(--border-hover);
-      box-shadow: var(--blue-glow);
-    }
-    .comunica-card img {
-      width: 72px;
-      height: 72px;
-      border-radius: var(--r-sm);
-      object-fit: cover;
-      object-position: center top;
-      flex-shrink: 0;
-    }
-    .comunica-card-text h3 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 4px;
-      color: var(--white);
-    }
-    .comunica-card-text p {
-      font-size: 14px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    /* ─── O QUE ELA FAZ (ícones) ────────────────────────── */
+    /* ─── O QUE ELA FAZ ─────────────────────────────────── */
     #funciona {
       padding: var(--s7) 0;
       text-align: center;
-    }
-
-    .funciona-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: var(--s3);
-      margin-top: var(--s4);
-    }
-    @media (max-width: 1024px) { .funciona-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 480px)  { .funciona-grid { grid-template-columns: 1fr; } }
-
-    .funciona-card {
-      display: flex;
-      flex-direction: column;
-      gap: var(--s2);
-      text-align: left;
-    }
-    .funciona-icon {
-      width: 40px;
-      height: 40px;
-      color: var(--blue);
-      flex-shrink: 0;
-    }
-    .funciona-card h3 {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--white);
-    }
-    .funciona-card p {
-      font-size: 14px;
-      color: var(--muted);
-      line-height: 1.5;
     }
 
     /* ─── CTA INTERMEDIÁRIO ─────────────────────────────── */
@@ -1241,35 +1266,56 @@
       <span class="section-label">Como ela se comunica</span>
       <h2 id="comunica-heading" class="section-title">Parece humano.<br>Porque foi pensado assim.</h2>
       <p class="section-sub">A Zenya não é um robô frio. Ela se comunica do jeito que seus clientes preferem.</p>
-      <div class="comunica-grid reveal">
-        <div class="comunica-card">
-          <img src="img/zenya-card1.png" alt="Zenya respondendo em voz e texto" loading="lazy" />
-          <div class="comunica-card-text">
-            <h3>Responde em texto e áudio</h3>
-            <p>Seus clientes escolhem como preferem ser atendidos.</p>
+      <div class="img-card-grid reveal">
+
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card1.png" alt="Zenya respondendo em voz e texto" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Comunicação</span>
+            <h3 class="img-card-title">Responde em texto e áudio</h3>
+            <p class="img-card-desc">Seus clientes escolhem como preferem ser atendidos — mensagem ou voz.</p>
+            <a href="#demo" class="img-card-link">Ver exemplo</a>
           </div>
         </div>
-        <div class="comunica-card">
-          <img src="img/zenya-card2.png" alt="Zenya digitando e respondendo" loading="lazy" />
-          <div class="comunica-card-text">
-            <h3>Aparece digitando e gravando</h3>
-            <p>A Zenya indica que está respondendo — exatamente como uma pessoa.</p>
+
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card2.png" alt="Zenya digitando e respondendo" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Presença</span>
+            <h3 class="img-card-title">Aparece digitando e gravando</h3>
+            <p class="img-card-desc">Indica que está respondendo — exatamente como uma pessoa real faria.</p>
+            <a href="#demo" class="img-card-link">Ver exemplo</a>
           </div>
         </div>
-        <div class="comunica-card">
-          <img src="img/zenya-card3.png" alt="Zenya com delay humanizado" loading="lazy" />
-          <div class="comunica-card-text">
-            <h3>Aguarda antes de responder</h3>
-            <p>Um delay natural antes de responder. Parece humano porque foi pensado assim.</p>
+
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card3.png" alt="Zenya com delay humanizado" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Humanização</span>
+            <h3 class="img-card-title">Aguarda antes de responder</h3>
+            <p class="img-card-desc">Um delay natural antes de cada resposta. Parece humano porque foi pensado assim.</p>
+            <a href="#demo" class="img-card-link">Ver exemplo</a>
           </div>
         </div>
-        <div class="comunica-card">
-          <img src="img/zenya-card4.png" alt="Zenya enviando arquivos" loading="lazy" />
-          <div class="comunica-card-text">
-            <h3>Envia e recebe arquivos</h3>
-            <p>PDF, foto, áudio, vídeo. Tudo que seu cliente precisar enviar ou receber.</p>
+
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card4.png" alt="Zenya enviando arquivos" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Arquivos</span>
+            <h3 class="img-card-title">Envia e recebe arquivos</h3>
+            <p class="img-card-desc">PDF, foto, áudio, vídeo. Tudo que seu cliente precisar enviar ou receber.</p>
+            <a href="#demo" class="img-card-link">Ver exemplo</a>
           </div>
         </div>
+
       </div>
     </div>
   </section>
@@ -1279,50 +1325,54 @@
     <div class="container">
       <span class="section-label">O que ela faz por você</span>
       <h2 id="funciona-heading" class="section-title">Tudo que você precisaria<br>de uma secretária</h2>
-      <div class="funciona-grid reveal">
+      <div class="img-card-grid reveal">
 
-        <!-- Agendamento -->
-        <div class="funciona-card glass-card">
-          <svg class="funciona-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
-          </svg>
-          <h3>Agendamento automático</h3>
-          <p>Clientes marcam horário direto pelo WhatsApp, sem você intervir.</p>
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card1.png" alt="Agendamento automático" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Agenda</span>
+            <h3 class="img-card-title">Agendamento automático</h3>
+            <p class="img-card-desc">Clientes marcam horário direto pelo WhatsApp, sem você intervir.</p>
+            <a href="https://wa.me/5512982201239?text=Oi!+Vi+a+Zenya+e+quero+saber+mais" class="img-card-link" target="_blank" rel="noopener">Saiba mais</a>
+          </div>
         </div>
 
-        <!-- Cobrança -->
-        <div class="funciona-card glass-card">
-          <svg class="funciona-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-            <line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-          <h3>Cobrança sem esforço</h3>
-          <p>A Zenya envia cobranças e confirma pagamentos automaticamente.</p>
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card2.png" alt="Cobrança automática" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Financeiro</span>
+            <h3 class="img-card-title">Cobrança sem esforço</h3>
+            <p class="img-card-desc">A Zenya envia cobranças e confirma pagamentos automaticamente.</p>
+            <a href="https://wa.me/5512982201239?text=Oi!+Vi+a+Zenya+e+quero+saber+mais" class="img-card-link" target="_blank" rel="noopener">Saiba mais</a>
+          </div>
         </div>
 
-        <!-- Atendimento 24h -->
-        <div class="funciona-card glass-card">
-          <svg class="funciona-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <h3>Atendimento 24 horas</h3>
-          <p>Nenhuma mensagem fica sem resposta. Nem de madrugada, nem no final de semana.</p>
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-hero.png" alt="Atendimento 24 horas" loading="lazy" style="object-position: center 20%;" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Disponibilidade</span>
+            <h3 class="img-card-title">Atendimento 24 horas</h3>
+            <p class="img-card-desc">Nenhuma mensagem fica sem resposta. Nem de madrugada, nem no final de semana.</p>
+            <a href="https://wa.me/5512982201239?text=Oi!+Vi+a+Zenya+e+quero+saber+mais" class="img-card-link" target="_blank" rel="noopener">Saiba mais</a>
+          </div>
         </div>
 
-        <!-- Relatórios -->
-        <div class="funciona-card glass-card">
-          <svg class="funciona-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <line x1="18" y1="20" x2="18" y2="10"/>
-            <line x1="12" y1="20" x2="12" y2="4"/>
-            <line x1="6" y1="20" x2="6" y2="14"/>
-            <path d="M2 20h20"/>
-          </svg>
-          <h3>Relatórios de conversa</h3>
-          <p>Veja o que seus clientes perguntam e acompanhe o atendimento de perto.</p>
+        <div class="img-card">
+          <div class="img-card-thumb-wrap">
+            <img class="img-card-thumb" src="img/zenya-card4.png" alt="Relatórios de conversa" loading="lazy" />
+          </div>
+          <div class="img-card-body">
+            <span class="img-card-tag">Insights</span>
+            <h3 class="img-card-title">Relatórios de conversa</h3>
+            <p class="img-card-desc">Veja o que seus clientes perguntam e acompanhe o atendimento de perto.</p>
+            <a href="https://wa.me/5512982201239?text=Oi!+Vi+a+Zenya+e+quero+saber+mais" class="img-card-link" target="_blank" rel="noopener">Saiba mais</a>
+          </div>
         </div>
 
       </div>
