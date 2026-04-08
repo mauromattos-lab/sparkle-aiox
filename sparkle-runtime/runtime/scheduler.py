@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (14 total):
+Jobs (15 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
@@ -18,6 +18,7 @@ Jobs (14 total):
 - brain_archival          : todo dia às 3h de Brasília (B3-05)
 - brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
 - client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
+- client_health_weekly    : toda segunda às 9h de Brasília (W2-CLC-1)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -134,6 +135,27 @@ async def _run_brain_curate() -> None:
 
 async def _run_client_reports_monthly() -> None:
     await _run_and_execute("client_reports_bulk", priority=6)
+
+
+# ── W2-CLC-1: Client Health Weekly Score ────────────────────
+
+async def _run_client_health_weekly() -> None:
+    """
+    Recalcula Health Score de todos os clientes ativos.
+    Roda toda segunda às 09h BRT. Usa calculator diretamente (sem task queue).
+    """
+    try:
+        from runtime.client_health.calculator import calculate_all_health_scores
+        results = await calculate_all_health_scores()
+        healthy = sum(1 for r in results if r.get("classification") == "healthy")
+        at_risk = sum(1 for r in results if r.get("classification") == "at_risk")
+        critical = sum(1 for r in results if r.get("classification") == "critical")
+        print(
+            f"[scheduler] client_health_weekly: {len(results)} clientes — "
+            f"{healthy} healthy, {at_risk} at_risk, {critical} critical"
+        )
+    except Exception as e:
+        print(f"[scheduler] client_health_weekly: erro — {e}")
 
 
 # ── SYS-1.6: Brain Weekly Digest ────────────────────────────
@@ -431,6 +453,14 @@ def start_scheduler() -> None:
         _run_content_weekly_batch,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=0, timezone=_TZ),
         id="content_weekly_batch",
+        replace_existing=True,
+    )
+
+    # W2-CLC-1: client_health_weekly toda segunda às 9h de Brasília
+    _scheduler.add_job(
+        _run_client_health_weekly,
+        trigger=CronTrigger(day_of_week="mon", hour=9, minute=0, timezone=_TZ),
+        id="client_health_weekly",
         replace_existing=True,
     )
 

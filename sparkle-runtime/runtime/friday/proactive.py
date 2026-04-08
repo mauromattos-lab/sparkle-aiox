@@ -362,9 +362,278 @@ async def _eval_idle_detection() -> str | None:
     return None
 
 
+# ── W2-CLC-1 / W2-FRIDAY-2: Business triggers ───────────────
+
+async def _eval_client_health_alert() -> str | None:
+    """
+    Alert when a client's health score drops below 60.
+    Reads from client_health WHERE score < 60 AND alert_sent = false.
+    Marks alert_sent = true after sending.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("client_health")
+            .select("id,client_id,score,classification,signals")
+            .lt("score", 60)
+            .eq("alert_sent", False)
+            .gte("calculated_at", cutoff)
+            .order("score")
+            .limit(3)
+            .execute()
+        )
+        clients_at_risk = res.data or []
+        if not clients_at_risk:
+            return None
+
+        # Get client names from zenya_clients
+        client_ids = [str(r["client_id"]) for r in clients_at_risk]
+        names_res = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("id,business_name")
+            .in_("id", client_ids)
+            .execute()
+        )
+        names_map = {str(r["id"]): r["business_name"] for r in (names_res.data or [])}
+
+        parts = []
+        ids_to_update = []
+        for row in clients_at_risk:
+            cid = str(row["client_id"])
+            name = names_map.get(cid, f"cliente {cid[:8]}")
+            score = row["score"]
+            classification = row.get("classification", "crítico")
+            signals = row.get("signals") or {}
+
+            # Find weakest signal
+            weakest_signal = ""
+            lowest = 100
+            for sig_name, sig_data in signals.items():
+                if isinstance(sig_data, dict):
+                    val = sig_data.get("weighted_score", sig_data.get("raw", 100))
+                else:
+                    val = 100
+                if val < lowest:
+                    lowest = val
+                    weakest_signal = sig_name
+
+            parts.append(f"• *{name}* — score {score} ({classification})"
+                         + (f", sinal fraco: {weakest_signal}" if weakest_signal else ""))
+            ids_to_update.append(row["id"])
+
+        # Mark alert_sent = true for all found records
+        if ids_to_update:
+            await asyncio.to_thread(
+                lambda: supabase.table("client_health")
+                .update({"alert_sent": True})
+                .in_("id", [str(i) for i in ids_to_update])
+                .execute()
+            )
+
+        if len(parts) == 1:
+            row = clients_at_risk[0]
+            cid = str(row["client_id"])
+            name = names_map.get(cid, "cliente")
+            score = row["score"]
+            return (
+                f"Mauro, o Health Score de *{name}* caiu para {score} — atenção necessária. "
+                f"Quer que eu sugira uma abordagem de retenção?"
+            )
+
+        summary = "\n".join(parts)
+        return (
+            f"Mauro, {len(parts)} clientes com Health Score crítico (<60):\n{summary}\n\n"
+            f"Quer iniciar ações de retenção?"
+        )
+
+    except Exception as e:
+        logger.error("proactive: _eval_client_health_alert failed: %s", e)
+        return None
+
+
+async def _eval_follow_up_due() -> str | None:
+    """
+    Alert when leads haven't been contacted past their threshold:
+    - temperature='alto': 2 days without contact
+    - temperature='medio': 5 days without contact
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        overdue_leads = []
+
+        for temperature, threshold_days in [("alto", 2), ("medio", 5)]:
+            cutoff = (now - timedelta(days=threshold_days)).isoformat()
+            res = await asyncio.to_thread(
+                lambda t=temperature, c=cutoff: supabase.table("leads")
+                .select("id,name,business_name,temperature,last_contact_at,updated_at")
+                .eq("temperature", t)
+                .not_.in_("status", ["fechado", "perdido"])
+                .lt("last_contact_at", c)
+                .execute()
+            )
+            rows = res.data or []
+            for row in rows:
+                contact_at = row.get("last_contact_at") or row.get("updated_at")
+                if contact_at:
+                    ts = datetime.fromisoformat(contact_at.replace("Z", "+00:00"))
+                    days_since = (now - ts).days
+                    overdue_leads.append({
+                        **row,
+                        "days_since": days_since,
+                        "threshold": threshold_days,
+                    })
+
+        if not overdue_leads:
+            return None
+
+        overdue_leads.sort(key=lambda x: x.get("days_since", 0), reverse=True)
+        items = []
+        for lead in overdue_leads[:5]:
+            name = lead.get("name") or lead.get("business_name") or "Lead"
+            temp = lead.get("temperature", "?")
+            days = lead.get("days_since", "?")
+            items.append(f"• *{name}* ({temp}) — {days} dias sem contato")
+
+        summary = "\n".join(items)
+        total = len(overdue_leads)
+        return (
+            f"Mauro, {total} lead(s) aguardando follow-up:\n{summary}\n\n"
+            f"Quer que eu prepare mensagens de recontato?"
+        )
+
+    except Exception as e:
+        logger.error("proactive: _eval_follow_up_due failed: %s", e)
+        return None
+
+
+async def _eval_payment_risk() -> str | None:
+    """
+    Alert on payment risk. Requires payment_due_day / monthly_fee columns in zenya_clients.
+    Currently those columns don't exist — returns None gracefully until schema is updated.
+    """
+    try:
+        # Check if payment columns exist by querying with them
+        res = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("id,business_name,payment_due_day,monthly_fee")
+            .eq("active", True)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return None
+
+        # If payment_due_day not present in result, schema not ready
+        row = res.data[0]
+        if "payment_due_day" not in row or row.get("payment_due_day") is None:
+            return None
+
+        now = datetime.now(timezone.utc)
+        today_day = now.day
+        overdue = []
+
+        clients_res = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("id,business_name,payment_due_day,monthly_fee")
+            .eq("active", True)
+            .not_.is_("payment_due_day", "null")
+            .execute()
+        )
+        for client in (clients_res.data or []):
+            due_day = client.get("payment_due_day")
+            if due_day is None:
+                continue
+            # Days since due (positive = overdue)
+            days_overdue = today_day - due_day
+            if days_overdue < 0:
+                # Due day is next month
+                days_overdue = today_day + (30 - due_day)
+            if days_overdue >= 3:
+                fee = client.get("monthly_fee") or "?"
+                overdue.append({
+                    "name": client.get("business_name", "cliente"),
+                    "days": days_overdue,
+                    "fee": fee,
+                })
+
+        if not overdue:
+            return None
+
+        parts = [f"• *{o['name']}* — R${o['fee']} vencido há {o['days']} dias" for o in overdue]
+        return (
+            f"Mauro, pagamento(s) em atraso:\n" + "\n".join(parts) +
+            "\n\nQuer que eu prepare uma mensagem de cobrança?"
+        )
+
+    except Exception as e:
+        logger.error("proactive: _eval_payment_risk failed: %s", e)
+        return None
+
+
+async def _eval_workflow_blocked() -> str | None:
+    """
+    Alert when an onboarding workflow is stuck for 4+ hours.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("onboarding_workflows")
+            .select("id,client_id,phase,status,updated_at")
+            .not_.in_("status", ["completed", "cancelled"])
+            .lt("updated_at", cutoff)
+            .not_.is_("phase", "null")
+            .order("updated_at")
+            .limit(5)
+            .execute()
+        )
+        blocked = res.data or []
+        if not blocked:
+            return None
+
+        # Fetch client names
+        client_ids = [r["client_id"] for r in blocked]
+        names_res = await asyncio.to_thread(
+            lambda: supabase.table("zenya_clients")
+            .select("client_id,business_name")
+            .in_("client_id", client_ids)
+            .execute()
+        )
+        names_map = {r["client_id"]: r["business_name"] for r in (names_res.data or [])}
+
+        now = datetime.now(timezone.utc)
+        parts = []
+        for row in blocked:
+            cid = row["client_id"]
+            name = names_map.get(cid, f"cliente {cid[:8]}")
+            phase = row.get("phase", "?")
+            updated_raw = row.get("updated_at", "")
+            try:
+                updated_ts = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+                hours_stuck = round((now - updated_ts).total_seconds() / 3600, 1)
+            except Exception:
+                hours_stuck = "?"
+            parts.append(f"• *{name}* parado em '{phase}' há {hours_stuck}h")
+
+        summary = "\n".join(parts)
+        return (
+            f"Mauro, {len(parts)} onboarding(s) travado(s):\n{summary}\n\n"
+            f"Quer que eu investigue o que está bloqueando?"
+        )
+
+    except Exception as e:
+        logger.error("proactive: _eval_workflow_blocked failed: %s", e)
+        return None
+
+
 # ── Main check ───────────────────────────────────────────────
 
 _TRIGGER_EVALUATORS: list[tuple[str, callable]] = [
+    # Business triggers (priority order per W2-FRIDAY-2)
+    ("payment_risk", _eval_payment_risk),
+    ("client_health_alert", _eval_client_health_alert),
+    ("workflow_blocked", _eval_workflow_blocked),
+    ("follow_up_due", _eval_follow_up_due),
+    # Technical triggers
     ("morning_checkin", _eval_morning_checkin),
     ("afternoon_nudge", _eval_afternoon_nudge),
     ("eod_wrap", _eval_eod_wrap),
