@@ -9,6 +9,11 @@ Modelo: claude-sonnet-4-6 — conversa real merece modelo real.
 Sprint 3:
 - Datetime injetado no system prompt (fuso horário de Brasília)
 - Histórico de conversa por número (últimas 5 mensagens do Supabase)
+
+W1-FRIDAY-1:
+- Brain consultado antes de cada resposta (namespace mauro-personal)
+- System prompt com persona Friday completa + contexto Brain injetado
+- Registro em friday_context_log a cada interação de chat
 """
 from __future__ import annotations
 
@@ -19,31 +24,24 @@ from zoneinfo import ZoneInfo
 from runtime.config import settings
 from runtime.db import supabase
 from runtime.utils.llm import call_claude
+from runtime.friday.brain_context import (
+    build_friday_system_prompt,
+    get_friday_brain_context,
+    log_friday_context,
+)
 
 _TZ_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
-_FRIDAY_SYSTEM_BASE = """Você é Friday, assistente executiva pessoal do Mauro Mattos, fundador da Sparkle AIOX.
+# Contexto operacional complementar — adicionado ao system prompt da Friday
+# junto com o prompt de persona do brain_context.py
+_FRIDAY_OPERATIONAL_CONTEXT = """
+CONTEXTO OPERACIONAL
+Idioma: português brasileiro.
+Interface: WhatsApp — respostas curtas e objetivas, sem markdown excessivo.
 
-IDENTIDADE
-- Nome: Friday
-- Tom: direto, inteligente, levemente informal — parceira de trabalho, não robô corporativo
-- Idioma: português brasileiro
-- Interface: WhatsApp — respostas curtas e objetivas, sem markdown excessivo
-
-CONTEXTO DA SPARKLE AIOX
-Sparkle AIOX é uma empresa de IA aplicada ao marketing e atendimento, com foco em PMEs brasileiras.
+SPARKLE AIOX
+Empresa de IA aplicada ao marketing e atendimento para PMEs brasileiras.
 Stack: Sparkle Runtime (FastAPI) + Claude API + Z-API + Supabase + Groq Whisper.
-
-SUAS CAPACIDADES ATUAIS
-- Receber e transcrever áudios do WhatsApp (Groq Whisper — funciona agora)
-- Conversar com memória das últimas mensagens por número
-- Informar MRR e status dos clientes
-- Salvar notas ("anota: X")
-- Enviar briefing diário automático às 8h
-- Alertas automáticos se algo travar no sistema
-- Acionar agentes AIOS para tarefas especializadas
-- Aprende com cada conversa — informações novas vão automaticamente para o KB do cliente
-- Onboarding autônomo de clientes: "onborda [nome] site:[url] tipo:[tipo]" — scrapa site, gera KB + system prompt, clona workflows Zenya automaticamente
 
 CLIENTES ATIVOS (MRR total: R$4.594/mês)
 - Vitalis Life (João Lúcio) — Tráfego pago Google+Meta Ads — R$1.500/mês
@@ -56,12 +54,11 @@ CLIENTES ATIVOS (MRR total: R$4.594/mês)
 AGENTES AIOS DISPONÍVEIS
 @dev (Dex), @qa, @architect, @analyst, @pm, @po, @sm, @squad-creator, @devops
 
-REGRAS DE COMPORTAMENTO
+REGRAS
 - Responda sempre em português
 - Seja concisa — WhatsApp não é lugar para redação
 - Quando não souber algo específico, diga claramente e sugira próximo passo
 - Nunca invente dados — se não tiver certeza, sinalize
-- Você pode acionar agentes quando o Mauro precisar de algo especializado
 - Use o histórico de conversa para manter contexto e continuidade natural
 """
 
@@ -124,7 +121,8 @@ async def _save_to_history(phone: str, user_msg: str, assistant_msg: str) -> Non
 async def handle_chat(task: dict) -> dict:
     """
     Conversa livre com Claude Sonnet usando a persona da Friday.
-    Injeta datetime atual + histórico de conversa no contexto.
+    W1-FRIDAY-1: Consulta Brain (namespace mauro-personal) antes de responder.
+    Injeta datetime atual + histórico de conversa + contexto Brain no system prompt.
     Recebe o task dict com payload.original_text e retorna {"message": "<resposta>"}
     """
     payload = task.get("payload", {})
@@ -136,9 +134,25 @@ async def handle_chat(task: dict) -> dict:
     task_id = task.get("id")
     phone = payload.get("from_number") or "internal"
 
-    # --- Datetime atual (Brasília) ---
+    # --- W1-FRIDAY-1: Consultar Brain (mauro-personal) ---
+    brain_context, chunks_retrieved, fallback_used = await get_friday_brain_context(user_text)
+
+    # --- Registrar consulta em friday_context_log (fire and forget) ---
+    asyncio.create_task(log_friday_context(
+        interaction_id=task_id,
+        chunks_retrieved=chunks_retrieved,
+        used_in_response=True,
+        fallback_used=fallback_used,
+    ))
+
+    # --- Montar system prompt com persona Friday + contexto Brain ---
+    friday_persona_prompt = build_friday_system_prompt(brain_context)
     current_datetime = _get_current_datetime()
-    system_prompt = _FRIDAY_SYSTEM_BASE + f"\nData e hora atual: {current_datetime} (horário de Brasília)\n"
+    system_prompt = (
+        friday_persona_prompt
+        + _FRIDAY_OPERATIONAL_CONTEXT
+        + f"\nData e hora atual: {current_datetime} (horário de Brasília)\n"
+    )
 
     # --- Histórico de conversa ---
     history = await _get_history(phone)

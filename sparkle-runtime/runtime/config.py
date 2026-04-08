@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # PROACTIVE_ENABLED=false por padrão. Habilitar apenas após W1-FRIDAY-1 concluído.
     proactive_enabled: bool = os.getenv("PROACTIVE_ENABLED", "false").lower() in ("true", "1", "yes")
 
+    # Friday Brain Retrieval — W1-FRIDAY-1
+    # Quando True, Friday consulta o Brain (namespace mauro-personal) antes de cada resposta de chat.
+    # FRIDAY_BRAIN_RETRIEVAL=false desativa a consulta sem necessidade de redeploy (mecanismo de emergência).
+    friday_brain_retrieval_enabled: bool = os.getenv("FRIDAY_BRAIN_RETRIEVAL", "true").lower() in ("true", "1", "yes")
+
     # Content pipeline — CONTENT-2.2 Resilience
     # Peças em *_generating por mais de este número de minutos são tratadas como stuck.
     # Configurável via PIPELINE_TIMEOUT_MINUTES (default 20).
