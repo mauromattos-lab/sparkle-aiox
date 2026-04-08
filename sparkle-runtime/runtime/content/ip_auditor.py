@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -70,9 +71,9 @@ async def _query_sparkle_lore(query_text: str, top_k: int = 5) -> list[dict]:
     Gracefully returns [] on any error — auditor never blocks.
     """
     try:
-        from runtime.brain.embedding import get_embedding
+        from runtime.brain.knowledge import _get_embedding
 
-        embedding = await get_embedding(query_text)
+        embedding = await _get_embedding(query_text)
         if not embedding:
             print("[ip_auditor] embedding unavailable — skipping lore check")
             return []
@@ -213,18 +214,21 @@ async def _check_lore_compliance(
 
         raw = (response.content[0].text or "").strip()
 
-        # Parse COMPATIVEL / INCOMPATIVEL
-        upper = raw.upper()
-        if "INCOMPATIVEL" in upper:
+        # Normalize accented chars so COMPATÍVEL/INCOMPATÍVEL match COMPATIVEL/INCOMPATIVEL
+        def _normalize(s: str) -> str:
+            return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").upper()
+
+        normalized = _normalize(raw)
+        if "INCOMPATIVEL" in normalized:
             compliance = "INCOMPATIVEL"
             # Extract justification after the keyword
-            idx = upper.find("INCOMPATIVEL")
-            reason_raw = raw[idx + len("INCOMPATIVEL"):].strip(" :—-\n")
+            idx = normalized.find("INCOMPATIVEL")
+            reason_raw = raw[idx + len("INCOMPATIVEL"):].strip(" :*—-\n")
             reason = reason_raw[:100] if reason_raw else raw[:100]
-        elif "COMPATIVEL" in upper:
+        elif "COMPATIVEL" in normalized:
             compliance = "COMPATIVEL"
-            idx = upper.find("COMPATIVEL")
-            reason_raw = raw[idx + len("COMPATIVEL"):].strip(" :—-\n")
+            idx = normalized.find("COMPATIVEL")
+            reason_raw = raw[idx + len("COMPATIVEL"):].strip(" :*—-\n")
             reason = reason_raw[:100] if reason_raw else ""
         else:
             # Haiku returned something unexpected — treat as SKIPPED
