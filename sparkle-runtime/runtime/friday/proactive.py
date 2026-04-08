@@ -364,6 +364,31 @@ async def _eval_idle_detection() -> str | None:
 
 # ── W2-CLC-1 / W2-FRIDAY-2: Business triggers ───────────────
 
+async def _eval_brain_pending_alert() -> str | None:
+    """
+    W2-BRAIN-1: Alert when Brain has >50 pending chunks awaiting curation.
+    Anti-spam: 1 alert per day via standard should_send() logic.
+    """
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .select("id", count="exact")
+            .eq("curation_status", "pending")
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        pending = res.count if res.count is not None else 0
+        if pending > 50:
+            return (
+                f"Brain tem *{pending} chunks pendentes* de curadoria. "
+                f"Quer iniciar auto-curadoria? (POST /brain/curate)"
+            )
+        return None
+    except Exception as e:
+        logger.error("proactive: _eval_brain_pending_alert failed: %s", e)
+        return None
+
+
 async def _eval_client_health_alert() -> str | None:
     """
     Alert when a client's health score drops below 60.
@@ -633,6 +658,8 @@ _TRIGGER_EVALUATORS: list[tuple[str, callable]] = [
     ("client_health_alert", _eval_client_health_alert),
     ("workflow_blocked", _eval_workflow_blocked),
     ("follow_up_due", _eval_follow_up_due),
+    # Brain health trigger (W2-BRAIN-1)
+    ("brain_pending_alert", _eval_brain_pending_alert),
     # Technical triggers
     ("morning_checkin", _eval_morning_checkin),
     ("afternoon_nudge", _eval_afternoon_nudge),

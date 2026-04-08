@@ -179,3 +179,15 @@ async def brain_namespace_stats():
 
     except Exception as e:
         return {"status": "error", "message": f"Failed to fetch namespace stats: {str(e)[:200]}"}
+
+
+# ── W2-BRAIN-1: Brain Health Dashboard ──────────────────────
+
+@router.get("/health")
+async def get_brain_health_dashboard():
+    """
+    Dashboard de saúde do Brain com métricas reais.
+    Retorna: total/approved/pending/rejected/stale chunks, namespaces, syntheses, alerts.
+    """
+    from runtime.brain.synthesis import get_brain_health
+    return await get_brain_health()

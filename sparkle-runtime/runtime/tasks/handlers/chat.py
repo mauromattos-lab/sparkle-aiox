@@ -27,6 +27,7 @@ from runtime.utils.llm import call_claude
 from runtime.friday.brain_context import (
     build_friday_system_prompt,
     get_friday_brain_context,
+    get_mauro_dna_context,
     log_friday_context,
 )
 
@@ -134,8 +135,11 @@ async def handle_chat(task: dict) -> dict:
     task_id = task.get("id")
     phone = payload.get("from_number") or "internal"
 
-    # --- W1-FRIDAY-1: Consultar Brain (mauro-personal) ---
-    brain_context, chunks_retrieved, fallback_used = await get_friday_brain_context(user_text)
+    # --- W1-FRIDAY-1 + W2-FRIDAY-1: Consultar Brain e DNA em paralelo ---
+    (brain_context, chunks_retrieved, fallback_used), dna_context = await asyncio.gather(
+        get_friday_brain_context(user_text),
+        get_mauro_dna_context(),
+    )
 
     # --- Registrar consulta em friday_context_log (fire and forget) ---
     asyncio.create_task(log_friday_context(
@@ -145,8 +149,8 @@ async def handle_chat(task: dict) -> dict:
         fallback_used=fallback_used,
     ))
 
-    # --- Montar system prompt com persona Friday + contexto Brain ---
-    friday_persona_prompt = build_friday_system_prompt(brain_context)
+    # --- Montar system prompt com persona Friday + contexto Brain + DNA ---
+    friday_persona_prompt = build_friday_system_prompt(brain_context, dna_context)
     current_datetime = _get_current_datetime()
     system_prompt = (
         friday_persona_prompt

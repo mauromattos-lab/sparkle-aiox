@@ -47,6 +47,20 @@ def _update_piece(piece_id: str, fields: dict) -> None:
 
 # ── Brain flywheel on approval ────────────────────────────────
 
+async def _update_synthesis_after_ingest(piece: dict) -> None:
+    """
+    W2-BRAIN-1: Atualiza síntese do namespace após ingestão aprovada.
+    Non-blocking — falha silenciosamente sem afetar o fluxo de aprovação.
+    """
+    try:
+        from runtime.brain.synthesis import update_domain_synthesis
+        # Content pieces sempre vão para sparkle-lore (namespace padrão para conteúdo)
+        namespace = "sparkle-lore"
+        await update_domain_synthesis(namespace)
+    except Exception as e:
+        print(f"[approval] synthesis update failed (non-blocking): {e}")
+
+
 async def _ingest_approved_to_brain(piece: dict) -> None:
     """
     W1-BRAIN-1 AC1 (T3/T4): Non-blocking Brain ingest triggered on content approval.
@@ -184,6 +198,8 @@ def approve_piece(piece_id: str, scheduled_at: Optional[str] = None) -> dict:
             # running within an async context (FastAPI endpoint).
             loop = asyncio.get_running_loop()
             loop.create_task(_ingest_approved_to_brain(fresh))
+            # W2-BRAIN-1: Update domain synthesis non-blocking after ingest
+            loop.create_task(_update_synthesis_after_ingest(fresh))
         except RuntimeError:
             # No running event loop (e.g., called from sync context / tests)
             # Best-effort: fire and forget via thread-safe wrapper

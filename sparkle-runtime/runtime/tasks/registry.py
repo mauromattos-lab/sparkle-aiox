@@ -45,6 +45,7 @@ from runtime.tasks.handlers.client_report import handle_client_report, handle_cl
 from runtime.tasks.handlers.cockpit_summary import handle_cockpit_summary, handle_cockpit_query
 from runtime.tasks.handlers.cross_source_synthesis import handle_cross_source_synthesis
 from runtime.tasks.handlers.billing import handle_create_subscription, handle_billing_alert
+from runtime.tasks.handlers.extract_mauro_dna import handle_extract_mauro_dna
 
 # task_type → handler(task: dict) -> dict
 REGISTRY: dict[str, Callable[[dict], dict]] = {
@@ -90,6 +91,7 @@ REGISTRY: dict[str, Callable[[dict], dict]] = {
     "cross_source_synthesis":   handle_cross_source_synthesis,
     "create_subscription":      handle_create_subscription,
     "billing_alert":            handle_billing_alert,
+    "extract_mauro_dna":        handle_extract_mauro_dna,
     # fallback: free-form conversation goes to chat handler
     "task_free":                handle_chat,
 }

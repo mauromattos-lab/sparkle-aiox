@@ -41,6 +41,9 @@ Nunca amplifique ansiedade. Informe com clareza e aponte próximo passo.
 Tom: direto, cúmplice, sem floreio desnecessário.
 Você conhece o Mauro — não trate-o como usuário genérico.
 
+DNA do Mauro (extraído das conversas):
+{dna_context}
+
 Contexto recuperado do Brain (namespace mauro-personal):
 {brain_context}
 
@@ -48,18 +51,77 @@ Use este contexto para calibrar o tom e antecipar o que o Mauro provavelmente qu
 não só o que ele pediu."""
 
 
-def build_friday_system_prompt(brain_context: str) -> str:
+def build_friday_system_prompt(brain_context: str, dna_context: str = "") -> str:
     """
-    Monta o system prompt completo da Friday com o contexto do Brain injetado.
+    Monta o system prompt completo da Friday com contexto do Brain e DNA do Mauro.
 
     Args:
-        brain_context: Texto formatado com chunks recuperados do Brain,
-                       ou placeholder de fallback se indisponível.
+        brain_context: Texto formatado com chunks recuperados do Brain.
+        dna_context: Texto formatado com entradas do DNA do Mauro (mauro_dna).
 
     Returns:
         System prompt completo como string.
     """
-    return _FRIDAY_PERSONA_SYSTEM.format(brain_context=brain_context)
+    return _FRIDAY_PERSONA_SYSTEM.format(
+        brain_context=brain_context or "(contexto do Brain indisponível)",
+        dna_context=dna_context or "(DNA ainda não extraído)",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mauro DNA loader (W2-FRIDAY-1)
+# ---------------------------------------------------------------------------
+
+async def get_mauro_dna_context() -> str:
+    """
+    Carrega entradas recentes do DNA do Mauro (mauro_dna) e formata para injeção
+    no system prompt. Retorna string vazia (sem exceção) se não houver entradas.
+
+    Prioriza: valores > visao_negocio > preferencias > tom_comunicacao > outros.
+    Limita a 20 entradas de alta confidence para não inflar o context window.
+    """
+    try:
+        _PRIORITY = ["valores", "visao_negocio", "preferencias", "tom_comunicacao",
+                     "cultura_pop", "pilares_pessoais", "gatilhos_atencao"]
+
+        res = await asyncio.to_thread(
+            lambda: supabase.table("mauro_dna")
+            .select("dna_type,key,content,confidence")
+            .gte("confidence", 0.7)
+            .order("confidence", desc=True)
+            .limit(40)
+            .execute()
+        )
+        entries = res.data or []
+        if not entries:
+            return ""
+
+        # Agrupar por dna_type
+        by_type: dict[str, list[str]] = {}
+        for e in entries:
+            dt = e.get("dna_type", "outros")
+            content = e.get("content", "").strip()
+            if content:
+                if dt not in by_type:
+                    by_type[dt] = []
+                by_type[dt].append(f"• {content}")
+
+        lines = []
+        for cat in _PRIORITY:
+            if cat in by_type:
+                lines.append(f"[{cat}]")
+                lines.extend(by_type[cat][:5])  # max 5 por categoria
+        # Categorias não listadas na prioridade
+        for cat, items in by_type.items():
+            if cat not in _PRIORITY:
+                lines.append(f"[{cat}]")
+                lines.extend(items[:3])
+
+        return "\n".join(lines) if lines else ""
+
+    except Exception as exc:
+        logger.warning("[FRIDAY] Falha ao carregar DNA do Mauro: %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------

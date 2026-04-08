@@ -234,6 +234,42 @@ async def receive_audio_url(req: AudioUrlRequest):
         return {"status": "error", "response": build_error_response(e)}
 
 
+class ExtractDnaRequest(BaseModel):
+    days_back: int = 7
+
+
+@router.post("/extract-dna")
+async def extract_dna(req: ExtractDnaRequest):
+    """
+    W2-FRIDAY-1: Dispara extração de DNA do Mauro a partir das conversas Friday.
+    Processa os últimos `days_back` dias, persiste em mauro_dna, retorna entries extraídas.
+    """
+    try:
+        from runtime.tasks.handlers.extract_mauro_dna import extract_mauro_dna
+        result = await extract_mauro_dna(days_back=req.days_back)
+        return {"status": "ok", **result}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+
+
+@router.get("/dna")
+async def get_mauro_dna(dna_type: Optional[str] = None, limit: int = 50):
+    """
+    W2-FRIDAY-1: Retorna entradas do DNA do Mauro persistidas em mauro_dna.
+    Filtra opcionalmente por dna_type (valores, preferencias, etc.).
+    """
+    try:
+        q = supabase.table("mauro_dna").select("dna_type,key,content,confidence,extracted_at")
+        if dna_type:
+            q = q.eq("dna_type", dna_type)
+        q = q.order("extracted_at", desc=True).limit(limit)
+        res = await asyncio.to_thread(lambda: q.execute())
+        entries = res.data or []
+        return {"status": "ok", "count": len(entries), "entries": entries}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+
+
 @router.post("/onboard")
 async def onboard_client(req: OnboardRequest):
     """

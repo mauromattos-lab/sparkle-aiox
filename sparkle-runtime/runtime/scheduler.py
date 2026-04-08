@@ -2,7 +2,7 @@
 Scheduler interno — roda jobs agendados dentro do processo FastAPI.
 Fallback quando ARQ worker (Redis) não está disponível.
 
-Jobs (15 total):
+Jobs (17 total):
 - health_check            : a cada 15 minutos
 - daily_briefing          : todo dia às 8h de Brasília
 - cockpit_summary         : todo dia às 8h de Brasília (11h UTC) — TIER 1 executive view
@@ -19,6 +19,8 @@ Jobs (15 total):
 - brain_curate            : todo dia às 2h UTC (S8-P1 auto-curation)
 - client_reports_monthly  : dia 1 de cada mês às 10h UTC (7h BRT)
 - client_health_weekly    : toda segunda às 9h de Brasília (W2-CLC-1)
+- mauro_dna_extraction    : todo domingo às 3h de Brasília (W2-FRIDAY-1)
+- client_weekly_report    : toda sexta às 17h de Brasília (W2-CLC-2)
 
 Todos criam a task no Supabase E executam inline via execute_task(),
 fechando o loop sem depender do ARQ worker.
@@ -135,6 +137,41 @@ async def _run_brain_curate() -> None:
 
 async def _run_client_reports_monthly() -> None:
     await _run_and_execute("client_reports_bulk", priority=6)
+
+
+# ── W2-CLC-2: Client Weekly Report (sexta 17h BRT) ──────────
+
+async def _run_client_weekly_report() -> None:
+    """
+    Envia relatório semanal para todos os clientes Zenya ativos.
+    Roda toda sexta-feira às 17h BRT.
+    """
+    try:
+        from runtime.client_lifecycle.weekly_report import send_all_weekly_reports
+        result = await send_all_weekly_reports(dry_run=False)
+        print(
+            f"[scheduler] client_weekly_report: {result['total_clients']} clientes — "
+            f"{result['sent']} enviados, {result['skipped']} pulados, {result['failed']} falhos"
+        )
+    except Exception as e:
+        print(f"[scheduler] client_weekly_report: erro — {e}")
+
+
+# ── W2-FRIDAY-1: Mauro DNA Extraction (weekly) ──────────────
+
+async def _run_mauro_dna_extraction() -> None:
+    """
+    Extrai DNA do Mauro das conversas Friday dos últimos 7 dias.
+    Roda todo domingo às 03h BRT (off-peak, após brain_archival/cleanup).
+    """
+    try:
+        from runtime.tasks.handlers.extract_mauro_dna import extract_mauro_dna
+        result = await extract_mauro_dna(days_back=7)
+        total = result.get("entries_extracted", 0)
+        cats = result.get("categories", {})
+        print(f"[scheduler] mauro_dna_extraction: {total} entries — {cats}")
+    except Exception as e:
+        print(f"[scheduler] mauro_dna_extraction: erro — {e}")
 
 
 # ── W2-CLC-1: Client Health Weekly Score ────────────────────
@@ -453,6 +490,22 @@ def start_scheduler() -> None:
         _run_content_weekly_batch,
         trigger=CronTrigger(day_of_week="mon", hour=7, minute=0, timezone=_TZ),
         id="content_weekly_batch",
+        replace_existing=True,
+    )
+
+    # W2-CLC-2: client_weekly_report toda sexta-feira às 17h de Brasília
+    _scheduler.add_job(
+        _run_client_weekly_report,
+        trigger=CronTrigger(day_of_week="fri", hour=17, minute=0, timezone=_TZ),
+        id="client_weekly_report",
+        replace_existing=True,
+    )
+
+    # W2-FRIDAY-1: mauro_dna_extraction todo domingo às 03h de Brasília
+    _scheduler.add_job(
+        _run_mauro_dna_extraction,
+        trigger=CronTrigger(day_of_week="sun", hour=3, minute=0, timezone=_TZ),
+        id="mauro_dna_extraction",
         replace_existing=True,
     )
 
