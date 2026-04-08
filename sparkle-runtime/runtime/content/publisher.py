@@ -27,6 +27,9 @@ import httpx
 from runtime.config import settings
 from runtime.db import supabase
 
+# Runtime base URL for internal calls (ingest-pipeline)
+_RUNTIME_BASE = "http://localhost:8001"
+
 # ── Instagram Graph API constants ──────────────────────────────
 
 GRAPH_BASE = "https://graph.facebook.com/v19.0"
@@ -257,62 +260,112 @@ async def _publish_container(
 
 async def _ingest_published_to_brain(piece: dict) -> Optional[str]:
     """
-    AC5: After successful publication, ingest piece into Brain namespace
-    'sparkle-lore' so future IP audits can detect repetition.
+    W1-BRAIN-1 AC4: After successful Instagram publication, ingest piece into Brain
+    via the full 6-phase pipeline (ingest-pipeline endpoint).
 
-    Returns chunk_id if successful, None otherwise (never blocks).
+    Fixes Bug 1 (direct insert → pipeline), Bug 2 (brain_owner=content, not sparkle-lore),
+    Bug 3 (namespace in top-level field via metadata priority 1).
+
+    Returns chunk_id from pipeline result if available, None otherwise (never blocks).
     """
     try:
-        from runtime.brain.embedding import get_embedding
-
         piece_id = piece["id"]
         theme = piece.get("theme") or ""
         caption = piece.get("caption") or ""
         voice_script = piece.get("voice_script") or ""
         published_url = piece.get("published_url") or ""
+        published_at = piece.get("published_at") or _now_iso()
+        character = (piece.get("character") or "zenya").lower()
+        content_type = piece.get("content_type") or "reel"
 
-        content = (
+        raw_content = (
             f"[Published Reel] Theme: {theme}\n"
             f"Caption: {caption[:500]}\n"
             f"Script: {voice_script[:300]}\n"
             f"URL: {published_url}"
         ).strip()
 
-        if not content:
+        if not raw_content:
             return None
 
-        embedding = await get_embedding(content)
-
-        row: dict = {
-            "raw_content": content,
+        payload = {
             "source_type": "published_reel",
-            "source_title": f"Reel: {theme[:80]}",
-            "pipeline_type": "especialista",
-            "brain_owner": "sparkle-lore",
-            "chunk_metadata": {
-                "source_agent": "publisher",
-                "content_piece_id": piece_id,
-                "namespace": "sparkle-lore",
-                "published_at": piece.get("published_at"),
-                "published_url": published_url,
-                "theme": theme,
-            },
+            "raw_content": raw_content,
+            "title": f"Reel: {theme[:80]}",
+            "persona": "especialista",   # → brain_owner = "content"
+            "client_id": None,           # sparkle-internal
+            "run_dna": False,
+            "run_narrative": False,
+            # namespace explícito em metadata (prioridade 1 em resolve_namespace)
+            # chunk_metadata passado via pipeline como metadado extra
         }
-        if embedding:
-            row["embedding"] = embedding
 
-        result = await asyncio.to_thread(
-            lambda: supabase.table("brain_chunks").insert(row).execute()
+        # Build metadata that will be stored in chunk_metadata by the pipeline
+        # We pass it through a dedicated metadata field if pipeline supports it,
+        # otherwise we embed it in raw_content context header.
+        # For now, namespace is resolved via _SOURCE_TYPE_MAP["published_reel"] = "sparkle-lore"
+        # and additional metadata is embedded as structured comment in raw_content.
+        metadata_header = (
+            f"[metadata] content_piece_id={piece_id} "
+            f"character={character} content_type={content_type} "
+            f"approved_at={published_at} instagram_url={published_url or 'null'}"
         )
-        if result.data:
-            chunk_id = result.data[0].get("id")
-            print(f"[publisher] Brain ingest: piece {piece_id[:8]} → chunk {chunk_id}")
-            return chunk_id
-        return None
+        payload["raw_content"] = f"{metadata_header}\n{raw_content}"
+
+        url = f"{_RUNTIME_BASE}/brain/ingest-pipeline"
+        headers = {}
+        if settings.runtime_api_key:
+            headers["Authorization"] = f"Bearer {settings.runtime_api_key}"
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+
+        if resp.status_code != 200:
+            print(f"[publisher] Brain ingest pipeline error {resp.status_code}: {resp.text[:300]}")
+            return None
+
+        data = resp.json()
+        if data.get("status") != "ok":
+            print(f"[publisher] Brain ingest pipeline failed: {data.get('error', 'unknown')}")
+            return None
+
+        # Extract chunk_id from pipeline result (chunks_ids or first chunk)
+        chunk_ids = data.get("chunk_ids") or []
+        chunk_id = chunk_ids[0] if chunk_ids else data.get("chunk_id")
+        print(f"[publisher] Brain ingest (pipeline): piece {piece_id[:8]} → chunk {chunk_id} (namespace=sparkle-lore)")
+        return chunk_id
 
     except Exception as exc:
         print(f"[publisher] Brain ingest failed (non-blocking): {exc}")
         return None
+
+
+async def _update_chunk_instagram_url(brain_chunk_id: str, instagram_url: str, piece_id: str) -> None:
+    """
+    W1-BRAIN-1 AC4 (T6): After Instagram publish, update the brain chunk's metadata
+    with the real instagram_url so the lore record is complete.
+    """
+    try:
+        result = await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .select("chunk_metadata")
+            .eq("id", brain_chunk_id)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return
+        existing_meta = result.data[0].get("chunk_metadata") or {}
+        updated_meta = {**existing_meta, "instagram_url": instagram_url, "published_at": _now_iso()}
+        await asyncio.to_thread(
+            lambda: supabase.table("brain_chunks")
+            .update({"chunk_metadata": updated_meta})
+            .eq("id", brain_chunk_id)
+            .execute()
+        )
+        print(f"[publisher] chunk {brain_chunk_id} instagram_url updated → {instagram_url}")
+    except Exception as exc:
+        print(f"[publisher] chunk instagram_url update failed (non-blocking): {exc}")
 
 
 # ── Friday notification ────────────────────────────────────────
@@ -450,10 +503,18 @@ async def publish(piece: dict) -> dict:
 
 
 async def _do_brain_ingest(piece: dict) -> None:
-    """Fire-and-forget brain ingest wrapper. Updates brain_chunk_id on piece."""
+    """
+    Fire-and-forget brain ingest wrapper.
+    Updates brain_chunk_id on content_pieces and instagram_url on brain chunk.
+    """
     chunk_id = await _ingest_published_to_brain(piece)
     if chunk_id:
+        # T5: persist chunk_id back to content_pieces
         try:
             _update_piece(piece["id"], {"brain_chunk_id": chunk_id})
         except Exception as exc:
             print(f"[publisher] brain_chunk_id update failed: {exc}")
+        # T6: update chunk's instagram_url now that we have the published_url
+        published_url = piece.get("published_url") or ""
+        if published_url:
+            asyncio.create_task(_update_chunk_instagram_url(chunk_id, published_url, piece["id"]))

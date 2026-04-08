@@ -74,6 +74,9 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
     "client_dna": "client_dna",
     "insight": "insight",
     "narrative": "insight",
+    # W1-BRAIN-1: conteúdo aprovado/publicado alimenta sparkle-lore (flywheel)
+    "published_reel": "sparkle-lore",
+    "approved_reel": "sparkle-lore",
 }
 
 # File extension refinement (used when source_type is file_upload)
