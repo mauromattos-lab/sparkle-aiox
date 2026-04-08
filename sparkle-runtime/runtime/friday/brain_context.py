@@ -85,10 +85,11 @@ async def get_friday_brain_context(query: str) -> tuple[str, int, bool]:
     try:
         from runtime.brain.knowledge import retrieve_knowledge
 
+        # Brain chunks do namespace mauro-personal são armazenados com brain_owner="mauro-personal".
+        # retrieve_knowledge filtra por brain_owner para isolar chunks do Mauro.
         result = await retrieve_knowledge(
             topic=query,
-            brain_owner="friday",
-            namespace="mauro-personal",
+            brain_owner="mauro-personal",
             max_insights=3,
             max_chunks=4,
             include_synthesis=True,
