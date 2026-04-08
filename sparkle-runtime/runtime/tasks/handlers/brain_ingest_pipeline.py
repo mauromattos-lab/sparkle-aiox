@@ -18,8 +18,18 @@ import asyncio
 from typing import Optional
 
 from runtime.brain.isolation import get_brain_owner_for_ingest
+from runtime.brain.namespace import resolve_namespace
 from runtime.config import settings
 from runtime.db import supabase
+
+# Persona → brain_owner mapping (W1-BRAIN-1 Bug 2 fix)
+# When callers explicitly set persona, use it to determine brain_owner.
+_PERSONA_BRAIN_OWNER_MAP: dict[str, str] = {
+    "especialista": "content",   # Content system (Zenya reels, approved content)
+    "mauro": "mauro",            # Mauro's personal knowledge
+    "cliente": "client",         # Client-specific knowledge
+    "system": "system",          # Internal system knowledge
+}
 from runtime.brain.ingest_url import (
     _chunk_text,
     _get_embedding,
@@ -273,9 +283,23 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
                     duplicates_confirmed += 1
                     continue
 
-            # B1-03: resolve brain_owner for this pipeline ingest
-            brain_owner = get_brain_owner_for_ingest(
-                "brain_pipeline", client_id,
+            # B1-03 + W1-BRAIN-1: resolve brain_owner.
+            # If caller explicitly provides persona, use it to determine brain_owner.
+            # This allows content module to ingest with brain_owner="content" by
+            # passing persona="especialista", fixing Bug 2.
+            persona = payload.get("persona", "")
+            if persona and persona in _PERSONA_BRAIN_OWNER_MAP:
+                brain_owner = _PERSONA_BRAIN_OWNER_MAP[persona]
+                if persona == "cliente" and client_id:
+                    brain_owner = client_id
+            else:
+                brain_owner = get_brain_owner_for_ingest("brain_pipeline", client_id)
+
+            # W1-BRAIN-1 Bug 3: resolve namespace and set it in the chunk row.
+            # Priority: explicit metadata.namespace > source_type mapping > fallback 'general'
+            namespace = resolve_namespace(
+                source_url=payload.get("source_ref"),
+                metadata={"source_type": payload.get("source_type", "document")},
             )
 
             # Insere em brain_chunks
@@ -290,6 +314,7 @@ async def handle_brain_ingest_pipeline(task: dict) -> dict:
                 ),
                 "pipeline_type": payload.get("persona", "mauro"),
                 "brain_owner": brain_owner,
+                "namespace": namespace,
                 "chunk_metadata": {
                     "source_ref": payload.get("source_ref"),
                     "source_agent": "brain_pipeline",

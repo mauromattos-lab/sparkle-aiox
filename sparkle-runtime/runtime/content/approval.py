@@ -97,7 +97,7 @@ async def _ingest_approved_to_brain(piece: dict) -> None:
 
         headers = {}
         if settings.runtime_api_key:
-            headers["Authorization"] = f"Bearer {settings.runtime_api_key}"
+            headers["X-API-Key"] = settings.runtime_api_key
 
         url = f"{_RUNTIME_BASE}/brain/ingest-pipeline"
         async with httpx.AsyncClient(timeout=60) as client:
@@ -125,7 +125,9 @@ async def _ingest_approved_to_brain(piece: dict) -> None:
 
     except Exception as exc:
         # Non-blocking: log warning but never raise
-        print(f"[approval] Brain ingest warning for piece (non-blocking): {exc}")
+        import traceback
+        print(f"[approval] Brain ingest warning for piece (non-blocking): {type(exc).__name__}: {exc}")
+        print(f"[approval] Brain ingest traceback: {traceback.format_exc()[:500]}")
 
 
 def approve_piece(piece_id: str, scheduled_at: Optional[str] = None) -> dict:
@@ -178,14 +180,19 @@ def approve_piece(piece_id: str, scheduled_at: Optional[str] = None) -> dict:
     fresh = _get_piece(piece_id)
     if fresh:
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(_ingest_approved_to_brain(fresh))
-            else:
-                loop.run_until_complete(_ingest_approved_to_brain(fresh))
+            # asyncio.get_running_loop() works when called from a sync function
+            # running within an async context (FastAPI endpoint).
+            loop = asyncio.get_running_loop()
+            loop.create_task(_ingest_approved_to_brain(fresh))
         except RuntimeError:
-            # If no event loop, schedule for next available opportunity
-            asyncio.run(_ingest_approved_to_brain(fresh))
+            # No running event loop (e.g., called from sync context / tests)
+            # Best-effort: fire and forget via thread-safe wrapper
+            print(f"[approval] No running event loop for brain ingest — scheduling via asyncio.run")
+            import threading
+            threading.Thread(
+                target=lambda: asyncio.run(_ingest_approved_to_brain(fresh)),
+                daemon=True,
+            ).start()
         except Exception as exc:
             print(f"[approval] Brain ingest task creation failed (non-blocking): {exc}")
 

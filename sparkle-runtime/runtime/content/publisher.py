@@ -315,7 +315,7 @@ async def _ingest_published_to_brain(piece: dict) -> Optional[str]:
         url = f"{_RUNTIME_BASE}/brain/ingest-pipeline"
         headers = {}
         if settings.runtime_api_key:
-            headers["Authorization"] = f"Bearer {settings.runtime_api_key}"
+            headers["X-API-Key"] = settings.runtime_api_key
 
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(url, json=payload, headers=headers)
